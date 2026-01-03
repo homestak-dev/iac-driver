@@ -8,18 +8,41 @@ This repo coordinates three tool repositories for end-to-end testing:
 
 | Repo | Purpose | URL |
 |------|---------|-----|
-| ansible | Proxmox host configuration, PVE installation | https://github.com/john-derose/ansible |
-| tofu | VM provisioning with OpenTofu | https://github.com/john-derose/tofu |
-| packer | Custom Debian cloud image building | https://github.com/john-derose/packer |
+| ansible | Proxmox host configuration, PVE installation | https://github.com/homestak-dev/ansible |
+| tofu | VM provisioning with OpenTofu | https://github.com/homestak-dev/tofu |
+| packer | Custom Debian cloud image building | https://github.com/homestak-dev/packer |
 
 ## Quick Start
 
 ```bash
 # Clone this repo and tool repos
-git clone https://github.com/john-derose/iac-driver.git
+git clone https://github.com/homestak-dev/iac-driver.git
 cd iac-driver
+make setup    # Configure git hooks for secrets
+make decrypt  # Decrypt secrets (requires age key)
 ./scripts/setup-tools.sh  # Clones ansible, tofu, packer as siblings
 ```
+
+## Secrets Management
+
+Credentials are encrypted with [SOPS](https://github.com/getsops/sops) + [age](https://github.com/FiloSottile/age):
+
+```
+secrets/
+├── pve.tfvars.enc      # Encrypted (committed)
+├── pve.tfvars          # Plaintext (gitignored, local only)
+└── ...
+```
+
+**Setup:**
+```bash
+make setup    # Configure git hooks, check dependencies
+make decrypt  # Decrypt secrets (requires age key at ~/.config/sops/age/keys.txt)
+```
+
+**Makefile targets:** `setup`, `decrypt`, `encrypt`, `clean`, `check`
+
+Git hooks auto-encrypt on commit and auto-decrypt on checkout.
 
 ## Directory Structure
 
