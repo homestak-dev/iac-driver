@@ -1,7 +1,9 @@
 """Host configuration management."""
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlparse
 
 import yaml
 
@@ -10,9 +12,9 @@ import yaml
 class HostConfig:
     """Configuration for a target PVE host."""
     name: str
-    api_endpoint: str
-    node_name: str
     tfvars_file: Path
+    api_endpoint: str = ''
+    node_name: str = ''
     ssh_host: str = ''  # SSH hostname for the PVE host
     inner_vm_id: int = 99913
     test_vm_id: int = 99901
@@ -29,11 +31,28 @@ class HostConfig:
             self.tfvars_file = Path(self.tfvars_file)
         if isinstance(self.ssh_key, str):
             self.ssh_key = Path(self.ssh_key)
+
+        # Read api_endpoint and node_name from tfvars if not set
+        if self.tfvars_file.exists() and (not self.api_endpoint or not self.node_name):
+            tfvars = _parse_tfvars(self.tfvars_file)
+            if not self.api_endpoint:
+                self.api_endpoint = tfvars.get('proxmox_api_endpoint', '')
+            if not self.node_name:
+                self.node_name = tfvars.get('proxmox_node_name', '')
+
         # Derive ssh_host from api_endpoint if not set
         if not self.ssh_host and self.api_endpoint:
-            # Extract hostname from https://host:port
-            from urllib.parse import urlparse
             self.ssh_host = urlparse(self.api_endpoint).hostname or ''
+
+
+def _parse_tfvars(path: Path) -> dict:
+    """Parse a tfvars file and return key-value pairs."""
+    result = {}
+    content = path.read_text()
+    # Match: key = "value" or key = 'value'
+    for match in re.finditer(r'^(\w+)\s*=\s*["\']([^"\']*)["\']', content, re.MULTILINE):
+        result[match.group(1)] = match.group(2)
+    return result
 
 
 def get_base_dir() -> Path:

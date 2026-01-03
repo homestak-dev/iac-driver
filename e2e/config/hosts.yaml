@@ -1,5 +1,5 @@
 # E2E Test Host Configurations
-# Each host represents a target Proxmox VE server for testing
+# Host connection info (api_endpoint, node_name) is read from tfvars files
 
 defaults:
   ssh_user: root
@@ -11,11 +11,7 @@ defaults:
 
 hosts:
   pve:
-    api_endpoint: https://pve.homestak:8006
-    node_name: pve
     tfvars_file: secrets/pve.tfvars
 
   father:
-    api_endpoint: https://father.core:8006
-    node_name: father
     tfvars_file: secrets/father.tfvars
