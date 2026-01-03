@@ -200,16 +200,48 @@ ssh -J root@$INNER_IP root@$TEST_IP "hostname && uname -a"
 
 Reports are generated in `test-runs/` with format: `YYYY-MM-DD.HH:MM:SS-{passed|failed}.md`
 
-### Key Environments
+### Tofu Environments
 
-| Environment | Purpose | Storage |
-|-------------|---------|---------|
-| `pve-deb` | Inner PVE (Debian 13 + PVE) | local-zfs |
-| `test` | Test VM (works on any PVE via tfvars) | configurable |
+**pve-deb** - Inner PVE VM (in `../tofu/envs/pve-deb/`):
 
-The `test` environment is parameterized to work on both outer and inner PVE:
-- Outer PVE: uses `terraform.tfvars` with `vm_datastore_id = "local-zfs"`
-- Inner PVE: uses generated tfvars with `vm_datastore_id = "local"`
+| Property | Value |
+|----------|-------|
+| VM ID | 99913 |
+| Hostname | pve-deb |
+| CPU | 2 cores (faster packer builds) |
+| Memory | 8192 MB |
+| Disk | 64 GB on local-zfs |
+| Image | debian-13-custom.img |
+
+**test** - Parameterized test VM (in `../tofu/envs/test/`):
+
+Works on both outer and inner PVE via tfvars:
+
+| Variable | Outer PVE | Inner PVE |
+|----------|-----------|-----------|
+| `proxmox_node_name` | pve | pve-deb |
+| `vm_datastore_id` | local-zfs | local |
+| `proxmox_api_endpoint` | https://pve:8006 | https://<inner-ip>:8006 |
+
+### Ansible Roles
+
+**pve-iac** - Generic IaC tooling (in `../ansible/roles/pve-iac/`):
+
+Reusable for any Proxmox host (dev, k8s, etc.):
+- `tools.yml` - Install packer and tofu from official repos
+- `api-token.yml` - Create `root@pam!tofu` API token
+
+**nested-pve** - E2E test configuration (in `../ansible/roles/nested-pve/`):
+
+Depends on `pve-iac` role:
+- `network.yml` - Configure vmbr0 bridge (required after Debian→PVE conversion)
+- `ssh-keys.yml` - Copy SSH keys for nested VM access
+- `copy-files.yml` - Deploy packer/tofu files, generate tfvars
+
+Generated files on inner PVE:
+- `/root/packer/` - Packer templates and scripts
+- `/root/tofu/` - Tofu modules and environments
+- `/root/tofu/envs/test/terraform.tfvars` - Auto-generated with API token
 
 ## Prerequisites
 
