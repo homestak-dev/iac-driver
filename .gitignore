@@ -1,0 +1,13 @@
+# Test reports (contain credentials)
+test-runs/*.md
+!test-runs/TEMPLATE.md
+!test-runs/README.md
+
+# Config files (contain credentials)
+config/*.tfvars
+
+# Editor/OS
+*.swp
+*.swo
+*~
+.DS_Store
