@@ -23,8 +23,10 @@ cd iac-driver
 
 ## Directory Structure
 
+All repos are siblings in a common parent directory:
+
 ```
-/root/homestak/           # or wherever you clone
+<parent>/
 ├── iac-driver/           # This repo - E2E orchestration
 │   ├── CLAUDE.md
 │   ├── scripts/
@@ -33,10 +35,12 @@ cd iac-driver
 │   │   └── setup-tools.sh
 │   ├── test-runs/
 │   └── config/
-├── ansible/              # Tool repo
-├── tofu/                 # Tool repo
-└── packer/               # Tool repo
+├── ansible/              # Tool repo (sibling)
+├── tofu/                 # Tool repo (sibling)
+└── packer/               # Tool repo (sibling)
 ```
+
+Scripts use relative paths (`../ansible`, `../tofu`, `../packer`) so the parent directory can be anywhere.
 
 ## Common Commands
 
