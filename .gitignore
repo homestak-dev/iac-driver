@@ -3,6 +3,16 @@ test-runs/*.md
 !test-runs/TEMPLATE.md
 !test-runs/README.md
 
+# E2E test reports
+e2e/reports/*.md
+e2e/reports/*.json
+!e2e/reports/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
 # Secrets - plaintext files are gitignored, only .enc files committed
 secrets/*.tfvars
 secrets/*.yaml

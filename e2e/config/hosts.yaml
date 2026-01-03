@@ -1,0 +1,21 @@
+# E2E Test Host Configurations
+# Each host represents a target Proxmox VE server for testing
+
+defaults:
+  ssh_user: root
+  inner_vm_id: 99913
+  test_vm_id: 99901
+  packer_release_repo: homestak-dev/packer
+  packer_release_tag: v0.1.0-rc1
+  packer_image: debian-12-custom.qcow2
+
+hosts:
+  pve:
+    api_endpoint: https://pve.homestak:8006
+    node_name: pve
+    tfvars_file: secrets/pve.tfvars
+
+  father:
+    api_endpoint: https://father.core:8006
+    node_name: father
+    tfvars_file: secrets/father.tfvars
