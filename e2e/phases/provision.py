@@ -4,7 +4,7 @@ import logging
 import time
 from pathlib import Path
 
-from ..common import PhaseResult, run_command, wait_for_guest_agent
+from ..common import PhaseResult, run_command, wait_for_guest_agent, start_vm
 from ..config import HostConfig, get_sibling_dir
 
 logger = logging.getLogger(__name__)
@@ -46,9 +46,18 @@ def run(config: HostConfig, context: dict) -> PhaseResult:
             duration=time.time() - start
         )
 
+    # Start the VM (tofu creates it stopped by default)
+    pve_ssh_host = config.ssh_host
+    if not start_vm(config.inner_vm_id, pve_ssh_host):
+        return PhaseResult(
+            success=False,
+            message=f"Failed to start VM {config.inner_vm_id}",
+            duration=time.time() - start
+        )
+
     # Wait for guest agent and get IP
     logger.info(f"Waiting for VM {config.inner_vm_id} guest agent...")
-    inner_ip = wait_for_guest_agent(config.inner_vm_id, timeout=300)
+    inner_ip = wait_for_guest_agent(config.inner_vm_id, pve_ssh_host, timeout=300)
     if not inner_ip:
         return PhaseResult(
             success=False,

@@ -120,6 +120,10 @@ def main():
         action='store_true',
         help='Enable verbose logging'
     )
+    parser.add_argument(
+        '--inner-ip',
+        help='Inner PVE VM IP (auto-detected if not provided, required when skipping provision)'
+    )
 
     args = parser.parse_args()
 
@@ -137,6 +141,10 @@ def main():
         report_dir=args.report_dir,
         skip_phases=args.skip
     )
+
+    # Pre-populate context if inner-ip provided
+    if args.inner_ip:
+        orchestrator.context['inner_ip'] = args.inner_ip
 
     success = orchestrator.run()
     return 0 if success else 1

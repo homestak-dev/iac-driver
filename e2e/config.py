@@ -13,6 +13,7 @@ class HostConfig:
     api_endpoint: str
     node_name: str
     tfvars_file: Path
+    ssh_host: str = ''  # SSH hostname for the PVE host
     inner_vm_id: int = 99913
     test_vm_id: int = 99901
     ssh_user: str = 'root'
@@ -28,6 +29,11 @@ class HostConfig:
             self.tfvars_file = Path(self.tfvars_file)
         if isinstance(self.ssh_key, str):
             self.ssh_key = Path(self.ssh_key)
+        # Derive ssh_host from api_endpoint if not set
+        if not self.ssh_host and self.api_endpoint:
+            # Extract hostname from https://host:port
+            from urllib.parse import urlparse
+            self.ssh_host = urlparse(self.api_endpoint).hostname or ''
 
 
 def get_base_dir() -> Path:

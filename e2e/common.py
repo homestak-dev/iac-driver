@@ -51,7 +51,13 @@ def run_ssh(
     jump_host: Optional[str] = None
 ) -> tuple[int, str, str]:
     """Run command over SSH."""
-    ssh_opts = ['-o', 'StrictHostKeyChecking=accept-new', '-o', f'ConnectTimeout={timeout}']
+    # Use relaxed host key checking for E2E tests where VMs are recreated
+    ssh_opts = [
+        '-o', 'StrictHostKeyChecking=no',
+        '-o', 'UserKnownHostsFile=/dev/null',
+        '-o', 'LogLevel=ERROR',
+        '-o', f'ConnectTimeout={timeout}'
+    ]
 
     if jump_host:
         cmd = ['ssh'] + ssh_opts + ['-J', f'{user}@{jump_host}', f'{user}@{host}', command]
@@ -76,10 +82,9 @@ def wait_for_ssh(host: str, user: str = 'root', timeout: int = 300, interval: in
     return False
 
 
-def get_vm_ip(vm_id: int, interface: str = 'eth0') -> Optional[str]:
-    """Get VM IP via qm guest cmd."""
-    cmd = ['qm', 'guest', 'cmd', str(vm_id), 'network-get-interfaces']
-    rc, out, err = run_command(cmd)
+def get_vm_ip(vm_id: int, pve_host: str, interface: str = 'eth0') -> Optional[str]:
+    """Get VM IP via qm guest cmd on PVE host."""
+    rc, out, err = run_ssh(pve_host, f'qm guest cmd {vm_id} network-get-interfaces')
     if rc != 0:
         return None
 
@@ -98,12 +103,17 @@ def get_vm_ip(vm_id: int, interface: str = 'eth0') -> Optional[str]:
     return None
 
 
-def wait_for_guest_agent(vm_id: int, timeout: int = 300, interval: int = 10) -> Optional[str]:
+def wait_for_guest_agent(
+    vm_id: int,
+    pve_host: str,
+    timeout: int = 300,
+    interval: int = 10
+) -> Optional[str]:
     """Wait for guest agent and return IP."""
     logger.info(f"Waiting for guest agent on VM {vm_id}...")
     start = time.time()
     while time.time() - start < timeout:
-        ip = get_vm_ip(vm_id, '*')
+        ip = get_vm_ip(vm_id, pve_host, '*')
         if ip:
             logger.info(f"VM {vm_id} has IP: {ip}")
             return ip
@@ -111,3 +121,10 @@ def wait_for_guest_agent(vm_id: int, timeout: int = 300, interval: int = 10) -> 
         time.sleep(interval)
     logger.error(f"Guest agent timeout for VM {vm_id}")
     return None
+
+
+def start_vm(vm_id: int, pve_host: str) -> bool:
+    """Start a VM on the PVE host."""
+    logger.info(f"Starting VM {vm_id} on {pve_host}...")
+    rc, out, err = run_ssh(pve_host, f'qm start {vm_id}')
+    return rc == 0

@@ -37,17 +37,25 @@ def run(config: HostConfig, context: dict) -> PhaseResult:
             duration=time.time() - start
         )
 
-    # Download using gh release download
+    # Download using curl from GitHub releases
+    # URL: https://github.com/{owner}/{repo}/releases/download/{tag}/{asset}
     if tag == 'latest':
-        dl_cmd = f'gh release download --repo {repo} --pattern "{image}" --dir /var/lib/vz/template/iso --clobber'
-    else:
-        dl_cmd = f'gh release download {tag} --repo {repo} --pattern "{image}" --dir /var/lib/vz/template/iso --clobber'
+        # For latest, we need to resolve the actual tag first
+        return PhaseResult(
+            success=False,
+            message="'latest' tag not supported - specify explicit tag in hosts.yaml",
+            duration=time.time() - start
+        )
+
+    url = f'https://github.com/{repo}/releases/download/{tag}/{image}'
+    dest = f'/var/lib/vz/template/iso/{image}'
+    dl_cmd = f'curl -fSL -o {dest} {url}'
 
     rc, out, err = run_ssh(inner_ip, dl_cmd, timeout=300)
     if rc != 0:
         return PhaseResult(
             success=False,
-            message=f"Failed to download image: {err}",
+            message=f"Failed to download image from {url}: {err}",
             duration=time.time() - start
         )
 
