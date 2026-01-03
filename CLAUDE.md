@@ -34,9 +34,9 @@ All repos are siblings in a common parent directory:
 │   │   ├── wait-for-guest-agent.sh
 │   │   └── setup-tools.sh
 │   ├── test-runs/
-│   └── config/
-│       ├── pve.tfvars      # Host config for pve.homestak
-│       └── father.tfvars   # Host config for father.core
+│   └── secrets/            # Encrypted credentials (SOPS + age)
+│       ├── pve.tfvars.enc      # Host config for pve.homestak
+│       └── father.tfvars.enc   # Host config for father.core
 ├── ansible/              # Tool repo (sibling)
 ├── tofu/                 # Tool repo (sibling)
 └── packer/               # Tool repo (sibling)
@@ -126,17 +126,23 @@ Environments use SDN VXLAN with a router VM as gateway:
 
 ## Host Configuration
 
-Host-specific Proxmox credentials are stored in `config/`:
+Host-specific Proxmox credentials are encrypted with SOPS + age in `secrets/`:
 
 | File | Target Host | API Endpoint |
 |------|-------------|--------------|
-| `config/pve.tfvars` | pve | https://pve.homestak:8006 |
-| `config/father.tfvars` | father | https://father.core:8006 |
+| `secrets/pve.tfvars.enc` | pve | https://pve.homestak:8006 |
+| `secrets/father.tfvars.enc` | father | https://father.core:8006 |
+
+**Setup:** First-time clone requires:
+```bash
+make setup    # Configure git hooks, check dependencies
+make decrypt  # Decrypt secrets (requires age key)
+```
 
 **Usage:** Pass `-var-file` when provisioning from outer host:
 ```bash
 cd ../tofu/envs/pve-deb
-tofu apply -var-file=../../../iac-driver/config/pve.tfvars
+tofu apply -var-file=../../../iac-driver/secrets/pve.tfvars
 ```
 
 Environment `terraform.tfvars` files default to localhost for local execution.
@@ -169,7 +175,7 @@ BASE_DIR="$(dirname "$(pwd)")"  # Parent of iac-driver
 
 # 1. Provision inner PVE VM (use host-specific tfvars)
 cd $BASE_DIR/tofu/envs/pve-deb
-tofu apply -auto-approve -var-file=$BASE_DIR/iac-driver/config/pve.tfvars
+tofu apply -auto-approve -var-file=$BASE_DIR/iac-driver/secrets/pve.tfvars
 
 # 2. Get inner PVE IP (poll until guest agent ready)
 INNER_IP=$(./scripts/wait-for-guest-agent.sh 99913 vmbr0)
@@ -267,7 +273,8 @@ Generated files on inner PVE:
 
 - Ansible 2.0+, OpenTofu, Packer with QEMU/KVM
 - SSH key at `~/.ssh/id_rsa`
-- Proxmox API credentials in `config/*.tfvars` (see Host Configuration)
+- age + sops for secrets decryption (see `make setup`)
+- age key at `~/.config/sops/age/keys.txt`
 - Nested virtualization enabled (`cat /sys/module/kvm_intel/parameters/nested` = Y)
 
 ## Tool Documentation

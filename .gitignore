@@ -3,8 +3,12 @@ test-runs/*.md
 !test-runs/TEMPLATE.md
 !test-runs/README.md
 
-# Config files (contain credentials)
-config/*.tfvars
+# Secrets - plaintext files are gitignored, only .enc files committed
+secrets/*.tfvars
+secrets/*.yaml
+secrets/*.json
+!secrets/.sops.yaml
+!secrets/*.enc
 
 # Editor/OS
 *.swp
