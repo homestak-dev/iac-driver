@@ -143,6 +143,6 @@ class TestReport:
 
     def _report_filename(self, ext: str) -> Path:
         """Generate report filename."""
-        timestamp = self.started_at.strftime('%Y-%m-%d.%H%M%S') if self.started_at else 'unknown'
+        timestamp = self.started_at.strftime('%Y%m%d-%H%M%S') if self.started_at else 'unknown'
         status = 'passed' if self.success else 'failed'
-        return self.report_dir / f"{timestamp}-{status}.{ext}"
+        return self.report_dir / f"{timestamp}.{status}.{ext}"
