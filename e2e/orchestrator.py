@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Optional
 
 from .phases import provision, install_pve, configure, download_image, test_vm, verify
-from .config import load_host_config
+from .config import load_host_config, list_hosts
 from .reporting import TestReport
 
 # Configure logging
@@ -90,13 +90,16 @@ class Orchestrator:
 
 
 def main():
+    available_hosts = list_hosts()
+
     parser = argparse.ArgumentParser(
         description='E2E Test Orchestrator for Proxmox VE Infrastructure'
     )
     parser.add_argument(
         '--host', '-H',
         default='pve',
-        help='Target PVE host (default: pve)'
+        choices=available_hosts,
+        help=f'Target PVE host (default: pve)'
     )
     parser.add_argument(
         '--report-dir', '-r',

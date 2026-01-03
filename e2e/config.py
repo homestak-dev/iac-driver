@@ -5,8 +5,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
 
-import yaml
-
 
 @dataclass
 class HostConfig:
@@ -15,7 +13,7 @@ class HostConfig:
     tfvars_file: Path
     api_endpoint: str = ''
     node_name: str = ''
-    ssh_host: str = ''  # SSH hostname for the PVE host
+    ssh_host: str = ''
     inner_vm_id: int = 99913
     test_vm_id: int = 99901
     ssh_user: str = 'root'
@@ -23,7 +21,7 @@ class HostConfig:
 
     # Packer release settings
     packer_release_repo: str = 'homestak-dev/packer'
-    packer_release_tag: str = 'latest'
+    packer_release_tag: str = 'v0.1.0-rc1'
     packer_image: str = 'debian-12-custom.qcow2'
 
     def __post_init__(self):
@@ -65,26 +63,21 @@ def get_sibling_dir(name: str) -> Path:
     return get_base_dir().parent / name
 
 
+def list_hosts() -> list[str]:
+    """List available hosts from secrets/*.tfvars files."""
+    secrets_dir = get_base_dir() / 'secrets'
+    return sorted([
+        f.stem for f in secrets_dir.glob('*.tfvars')
+        if f.is_file()
+    ])
+
+
 def load_host_config(host: str) -> HostConfig:
     """Load configuration for a named host."""
-    config_file = Path(__file__).parent / 'config' / 'hosts.yaml'
+    tfvars_file = get_base_dir() / 'secrets' / f'{host}.tfvars'
 
-    if not config_file.exists():
-        raise FileNotFoundError(f"Host config not found: {config_file}")
-
-    with open(config_file) as f:
-        all_configs = yaml.safe_load(f)
-
-    if host not in all_configs.get('hosts', {}):
-        available = list(all_configs.get('hosts', {}).keys())
+    if not tfvars_file.exists():
+        available = list_hosts()
         raise ValueError(f"Unknown host: {host}. Available: {available}")
 
-    host_data = all_configs['hosts'][host]
-    defaults = all_configs.get('defaults', {})
-    merged = {**defaults, **host_data, 'name': host}
-
-    # Resolve tfvars path relative to iac-driver
-    if 'tfvars_file' in merged:
-        merged['tfvars_file'] = get_base_dir() / merged['tfvars_file']
-
-    return HostConfig(**merged)
+    return HostConfig(name=host, tfvars_file=tfvars_file)
