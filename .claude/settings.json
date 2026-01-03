@@ -1,0 +1,37 @@
+{
+  "_comment": "E2E test permissions for iac-driver. Merge with global ~/.claude/settings.json",
+  "permissions": {
+    "allow": [
+      "__ Infrastructure as Code __",
+      "Bash(tofu:*)",
+      "Bash(ansible:*)",
+      "Bash(ansible-playbook:*)",
+      "Bash(packer:*)",
+
+      "__ Proxmox __",
+      "Bash(qm:*)",
+      "Bash(pct:*)",
+      "Bash(pvesh:*)",
+      "Bash(pveum:*)",
+
+      "__ Networking __",
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+
+      "__ E2E Scripts __",
+      "Bash(./scripts/generate-test-summary.sh:*)",
+      "Bash(./scripts/wait-for-guest-agent.sh:*)",
+      "Bash(./scripts/setup-tools.sh:*)",
+
+      "__ Required reads __",
+      "Read(/root/.ssh/**)",
+      "Read(/sys/module/kvm_intel/parameters/**)",
+      "Read(/var/lib/vz/template/iso/**)",
+
+      "__ Claude Code tools __",
+      "Read",
+      "Edit",
+      "Write"
+    ]
+  }
+}
