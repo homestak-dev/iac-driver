@@ -1,6 +1,6 @@
 # iac-driver
 
-E2E test orchestration for Proxmox VE infrastructure-as-code.
+Infrastructure orchestration and testing for Proxmox VE.
 
 ## Overview
 
@@ -50,19 +50,26 @@ All repos are siblings in a common parent directory:
 
 ```
 <parent>/
-├── iac-driver/           # This repo - E2E orchestration
-│   ├── CLAUDE.md
-│   ├── e2e/              # E2E test orchestrator
-│   │   ├── orchestrator.py
-│   │   ├── phases/
-│   │   ├── config/
-│   │   └── reports/
-│   ├── scripts/
-│   │   ├── wait-for-guest-agent.sh
-│   │   └── setup-tools.sh
-│   └── secrets/            # Encrypted credentials (SOPS + age)
-│       ├── pve.tfvars.enc      # Host config for pve.homestak
-│       └── father.tfvars.enc   # Host config for father.core
+├── iac-driver/           # This repo - Infrastructure orchestration
+│   ├── run.sh            # CLI entry point (bash wrapper)
+│   ├── src/              # Python package
+│   │   ├── cli.py        # CLI implementation
+│   │   ├── common.py     # ActionResult + shared utilities
+│   │   ├── config.py     # Host configuration (auto-discovery from secrets/)
+│   │   ├── actions/      # Reusable primitive operations
+│   │   │   ├── tofu.py   # TofuApplyAction, TofuDestroyAction
+│   │   │   ├── ansible.py# AnsiblePlaybookAction
+│   │   │   ├── ssh.py    # SSHCommandAction, WaitForSSHAction
+│   │   │   ├── proxmox.py# StartVMAction, WaitForGuestAgentAction
+│   │   │   └── file.py   # DownloadFileAction, RemoveImageAction
+│   │   ├── scenarios/    # Workflow definitions
+│   │   │   ├── nested_pve.py        # nested-pve-{constructor,destructor,roundtrip}
+│   │   │   ├── simple_vm.py         # simple-vm-{constructor,destructor,roundtrip}
+│   │   │   └── cleanup_nested_pve.py # Shared cleanup actions
+│   │   └── reporting/    # Test report generation (JSON + markdown)
+│   ├── reports/          # Generated test reports
+│   ├── scripts/          # Helper scripts
+│   └── secrets/          # Encrypted credentials (SOPS + age)
 ├── ansible/              # Tool repo (sibling)
 ├── tofu/                 # Tool repo (sibling)
 └── packer/               # Tool repo (sibling)
@@ -193,36 +200,47 @@ Outer PVE Host (pve)
         └── Debian 12, 1 core, 4GB RAM
 ```
 
-### E2E Orchestrator
+### CLI
 
-The E2E test is automated via a Python orchestrator:
+The orchestrator runs scenarios composed of reusable actions:
 
 ```bash
-# Run full E2E test
-python3 -m e2e.orchestrator --host pve --verbose
+# List available scenarios
+./run.sh --list-scenarios
 
-# List available phases
-python3 -m e2e.orchestrator --list-phases
+# List phases for a scenario
+./run.sh --scenario nested-pve-roundtrip --list-phases
 
-# Skip phases (e.g., resume after provision)
-python3 -m e2e.orchestrator --host pve --skip provision --inner-ip 10.0.12.x
+# Run full E2E roundtrip (construct, verify, destruct)
+./run.sh --scenario nested-pve-roundtrip --host pve --verbose
+
+# Run only constructor (leave environment running)
+./run.sh --scenario nested-pve-constructor --host pve
+
+# Run only destructor (cleanup existing environment)
+./run.sh --scenario nested-pve-destructor --host pve --inner-ip 10.0.12.x
+
+# Simple VM test (deploy, verify SSH, destroy)
+./run.sh --scenario simple-vm-roundtrip --host father
 ```
 
-**Phases:**
-| Phase | Duration | Description |
-|-------|----------|-------------|
-| provision | ~30s | Tofu creates inner PVE VM, starts it, waits for IP |
-| install_pve | ~9min | Ansible installs Proxmox VE |
-| configure | ~45s | Ansible configures inner PVE (API token, tofu, etc.) |
-| download_image | ~35s | Downloads packer image from GitHub release |
-| test_vm | ~50s | Tofu creates test VM on inner PVE |
-| verify | ~10s | Validates SSH chain through jump host |
+**Available Scenarios:**
+| Scenario | Phases | Description |
+|----------|--------|-------------|
+| `nested-pve-constructor` | 10 | Provision inner PVE, install Proxmox, create test VM, verify |
+| `nested-pve-destructor` | 3 | Cleanup test VM, stop and destroy inner PVE |
+| `nested-pve-roundtrip` | 13 | Full cycle: construct → verify → destruct |
+| `simple-vm-constructor` | 5 | Ensure image, provision VM, verify SSH |
+| `simple-vm-destructor` | 1 | Destroy test VM |
+| `simple-vm-roundtrip` | 6 | Full cycle: construct → verify → destruct |
 
-**Total runtime: ~12 minutes**
+**nested-pve-roundtrip runtime: ~12 minutes**
 
 ### Test Reports
 
-Reports are generated in `e2e/reports/` with format: `YYYYMMDD-HHMMSS.{passed|failed}.{md|json}`
+Reports are generated in `reports/` with format: `YYYYMMDD-HHMMSS.{passed|failed}.{md|json}`
+
+Both JSON and markdown reports are generated for each run.
 
 ### Helper Scripts
 

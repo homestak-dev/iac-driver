@@ -1,0 +1,44 @@
+{
+  "host": "pve",
+  "success": true,
+  "started_at": "2026-01-03T15:13:47.821464",
+  "finished_at": "2026-01-03T15:14:22.003354",
+  "duration": 34.18189,
+  "phases": [
+    {
+      "name": "provision",
+      "description": "provision",
+      "status": "passed",
+      "message": "Tofu apply completed for envs/test",
+      "duration": 13.366823434829712
+    },
+    {
+      "name": "start",
+      "description": "start",
+      "status": "passed",
+      "message": "VM 99901 started",
+      "duration": 1.8848929405212402
+    },
+    {
+      "name": "wait_ip",
+      "description": "wait_ip",
+      "status": "passed",
+      "message": "VM 99901 has IP: 10.0.12.123",
+      "duration": 15.084327459335327
+    },
+    {
+      "name": "verify_ssh",
+      "description": "verify_ssh",
+      "status": "passed",
+      "message": "SSH available on 10.0.12.123",
+      "duration": 0.5185480117797852
+    },
+    {
+      "name": "destroy",
+      "description": "destroy",
+      "status": "passed",
+      "message": "Tofu destroy completed for envs/test",
+      "duration": 3.32673716545105
+    }
+  ]
+}

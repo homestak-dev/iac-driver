@@ -1,0 +1,51 @@
+{
+  "host": "father",
+  "success": true,
+  "started_at": "2026-01-03T15:17:04.660373",
+  "finished_at": "2026-01-03T15:18:01.443178",
+  "duration": 56.782805,
+  "phases": [
+    {
+      "name": "ensure_image",
+      "description": "ensure_image",
+      "status": "passed",
+      "message": "Downloaded debian-12-custom.img",
+      "duration": 27.74514603614807
+    },
+    {
+      "name": "provision",
+      "description": "provision",
+      "status": "passed",
+      "message": "Tofu apply completed for envs/test",
+      "duration": 9.12345266342163
+    },
+    {
+      "name": "start",
+      "description": "start",
+      "status": "passed",
+      "message": "VM 99901 started",
+      "duration": 1.774585485458374
+    },
+    {
+      "name": "wait_ip",
+      "description": "wait_ip",
+      "status": "passed",
+      "message": "VM 99901 has IP: 10.0.12.169",
+      "duration": 14.98746943473816
+    },
+    {
+      "name": "verify_ssh",
+      "description": "verify_ssh",
+      "status": "passed",
+      "message": "SSH available on 10.0.12.169",
+      "duration": 0.2718479633331299
+    },
+    {
+      "name": "destroy",
+      "description": "destroy",
+      "status": "passed",
+      "message": "Tofu destroy completed for envs/test",
+      "duration": 2.879591464996338
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "scenario": "simple-vm-destructor",
+  "host": "pve",
+  "success": true,
+  "started_at": "2026-01-03T15:51:11.875565",
+  "finished_at": "2026-01-03T15:51:14.684033",
+  "duration": 2.808468,
+  "phases": [
+    {
+      "name": "destroy",
+      "description": "destroy",
+      "status": "passed",
+      "message": "Tofu destroy completed for envs/test",
+      "duration": 2.8076870441436768
+    }
+  ]
+}

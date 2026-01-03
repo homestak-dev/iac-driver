@@ -1,0 +1,45 @@
+{
+  "scenario": "simple-vm-constructor",
+  "host": "pve",
+  "success": true,
+  "started_at": "2026-01-03T15:49:46.338953",
+  "finished_at": "2026-01-03T15:50:16.263311",
+  "duration": 29.924358,
+  "phases": [
+    {
+      "name": "ensure_image",
+      "description": "ensure_image",
+      "status": "passed",
+      "message": "Image debian-12-custom.img already exists",
+      "duration": 0.14723873138427734
+    },
+    {
+      "name": "provision",
+      "description": "provision",
+      "status": "passed",
+      "message": "Tofu apply completed for envs/test",
+      "duration": 12.163392543792725
+    },
+    {
+      "name": "start",
+      "description": "start",
+      "status": "passed",
+      "message": "VM 99901 started",
+      "duration": 1.9019112586975098
+    },
+    {
+      "name": "wait_ip",
+      "description": "wait_ip",
+      "status": "passed",
+      "message": "VM 99901 has IP: 10.0.12.158",
+      "duration": 15.307600975036621
+    },
+    {
+      "name": "verify_ssh",
+      "description": "verify_ssh",
+      "status": "passed",
+      "message": "SSH available on 10.0.12.158",
+      "duration": 0.4036283493041992
+    }
+  ]
+}

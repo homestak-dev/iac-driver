@@ -1,0 +1,16 @@
+{
+  "host": "father",
+  "success": false,
+  "started_at": "2026-01-03T15:15:06.491641",
+  "finished_at": "2026-01-03T15:15:11.889189",
+  "duration": 5.397548,
+  "phases": [
+    {
+      "name": "provision",
+      "description": "provision",
+      "status": "failed",
+      "message": "tofu apply failed: \u001b[31m\u2577\u001b[0m\u001b[0m\n\u001b[31m\u2502\u001b[0m \u001b[0m\u001b[1m\u001b[31mError: \u001b[0m\u001b[0m\u001b[1mcreating custom disk: /var/lib/vz/template/iso/debian-12-custom.img: non-existent or non-regular file\n\u001b[31m\u2502\u001b[0m \u001b[0m400 Parameter verification failed.\n\u001b[31m\u2502\u001b[0m \u001b[0mvirtio0: invalid format - format error\n\u001b[31m\u2502\u001b[0m \u001b[0mvirtio0.file: invalid format - unable to parse volume ID 'local-zfs:'\n\u001b[31m\u2502\u001b[0m \u001b[0m\n\u001b[31m\u2502\u001b[0m \u001b[0m\n\u001b[31m\u2502\u001b[0m \u001b[0mqm set <vmid> [OPTIONS]\n\u001b[31m\u2502\u001b[0m \u001b[0m\u001b[0m\n\u001b[31m\u2502\u001b[0m \u001b[0m\n\u001b[31m\u2502\u001b[0m \u001b[0m\u001b[0m  with module.vm[\"test1\"].proxmox_virtual_environment_vm.this,\n\u001b[31m\u2502\u001b[0m \u001b[0m  on ../../proxmox-vm/main.tf line 37, in resource \"proxmox_virtual_environment_vm\" \"this\":\n\u001b[31m\u2502\u001b[0m \u001b[0m  37: resource \"proxmox_virtual_environment_vm\" \"this\" \u001b[4m{\u001b[0m\u001b[0m\n\u001b[31m\u2502\u001b[0m \u001b[0m\n\u001b[31m\u2575\u001b[0m\u001b[0m\n",
+      "duration": 5.397341966629028
+    }
+  ]
+}

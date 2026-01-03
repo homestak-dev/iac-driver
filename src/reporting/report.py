@@ -24,6 +24,7 @@ class TestReport:
     """Collects and generates test reports."""
     host: str
     report_dir: Path
+    scenario: str = ''
     phases: list[PhaseResult] = field(default_factory=list)
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
@@ -93,6 +94,7 @@ class TestReport:
     def _write_json(self):
         """Write JSON report."""
         data = {
+            'scenario': self.scenario,
             'host': self.host,
             'success': self.success,
             'started_at': self.started_at.isoformat() if self.started_at else None,
@@ -119,8 +121,9 @@ class TestReport:
         duration = (self.finished_at - self.started_at).total_seconds() if self.finished_at and self.started_at else 0
 
         lines = [
-            f"# E2E Test Report: {self.host}",
+            f"# {self.scenario}",
             "",
+            f"**Host**: {self.host}",
             f"**Status**: {status}",
             f"**Date**: {self.started_at.strftime('%Y-%m-%d %H:%M:%S') if self.started_at else 'N/A'}",
             f"**Duration**: {duration:.1f}s",

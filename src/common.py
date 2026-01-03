@@ -1,4 +1,4 @@
-"""Common utilities and types for E2E phases."""
+"""Common utilities and types for infrastructure automation."""
 
 import logging
 import subprocess
@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class PhaseResult:
-    """Result returned by a phase."""
+class ActionResult:
+    """Result returned by an action."""
     success: bool
     message: str = ''
     duration: float = 0.0
@@ -51,7 +51,7 @@ def run_ssh(
     jump_host: Optional[str] = None
 ) -> tuple[int, str, str]:
     """Run command over SSH."""
-    # Use relaxed host key checking for E2E tests where VMs are recreated
+    # Use relaxed host key checking for tests where VMs are recreated
     ssh_opts = [
         '-o', 'StrictHostKeyChecking=no',
         '-o', 'UserKnownHostsFile=/dev/null',
@@ -84,13 +84,13 @@ def wait_for_ssh(host: str, user: str = 'root', timeout: int = 300, interval: in
 
 def get_vm_ip(vm_id: int, pve_host: str, interface: str = 'eth0') -> Optional[str]:
     """Get VM IP via qm guest cmd on PVE host."""
+    import json as json_module
     rc, out, err = run_ssh(pve_host, f'qm guest cmd {vm_id} network-get-interfaces')
     if rc != 0:
         return None
 
-    import json
     try:
-        interfaces = json.loads(out)
+        interfaces = json_module.loads(out)
         for iface in interfaces:
             if iface.get('name') == interface or interface == '*':
                 for addr in iface.get('ip-addresses', []):
@@ -98,7 +98,7 @@ def get_vm_ip(vm_id: int, pve_host: str, interface: str = 'eth0') -> Optional[st
                         ip = addr.get('ip-address')
                         if ip and not ip.startswith('127.'):
                             return ip
-    except (json.JSONDecodeError, KeyError):
+    except (json_module.JSONDecodeError, KeyError):
         pass
     return None
 

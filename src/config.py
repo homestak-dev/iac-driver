@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 @dataclass
 class HostConfig:
-    """Configuration for a target PVE host."""
+    """Configuration for a target host."""
     name: str
     tfvars_file: Path
     api_endpoint: str = ''
@@ -55,12 +55,12 @@ def _parse_tfvars(path: Path) -> dict:
 
 def get_base_dir() -> Path:
     """Get the iac-driver directory."""
-    return Path(__file__).parent.parent
+    return Path(__file__).parent.parent  # src/ -> iac-driver/
 
 
 def get_sibling_dir(name: str) -> Path:
     """Get a sibling repo directory (ansible, tofu, packer)."""
-    return get_base_dir().parent / name
+    return get_base_dir().parent / name  # iac-driver/ -> homestak/ -> ansible/
 
 
 def list_hosts() -> list[str]:

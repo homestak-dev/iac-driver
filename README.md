@@ -23,7 +23,35 @@ make decrypt    # Decrypt secrets (requires age key)
 
 # Clone sibling repos
 ./scripts/setup-tools.sh
+
+# List available scenarios
+./run.sh --list-scenarios
+
+# Run a scenario
+./run.sh --scenario simple-vm-roundtrip --host pve
 ```
+
+## CLI Usage
+
+```bash
+./run.sh --scenario <name> [--host <host>] [options]
+
+Options:
+  --scenario, -S    Scenario to run (required)
+  --host, -H        Target PVE host (default: pve)
+  --skip, -s        Skip phase(s) (can be repeated)
+  --list-scenarios  List available scenarios
+  --list-phases     List phases for selected scenario
+  --verbose, -v     Enable debug logging
+```
+
+**Available scenarios:**
+- `simple-vm-constructor` - Deploy and verify SSH (~30s)
+- `simple-vm-destructor` - Destroy only (~3s)
+- `simple-vm-roundtrip` - Deploy, verify SSH, destroy (~33s)
+- `nested-pve-constructor` - Provision inner PVE (~10 min)
+- `nested-pve-destructor` - Cleanup inner PVE only (~30s)
+- `nested-pve-roundtrip` - Full nested PVE E2E test (~12 min)
 
 ## Secrets Management
 
