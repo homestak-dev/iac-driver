@@ -35,6 +35,8 @@ All repos are siblings in a common parent directory:
 │   │   └── setup-tools.sh
 │   ├── test-runs/
 │   └── config/
+│       ├── pve.tfvars      # Host config for pve.homestak
+│       └── father.tfvars   # Host config for father.core
 ├── ansible/              # Tool repo (sibling)
 ├── tofu/                 # Tool repo (sibling)
 └── packer/               # Tool repo (sibling)
@@ -122,6 +124,23 @@ Environments use SDN VXLAN with a router VM as gateway:
 | `tofu/envs/*/locals.tf` | Per-environment cluster definitions |
 | `packer/templates/*.pkr.hcl` | Debian image build definitions |
 
+## Host Configuration
+
+Host-specific Proxmox credentials are stored in `config/`:
+
+| File | Target Host | API Endpoint |
+|------|-------------|--------------|
+| `config/pve.tfvars` | pve | https://pve.homestak:8006 |
+| `config/father.tfvars` | father | https://father.core:8006 |
+
+**Usage:** Pass `-var-file` when provisioning from outer host:
+```bash
+cd ../tofu/envs/pve-deb
+tofu apply -var-file=../../../iac-driver/config/pve.tfvars
+```
+
+Environment `terraform.tfvars` files default to localhost for local execution.
+
 ## Known Issues
 
 **Debian 12 Cloud-Init First-Boot Kernel Panic**: Add `serial_device {}` to VM resource config. Already handled in proxmox-vm module.
@@ -148,8 +167,9 @@ Outer PVE Host (pve)
 # From iac-driver directory (or use absolute paths)
 BASE_DIR="$(dirname "$(pwd)")"  # Parent of iac-driver
 
-# 1. Provision inner PVE VM
-cd $BASE_DIR/tofu/envs/pve-deb && tofu apply -auto-approve
+# 1. Provision inner PVE VM (use host-specific tfvars)
+cd $BASE_DIR/tofu/envs/pve-deb
+tofu apply -auto-approve -var-file=$BASE_DIR/iac-driver/config/pve.tfvars
 
 # 2. Get inner PVE IP (poll until guest agent ready)
 INNER_IP=$(./scripts/wait-for-guest-agent.sh 99913 vmbr0)
@@ -247,7 +267,7 @@ Generated files on inner PVE:
 
 - Ansible 2.0+, OpenTofu, Packer with QEMU/KVM
 - SSH key at `~/.ssh/id_rsa`
-- Proxmox API credentials in `tofu/envs/*/terraform.tfvars`
+- Proxmox API credentials in `config/*.tfvars` (see Host Configuration)
 - Nested virtualization enabled (`cat /sys/module/kvm_intel/parameters/nested` = Y)
 
 ## Tool Documentation
