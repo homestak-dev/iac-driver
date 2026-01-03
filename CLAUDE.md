@@ -52,11 +52,14 @@ All repos are siblings in a common parent directory:
 <parent>/
 ├── iac-driver/           # This repo - E2E orchestration
 │   ├── CLAUDE.md
+│   ├── e2e/              # E2E test orchestrator
+│   │   ├── orchestrator.py
+│   │   ├── phases/
+│   │   ├── config/
+│   │   └── reports/
 │   ├── scripts/
-│   │   ├── generate-test-summary.sh
 │   │   ├── wait-for-guest-agent.sh
 │   │   └── setup-tools.sh
-│   ├── test-runs/
 │   └── secrets/            # Encrypted credentials (SOPS + age)
 │       ├── pve.tfvars.enc      # Host config for pve.homestak
 │       └── father.tfvars.enc   # Host config for father.core
@@ -190,64 +193,43 @@ Outer PVE Host (pve)
         └── Debian 12, 1 core, 4GB RAM
 ```
 
-### E2E Test Procedure
+### E2E Orchestrator
+
+The E2E test is automated via a Python orchestrator:
 
 ```bash
-# From iac-driver directory (or use absolute paths)
-BASE_DIR="$(dirname "$(pwd)")"  # Parent of iac-driver
+# Run full E2E test
+python3 -m e2e.orchestrator --host pve --verbose
 
-# 1. Provision inner PVE VM (use host-specific tfvars)
-cd $BASE_DIR/tofu/envs/pve-deb
-tofu apply -auto-approve -var-file=$BASE_DIR/iac-driver/secrets/pve.tfvars
+# List available phases
+python3 -m e2e.orchestrator --list-phases
 
-# 2. Get inner PVE IP (poll until guest agent ready)
-INNER_IP=$(./scripts/wait-for-guest-agent.sh 99913 vmbr0)
-
-# 3. Install Proxmox VE on inner VM
-cd $BASE_DIR/ansible
-ansible-playbook -i inventory/remote-dev.yml playbooks/pve-install.yml \
-  -e ansible_host=$INNER_IP -e pve_hostname=pve-deb
-
-# 4. Configure inner PVE (installs tofu/packer, creates API token, copies files)
-ansible-playbook -i inventory/remote-dev.yml playbooks/nested-pve-setup.yml \
-  -e ansible_host=$INNER_IP
-
-# 5. Build Debian 12 image on inner PVE
-ssh root@$INNER_IP "cd /root/packer && packer build -force templates/debian-12-custom.pkr.hcl && ./publish.sh"
-
-# 6. Provision test VM on inner PVE
-ssh root@$INNER_IP "cd /root/tofu/envs/test && tofu init && tofu apply -auto-approve"
-
-# 7. Start test VM and get IP
-ssh root@$INNER_IP "qm start 99901"
-TEST_IP=$(ssh root@$INNER_IP "./scripts/wait-for-guest-agent.sh 99901" 2>/dev/null || \
-  ssh root@$INNER_IP "qm guest cmd 99901 network-get-interfaces" | \
-  jq -r '.[] | select(.name == "eth0") | .["ip-addresses"][]? | select(.["ip-address-type"] == "ipv4") | .["ip-address"]')
-
-# 8. Verify SSH chain
-ssh -J root@$INNER_IP root@$TEST_IP "hostname && uname -a"
-
-# 9. Generate test report
-./scripts/generate-test-summary.sh nested-pve-e2e $INNER_IP
+# Skip phases (e.g., resume after provision)
+python3 -m e2e.orchestrator --host pve --skip provision --inner-ip 10.0.12.x
 ```
+
+**Phases:**
+| Phase | Duration | Description |
+|-------|----------|-------------|
+| provision | ~30s | Tofu creates inner PVE VM, starts it, waits for IP |
+| install_pve | ~9min | Ansible installs Proxmox VE |
+| configure | ~45s | Ansible configures inner PVE (API token, tofu, etc.) |
+| download_image | ~35s | Downloads packer image from GitHub release |
+| test_vm | ~50s | Tofu creates test VM on inner PVE |
+| verify | ~10s | Validates SSH chain through jump host |
+
+**Total runtime: ~12 minutes**
+
+### Test Reports
+
+Reports are generated in `e2e/reports/` with format: `YYYYMMDD-HHMMSS.{passed|failed}.{md|json}`
 
 ### Helper Scripts
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/wait-for-guest-agent.sh` | Poll for VM IP (replaces fixed sleep) |
+| `scripts/wait-for-guest-agent.sh` | Poll for VM IP (used by orchestrator) |
 | `scripts/setup-tools.sh` | Clone/update tool repos |
-| `scripts/generate-test-summary.sh` | Generate test report |
-
-**wait-for-guest-agent.sh usage:**
-```bash
-./scripts/wait-for-guest-agent.sh <vmid> [interface] [timeout]
-./scripts/wait-for-guest-agent.sh 99913 vmbr0 120
-```
-
-### Test Reports
-
-Reports are generated in `test-runs/` with format: `YYYY-MM-DD.HH:MM:SS-{passed|failed}.md`
 
 ### Tofu Environments
 

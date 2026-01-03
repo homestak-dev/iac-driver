@@ -1,8 +1,3 @@
-# Test reports (contain credentials)
-test-runs/*.md
-!test-runs/TEMPLATE.md
-!test-runs/README.md
-
 # E2E test reports
 e2e/reports/*.md
 e2e/reports/*.json
