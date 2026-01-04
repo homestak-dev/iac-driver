@@ -72,8 +72,10 @@ All repos are siblings in a common parent directory:
 │   ├── reports/          # Generated test reports
 │   └── scripts/          # Helper scripts
 ├── site-config/          # Site-specific secrets and configuration
-│   ├── hosts/            # Per-host Proxmox credentials
-│   └── envs/             # Per-environment tofu config
+│   ├── site.yaml         # Site-wide defaults
+│   ├── secrets.yaml      # All sensitive values (SOPS encrypted)
+│   ├── nodes/            # PVE instance configuration
+│   └── envs/             # Environment configuration (for tofu)
 ├── ansible/              # Tool repo (sibling)
 ├── tofu/                 # Tool repo (sibling)
 └── packer/               # Tool repo (sibling)
@@ -160,14 +162,24 @@ Environments use SDN VXLAN with a router VM as gateway:
 | `tofu/envs/*/locals.tf` | Per-environment cluster definitions |
 | `packer/templates/*.pkr.hcl` | Debian image build definitions |
 
-## Host Configuration
+## Node Configuration
 
-Host-specific Proxmox credentials are stored in `site-config/hosts/`:
+PVE node configuration is stored in `site-config/nodes/*.yaml`:
 
-| File | Target Host | API Endpoint |
-|------|-------------|--------------|
-| `site-config/hosts/mother.tfvars` | mother | https://mother.core:8006 |
-| `site-config/hosts/father.tfvars` | father | https://father.core:8006 |
+| File | Node | API Endpoint |
+|------|------|--------------|
+| `site-config/nodes/pve.yaml` | pve | https://pve.homestak:8006 |
+| `site-config/nodes/father.yaml` | father | https://father.core:8006 |
+| `site-config/nodes/mother.yaml` | mother | https://mother.core:8006 |
+| `site-config/nodes/pve-deb.yaml` | pve-deb | (dynamic, nested PVE) |
+
+API tokens are stored separately in `site-config/secrets.yaml` and resolved by key reference:
+```yaml
+# nodes/pve.yaml
+node: pve
+api_endpoint: https://pve.homestak:8006
+api_token: pve  # → secrets.api_tokens.pve
+```
 
 **Setup:** First-time clone requires:
 ```bash
@@ -176,9 +188,9 @@ make setup    # Configure git hooks, check dependencies
 make decrypt  # Decrypt secrets (requires age key)
 ```
 
-**Usage:** iac-driver automatically discovers hosts via `get_site_config_dir()`.
+**Usage:** iac-driver automatically discovers nodes via `get_site_config_dir()`.
 
-Environment-specific tofu configs are in `site-config/envs/*/terraform.tfvars`.
+**Configuration Merge Order:** `site.yaml` → `nodes/{node}.yaml` → `secrets.yaml`
 
 ## Known Issues
 
@@ -290,13 +302,17 @@ Both JSON and markdown reports are generated for each run.
 
 **test** - Parameterized test VM (in `../tofu/envs/test/`):
 
-Works on both outer and inner PVE via tfvars:
+Works on both outer and inner PVE via `-var="node=..."` override:
 
-| Variable | Outer PVE | Inner PVE |
-|----------|-----------|-----------|
-| `proxmox_node_name` | pve | pve-deb |
-| `vm_datastore_id` | local-zfs | local |
-| `proxmox_api_endpoint` | https://pve:8006 | https://<inner-ip>:8006 |
+```bash
+# Deploy to outer PVE (default)
+cd ../tofu/envs/test && tofu apply
+
+# Deploy to nested PVE
+tofu apply -var="node=pve-deb"
+```
+
+Configuration is loaded from `site-config/nodes/{node}.yaml` and `site-config/envs/test.yaml`.
 
 ### Ansible Roles
 
