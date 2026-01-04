@@ -67,12 +67,30 @@ def run_ssh(
     return run_command(cmd, timeout=timeout)
 
 
-def wait_for_ssh(host: str, user: str = 'root', timeout: int = 300, interval: int = 10) -> bool:
-    """Wait for SSH to become available."""
-    logger.info(f"Waiting for SSH on {host}...")
+def wait_for_ping(host: str, timeout: int = 60, interval: int = 2) -> bool:
+    """Wait for host to respond to ping."""
+    logger.debug(f"Waiting for ping on {host}...")
     start = time.time()
     while time.time() - start < timeout:
-        rc, out, err = run_ssh(host, 'echo ready', user=user, timeout=10)
+        rc, _, _ = run_command(['ping', '-c', '1', '-W', '1', host], timeout=5)
+        if rc == 0:
+            logger.debug(f"Host {host} is pingable")
+            return True
+        time.sleep(interval)
+    return False
+
+
+def wait_for_ssh(host: str, user: str = 'root', timeout: int = 300, interval: int = 5) -> bool:
+    """Wait for SSH to become available. Uses ping first for faster detection."""
+    logger.info(f"Waiting for SSH on {host}...")
+    start = time.time()
+
+    # First wait for ping (faster than SSH timeout)
+    if not wait_for_ping(host, timeout=min(60, timeout), interval=2):
+        logger.debug(f"Host {host} not pingable, continuing to try SSH...")
+
+    while time.time() - start < timeout:
+        rc, out, err = run_ssh(host, 'echo ready', user=user, timeout=5)
         if rc == 0 and 'ready' in out:
             logger.info(f"SSH available on {host}")
             return True

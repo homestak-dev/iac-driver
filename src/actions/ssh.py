@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 
-from common import ActionResult, run_ssh, wait_for_ssh
+from common import ActionResult, run_ssh, wait_for_ssh, wait_for_ping
 from config import HostConfig
 
 logger = logging.getLogger(__name__)
@@ -63,11 +63,11 @@ class WaitForSSHAction:
     name: str
     host_key: str = 'inner_ip'
     jump_host_key: Optional[str] = None
-    timeout: int = 300
-    interval: int = 10
+    timeout: int = 120
+    interval: int = 5
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
-        """Wait for SSH connectivity."""
+        """Wait for SSH connectivity. Uses ping first for faster detection."""
         start = time.time()
 
         host = context.get(self.host_key)
@@ -82,9 +82,14 @@ class WaitForSSHAction:
 
         logger.info(f"[{self.name}] Waiting for SSH on {host}...")
 
+        # First wait for ping (faster than SSH timeout) - skip if using jump host
+        if not jump_host:
+            if not wait_for_ping(host, timeout=min(30, self.timeout), interval=2):
+                logger.debug(f"Host {host} not pingable yet, continuing...")
+
         deadline = time.time() + self.timeout
         while time.time() < deadline:
-            rc, out, err = run_ssh(host, 'echo ready', timeout=10, jump_host=jump_host)
+            rc, out, err = run_ssh(host, 'echo ready', timeout=5, jump_host=jump_host)
             if rc == 0 and 'ready' in out:
                 logger.info(f"[{self.name}] SSH available on {host}")
                 return ActionResult(
@@ -108,8 +113,8 @@ class VerifySSHChainAction:
     name: str
     target_host_key: str = 'test_ip'
     jump_host_key: str = 'inner_ip'
-    timeout: int = 300
-    interval: int = 10
+    timeout: int = 120
+    interval: int = 5
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
         """Verify SSH chain connectivity."""
@@ -129,7 +134,7 @@ class VerifySSHChainAction:
         logger.info(f"[{self.name}] Waiting for SSH on {target} via {jump}...")
         deadline = time.time() + self.timeout
         while time.time() < deadline:
-            rc, out, err = run_ssh(target, 'echo ready', jump_host=jump, timeout=10)
+            rc, out, err = run_ssh(target, 'echo ready', jump_host=jump, timeout=5)
             if rc == 0 and 'ready' in out:
                 break
             logger.debug(f"SSH not ready on {target}, retrying...")
