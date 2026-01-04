@@ -104,3 +104,4 @@ def list_scenarios() -> list[str]:
 from scenarios import nested_pve  # noqa: E402, F401
 from scenarios import simple_vm  # noqa: E402, F401
 from scenarios import cleanup_nested_pve  # noqa: E402, F401
+from scenarios import pve_configure  # noqa: E402, F401

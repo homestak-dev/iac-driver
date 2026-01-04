@@ -2,7 +2,15 @@
 
 ## Unreleased
 
-- (add changes here as you go)
+### Features
+
+- Add `pve-configure` scenario for PVE host configuration (runs pve-setup.yml + user.yml)
+- Add `AnsibleLocalPlaybookAction` for local playbook execution
+- Add `--local` and `--remote` CLI flags for execution mode
+
+### Changes
+
+- Rename `pve.tfvars` to `mother.tfvars`, update endpoint to mother.core
 
 ## v0.1.0-rc1 - 2026-01-03
 

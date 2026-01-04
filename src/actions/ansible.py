@@ -92,3 +92,53 @@ class AnsiblePlaybookAction:
             message=f"{self.playbook} completed on {target_host}",
             duration=time.time() - start
         )
+
+
+@dataclass
+class AnsibleLocalPlaybookAction:
+    """Run an ansible playbook locally."""
+    name: str
+    playbook: str  # e.g., "playbooks/pve-setup.yml"
+    inventory: str = "inventory/local.yml"
+    extra_vars: dict = field(default_factory=dict)
+    timeout: int = 600
+
+    def run(self, config: HostConfig, context: dict) -> ActionResult:
+        """Execute ansible playbook locally."""
+        start = time.time()
+
+        ansible_dir = get_sibling_dir('ansible')
+        if not ansible_dir.exists():
+            return ActionResult(
+                success=False,
+                message=f"Ansible directory not found: {ansible_dir}",
+                duration=time.time() - start
+            )
+
+        # Build command
+        logger.info(f"[{self.name}] Running {self.playbook} locally...")
+        cmd = [
+            'ansible-playbook',
+            '-i', self.inventory,
+            self.playbook,
+        ]
+
+        # Add extra vars
+        for key, value in self.extra_vars.items():
+            cmd.extend(['-e', f'{key}={value}'])
+
+        rc, out, err = run_command(cmd, cwd=ansible_dir, timeout=self.timeout)
+        if rc != 0:
+            # Truncate error message for readability
+            error_msg = err[-500:] if err else out[-500:]
+            return ActionResult(
+                success=False,
+                message=f"{self.playbook} failed: {error_msg}",
+                duration=time.time() - start
+            )
+
+        return ActionResult(
+            success=True,
+            message=f"{self.playbook} completed locally",
+            duration=time.time() - start
+        )
