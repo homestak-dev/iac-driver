@@ -29,8 +29,8 @@ Credentials are encrypted with [SOPS](https://github.com/getsops/sops) + [age](h
 
 ```
 secrets/
-├── pve.tfvars.enc      # Encrypted (committed)
-├── pve.tfvars          # Plaintext (gitignored, local only)
+├── mother.tfvars.enc   # Encrypted (committed)
+├── mother.tfvars       # Plaintext (gitignored, local only)
 └── ...
 ```
 
@@ -81,8 +81,7 @@ Scripts use relative paths (`../ansible`, `../tofu`, `../packer`) so the parent 
 
 ### Ansible (from ansible/)
 ```bash
-ansible-playbook -i inventory/local.yml playbooks/site.yml           # Full post-install
-ansible-playbook -i inventory/local.yml playbooks/pve-setup.yml      # PVE config only
+ansible-playbook -i inventory/local.yml playbooks/pve-setup.yml      # PVE config
 ansible-playbook -i inventory/local.yml playbooks/user.yml           # User management
 ansible-playbook -i inventory/remote-dev.yml playbooks/pve-install.yml \
   -e ansible_host=<IP> -e pve_hostname=<hostname>                    # Install PVE on Debian 13
@@ -107,7 +106,7 @@ tofu fmt         # Format HCL files
 
 ### Typical Deployment Workflow
 ```
-1. Bootstrap Proxmox host → ansible (site.yml)
+1. Bootstrap Proxmox host → iac-driver (pve-configure) or ansible (pve-setup.yml, user.yml)
 2. Build custom images     → packer (build.sh, publish.sh)
 3. Provision VMs           → tofu (plan, apply)
 4. Reconfigure as needed   → ansible (pve-setup.yml, user.yml)
@@ -127,7 +126,7 @@ Node configuration merges in `tofu/envs/common/locals.tf`:
 | `proxmox-sdn` | VXLAN zone, vnet, subnet configuration |
 
 ### Ansible Role Hierarchy
-- `site.yml` imports `pve-setup.yml` + `user.yml`
+- Core playbooks: `pve-setup.yml`, `user.yml`, `pve-install.yml`
 - Core roles: base, users, security, proxmox, pve-install
 - E2E roles: pve-iac (generic IaC tools), nested-pve (E2E test config)
 - Environment-specific variables in `inventory/group_vars/`
@@ -163,7 +162,7 @@ Host-specific Proxmox credentials are encrypted with SOPS + age in `secrets/`:
 
 | File | Target Host | API Endpoint |
 |------|-------------|--------------|
-| `secrets/pve.tfvars.enc` | pve | https://pve.homestak:8006 |
+| `secrets/mother.tfvars.enc` | mother | https://mother.core:8006 |
 | `secrets/father.tfvars.enc` | father | https://father.core:8006 |
 
 **Setup:** First-time clone requires:
@@ -175,7 +174,7 @@ make decrypt  # Decrypt secrets (requires age key)
 **Usage:** Pass `-var-file` when provisioning from outer host:
 ```bash
 cd ../tofu/envs/pve-deb
-tofu apply -var-file=../../../iac-driver/secrets/pve.tfvars
+tofu apply -var-file=../../../iac-driver/secrets/mother.tfvars
 ```
 
 Environment `terraform.tfvars` files default to localhost for local execution.
@@ -222,6 +221,12 @@ The orchestrator runs scenarios composed of reusable actions:
 
 # Simple VM test (deploy, verify SSH, destroy)
 ./run.sh --scenario simple-vm-roundtrip --host father
+
+# Configure PVE host (local)
+./run.sh --scenario pve-configure --local
+
+# Configure PVE host (remote)
+./run.sh --scenario pve-configure --remote 10.0.12.x
 ```
 
 **Available Scenarios:**
@@ -233,6 +238,7 @@ The orchestrator runs scenarios composed of reusable actions:
 | `simple-vm-constructor` | 5 | Ensure image, provision VM, verify SSH |
 | `simple-vm-destructor` | 1 | Destroy test VM |
 | `simple-vm-roundtrip` | 6 | Full cycle: construct → verify → destruct |
+| `pve-configure` | 2 | Configure PVE host (pve-setup + user) |
 
 **nested-pve-roundtrip runtime: ~12 minutes**
 

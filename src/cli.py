@@ -67,6 +67,15 @@ def main():
         '--inner-ip',
         help='Inner PVE VM IP (auto-detected if not provided, required when skipping provision phases)'
     )
+    parser.add_argument(
+        '--local',
+        action='store_true',
+        help='Run scenario locally (for pve-configure)'
+    )
+    parser.add_argument(
+        '--remote',
+        help='Target host IP for remote execution (for pve-configure)'
+    )
 
     args = parser.parse_args()
 
@@ -103,6 +112,12 @@ def main():
     # Pre-populate context if inner-ip provided
     if args.inner_ip:
         orchestrator.context['inner_ip'] = args.inner_ip
+
+    # Pre-populate context for pve-configure scenario
+    if args.local:
+        orchestrator.context['local_mode'] = True
+    if args.remote:
+        orchestrator.context['remote_ip'] = args.remote
 
     success = orchestrator.run()
     return 0 if success else 1

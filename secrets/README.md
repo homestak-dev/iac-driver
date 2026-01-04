@@ -52,8 +52,8 @@ chmod 600 ~/.config/sops/age/keys.txt
 
 ```
 secrets/
-├── pve.tfvars          # Plaintext (gitignored, local only)
-├── pve.tfvars.enc      # Encrypted (committed, safe to publish)
+├── mother.tfvars       # Plaintext (gitignored, local only)
+├── mother.tfvars.enc   # Encrypted (committed, safe to publish)
 ├── father.tfvars       # Plaintext (gitignored)
 └── father.tfvars.enc   # Encrypted (committed)
 ```
@@ -95,8 +95,8 @@ secrets/
 sops -e secrets/new.tfvars > secrets/new.tfvars.enc
 
 # Decrypt a single file
-sops -d secrets/pve.tfvars.enc > secrets/pve.tfvars
+sops -d secrets/mother.tfvars.enc > secrets/mother.tfvars
 
 # Edit encrypted file in-place (decrypts to $EDITOR, re-encrypts on save)
-sops secrets/pve.tfvars.enc
+sops secrets/mother.tfvars.enc
 ```
