@@ -1,24 +1,33 @@
 # iac-driver Makefile
-# Secrets management with SOPS + age
+# Dependency installation and secrets management
 
 SECRETS_DIR := secrets
 
-.PHONY: setup decrypt encrypt clean check help
+.PHONY: help install-deps setup decrypt encrypt clean check
 
 help:
-	@echo "Secrets Management"
+	@echo "iac-driver Setup"
 	@echo ""
+	@echo "  make install-deps  - Install required system packages"
+	@echo ""
+	@echo "Secrets Management:"
 	@echo "  make setup    - Configure git hooks and check dependencies"
 	@echo "  make decrypt  - Decrypt all .enc files to plaintext"
 	@echo "  make encrypt  - Encrypt all plaintext files to .enc"
 	@echo "  make clean    - Remove plaintext files (keeps .enc)"
 	@echo "  make check    - Verify encryption setup"
 	@echo ""
-	@echo "Prerequisites:"
+	@echo "Prerequisites (for secrets):"
 	@echo "  - age:  apt install age"
 	@echo "  - sops: https://github.com/getsops/sops/releases"
 	@echo ""
 	@echo "Age key location: ~/.config/sops/age/keys.txt"
+
+install-deps:
+	@echo "Installing iac-driver dependencies..."
+	@apt-get update -qq
+	@apt-get install -y -qq python3 > /dev/null
+	@echo "Done."
 
 setup:
 	@echo "Configuring git hooks..."
