@@ -7,9 +7,13 @@
 - Add `pve-configure` scenario for PVE host configuration (runs pve-setup.yml + user.yml)
 - Add `AnsibleLocalPlaybookAction` for local playbook execution
 - Add `--local` and `--remote` CLI flags for execution mode
+- Add configurable `ssh_user` for non-root SSH access (with sudo)
 
 ### Changes
 
+- **BREAKING**: Move secrets to [site-config](https://github.com/homestak-dev/site-config) repository
+- Host discovery now reads from `site-config/hosts/*.tfvars`
+- Remove in-repo SOPS encryption (Makefile, .githooks, .sops.yaml)
 - Rename `pve.tfvars` to `mother.tfvars`, update endpoint to mother.core
 
 ## v0.1.0-rc1 - 2026-01-03
