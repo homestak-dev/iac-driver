@@ -1,13 +1,14 @@
 # iac-driver
 
-Infrastructure orchestration and testing for Proxmox VE.
+Infrastructure orchestration engine for Proxmox VE.
 
 ## Overview
 
-This repo coordinates three tool repositories for end-to-end testing:
+This repo provides scenario-based workflows that coordinate the tool repositories:
 
 | Repo | Purpose | URL |
 |------|---------|-----|
+| bootstrap | Entry point, curl\|bash installer | https://github.com/homestak-dev/bootstrap |
 | ansible | Proxmox host configuration, PVE installation | https://github.com/homestak-dev/ansible |
 | tofu | VM provisioning with OpenTofu | https://github.com/homestak-dev/tofu |
 | packer | Custom Debian cloud image building | https://github.com/homestak-dev/packer |
@@ -65,6 +66,8 @@ All repos are siblings in a common parent directory:
 │   │   ├── scenarios/    # Workflow definitions
 │   │   │   ├── nested_pve.py        # nested-pve-{constructor,destructor,roundtrip}
 │   │   │   ├── simple_vm.py         # simple-vm-{constructor,destructor,roundtrip}
+│   │   │   ├── pve_configure.py     # pve-configure (local/remote)
+│   │   │   ├── bootstrap.py         # bootstrap-install
 │   │   │   └── cleanup_nested_pve.py # Shared cleanup actions
 │   │   └── reporting/    # Test report generation (JSON + markdown)
 │   ├── reports/          # Generated test reports
@@ -227,18 +230,37 @@ The orchestrator runs scenarios composed of reusable actions:
 
 # Configure PVE host (remote)
 ./run.sh --scenario pve-configure --remote 10.0.12.x
+
+# Test bootstrap on a VM (requires vm_ip)
+./run.sh --scenario bootstrap-install --vm-ip 10.0.12.x --homestak-user homestak
 ```
+
+**CLI Options:**
+| Option | Description |
+|--------|-------------|
+| `--scenario`, `-S` | Scenario to run (required) |
+| `--host`, `-H` | Target PVE host (default: pve) |
+| `--verbose`, `-v` | Enable verbose logging |
+| `--skip`, `-s` | Phases to skip (repeatable) |
+| `--list-scenarios` | List available scenarios |
+| `--list-phases` | List phases for selected scenario |
+| `--inner-ip` | Inner PVE IP (for nested-pve-destructor) |
+| `--local` | Run locally (for pve-configure) |
+| `--remote` | Remote host IP (for pve-configure) |
+| `--vm-ip` | Target VM IP (for bootstrap-install) |
+| `--homestak-user` | User to create during bootstrap |
 
 **Available Scenarios:**
 | Scenario | Phases | Description |
 |----------|--------|-------------|
+| `bootstrap-install` | 3 | Run bootstrap, verify installation and user |
 | `nested-pve-constructor` | 10 | Provision inner PVE, install Proxmox, create test VM, verify |
 | `nested-pve-destructor` | 3 | Cleanup test VM, stop and destroy inner PVE |
 | `nested-pve-roundtrip` | 13 | Full cycle: construct → verify → destruct |
+| `pve-configure` | 2 | Configure PVE host (pve-setup + user) |
 | `simple-vm-constructor` | 5 | Ensure image, provision VM, verify SSH |
 | `simple-vm-destructor` | 1 | Destroy test VM |
 | `simple-vm-roundtrip` | 6 | Full cycle: construct → verify → destruct |
-| `pve-configure` | 2 | Configure PVE host (pve-setup + user) |
 
 **nested-pve-roundtrip runtime: ~12 minutes**
 
@@ -309,5 +331,6 @@ Generated files on inner PVE:
 ## Tool Documentation
 
 Each tool repo has its own CLAUDE.md with detailed context:
+- `../bootstrap/CLAUDE.md` - curl|bash installer and homestak CLI
 - `../ansible/CLAUDE.md` - Ansible-specific commands and structure
 - `../tofu/CLAUDE.md` - OpenTofu modules and environment details
