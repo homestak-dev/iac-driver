@@ -9,6 +9,7 @@ This repo provides scenario-based workflows that coordinate the tool repositorie
 | Repo | Purpose | URL |
 |------|---------|-----|
 | bootstrap | Entry point, curl\|bash installer | https://github.com/homestak-dev/bootstrap |
+| site-config | Site-specific secrets and configuration | https://github.com/homestak-dev/site-config |
 | ansible | Proxmox host configuration, PVE installation | https://github.com/homestak-dev/ansible |
 | tofu | VM provisioning with OpenTofu | https://github.com/homestak-dev/tofu |
 | packer | Custom Debian cloud image building | https://github.com/homestak-dev/packer |
@@ -19,31 +20,29 @@ This repo provides scenario-based workflows that coordinate the tool repositorie
 # Clone this repo and tool repos
 git clone https://github.com/homestak-dev/iac-driver.git
 cd iac-driver
-make setup    # Configure git hooks for secrets
-make decrypt  # Decrypt secrets (requires age key)
-./scripts/setup-tools.sh  # Clones ansible, tofu, packer as siblings
+./scripts/setup-tools.sh  # Clones ansible, tofu, packer, site-config as siblings
+
+# Setup site-config (secrets management)
+cd ../site-config
+make setup
+make decrypt
 ```
 
 ## Secrets Management
 
-Credentials are encrypted with [SOPS](https://github.com/getsops/sops) + [age](https://github.com/FiloSottile/age):
+Credentials are managed in the [site-config](https://github.com/homestak-dev/site-config) repository using [SOPS](https://github.com/getsops/sops) + [age](https://github.com/FiloSottile/age).
 
-```
-secrets/
-├── mother.tfvars.enc   # Encrypted (committed)
-├── mother.tfvars       # Plaintext (gitignored, local only)
-└── ...
-```
+**Discovery:** iac-driver finds site-config via:
+1. `$HOMESTAK_SITE_CONFIG` environment variable
+2. `../site-config/` sibling directory
+3. `/opt/homestak/site-config/` bootstrap default
 
 **Setup:**
 ```bash
+cd ../site-config
 make setup    # Configure git hooks, check dependencies
-make decrypt  # Decrypt secrets (requires age key at ~/.config/sops/age/keys.txt)
+make decrypt  # Decrypt secrets (requires age key)
 ```
-
-**Makefile targets:** `setup`, `decrypt`, `encrypt`, `clean`, `check`
-
-Git hooks auto-encrypt on commit and auto-decrypt on checkout.
 
 ## Directory Structure
 
@@ -56,7 +55,7 @@ All repos are siblings in a common parent directory:
 │   ├── src/              # Python package
 │   │   ├── cli.py        # CLI implementation
 │   │   ├── common.py     # ActionResult + shared utilities
-│   │   ├── config.py     # Host configuration (auto-discovery from secrets/)
+│   │   ├── config.py     # Host configuration (auto-discovery from site-config)
 │   │   ├── actions/      # Reusable primitive operations
 │   │   │   ├── tofu.py   # TofuApplyAction, TofuDestroyAction
 │   │   │   ├── ansible.py# AnsiblePlaybookAction
@@ -71,8 +70,10 @@ All repos are siblings in a common parent directory:
 │   │   │   └── cleanup_nested_pve.py # Shared cleanup actions
 │   │   └── reporting/    # Test report generation (JSON + markdown)
 │   ├── reports/          # Generated test reports
-│   ├── scripts/          # Helper scripts
-│   └── secrets/          # Encrypted credentials (SOPS + age)
+│   └── scripts/          # Helper scripts
+├── site-config/          # Site-specific secrets and configuration
+│   ├── hosts/            # Per-host Proxmox credentials
+│   └── envs/             # Per-environment tofu config
 ├── ansible/              # Tool repo (sibling)
 ├── tofu/                 # Tool repo (sibling)
 └── packer/               # Tool repo (sibling)
@@ -161,26 +162,23 @@ Environments use SDN VXLAN with a router VM as gateway:
 
 ## Host Configuration
 
-Host-specific Proxmox credentials are encrypted with SOPS + age in `secrets/`:
+Host-specific Proxmox credentials are stored in `site-config/hosts/`:
 
 | File | Target Host | API Endpoint |
 |------|-------------|--------------|
-| `secrets/mother.tfvars.enc` | mother | https://mother.core:8006 |
-| `secrets/father.tfvars.enc` | father | https://father.core:8006 |
+| `site-config/hosts/mother.tfvars` | mother | https://mother.core:8006 |
+| `site-config/hosts/father.tfvars` | father | https://father.core:8006 |
 
 **Setup:** First-time clone requires:
 ```bash
+cd ../site-config
 make setup    # Configure git hooks, check dependencies
 make decrypt  # Decrypt secrets (requires age key)
 ```
 
-**Usage:** Pass `-var-file` when provisioning from outer host:
-```bash
-cd ../tofu/envs/pve-deb
-tofu apply -var-file=../../../iac-driver/secrets/mother.tfvars
-```
+**Usage:** iac-driver automatically discovers hosts via `get_site_config_dir()`.
 
-Environment `terraform.tfvars` files default to localhost for local execution.
+Environment-specific tofu configs are in `site-config/envs/*/terraform.tfvars`.
 
 ## Known Issues
 
@@ -332,5 +330,6 @@ Generated files on inner PVE:
 
 Each tool repo has its own CLAUDE.md with detailed context:
 - `../bootstrap/CLAUDE.md` - curl|bash installer and homestak CLI
+- `../site-config/CLAUDE.md` - Secrets management and encryption
 - `../ansible/CLAUDE.md` - Ansible-specific commands and structure
 - `../tofu/CLAUDE.md` - OpenTofu modules and environment details

@@ -1,9 +1,15 @@
 """Host configuration management."""
 
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
+
+
+class ConfigError(Exception):
+    """Configuration error."""
+    pass
 
 
 @dataclass
@@ -30,13 +36,15 @@ class HostConfig:
         if isinstance(self.ssh_key, str):
             self.ssh_key = Path(self.ssh_key)
 
-        # Read api_endpoint and node_name from tfvars if not set
-        if self.tfvars_file.exists() and (not self.api_endpoint or not self.node_name):
+        # Read config from tfvars if file exists
+        if self.tfvars_file.exists():
             tfvars = _parse_tfvars(self.tfvars_file)
             if not self.api_endpoint:
                 self.api_endpoint = tfvars.get('proxmox_api_endpoint', '')
             if not self.node_name:
                 self.node_name = tfvars.get('proxmox_node_name', '')
+            if ssh_user := tfvars.get('ssh_user'):
+                self.ssh_user = ssh_user
 
         # Derive ssh_host from api_endpoint if not set
         if not self.ssh_host and self.api_endpoint:
@@ -59,22 +67,57 @@ def get_base_dir() -> Path:
 
 
 def get_sibling_dir(name: str) -> Path:
-    """Get a sibling repo directory (ansible, tofu, packer)."""
+    """Get a sibling repo directory (ansible, tofu, packer, site-config)."""
     return get_base_dir().parent / name  # iac-driver/ -> homestak/ -> ansible/
 
 
+def get_site_config_dir() -> Path:
+    """Discover site-config directory.
+
+    Resolution order:
+    1. $HOMESTAK_SITE_CONFIG environment variable
+    2. ../site-config/ sibling directory
+    3. /opt/homestak/site-config/ bootstrap default
+    """
+    # 1. Environment variable
+    if env_path := os.environ.get('HOMESTAK_SITE_CONFIG'):
+        path = Path(env_path)
+        if path.exists():
+            return path
+        raise ConfigError(f"HOMESTAK_SITE_CONFIG={env_path} does not exist")
+
+    # 2. Sibling directory
+    sibling = get_base_dir().parent / 'site-config'
+    if sibling.exists():
+        return sibling
+
+    # 3. Bootstrap default
+    default = Path('/opt/homestak/site-config')
+    if default.exists():
+        return default
+
+    raise ConfigError(
+        "site-config not found. "
+        "Set HOMESTAK_SITE_CONFIG or clone site-config as sibling directory."
+    )
+
+
 def list_hosts() -> list[str]:
-    """List available hosts from secrets/*.tfvars files."""
-    secrets_dir = get_base_dir() / 'secrets'
+    """List available hosts from site-config/hosts/*.tfvars files."""
+    try:
+        hosts_dir = get_site_config_dir() / 'hosts'
+    except ConfigError:
+        return []
     return sorted([
-        f.stem for f in secrets_dir.glob('*.tfvars')
+        f.stem for f in hosts_dir.glob('*.tfvars')
         if f.is_file()
     ])
 
 
 def load_host_config(host: str) -> HostConfig:
     """Load configuration for a named host."""
-    tfvars_file = get_base_dir() / 'secrets' / f'{host}.tfvars'
+    site_config = get_site_config_dir()
+    tfvars_file = site_config / 'hosts' / f'{host}.tfvars'
 
     if not tfvars_file.exists():
         available = list_hosts()

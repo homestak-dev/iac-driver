@@ -24,6 +24,7 @@ class StartVMAction:
 
         vm_id = getattr(config, self.vm_id_attr, None)
         pve_host = getattr(config, self.pve_host_attr, None)
+        ssh_user = config.ssh_user
 
         if not vm_id or not pve_host:
             return ActionResult(
@@ -33,7 +34,7 @@ class StartVMAction:
             )
 
         logger.info(f"[{self.name}] Starting VM {vm_id} on {pve_host}...")
-        if not start_vm(vm_id, pve_host):
+        if not start_vm(vm_id, pve_host, user=ssh_user):
             return ActionResult(
                 success=False,
                 message=f"Failed to start VM {vm_id}",
@@ -62,6 +63,7 @@ class WaitForGuestAgentAction:
 
         vm_id = getattr(config, self.vm_id_attr, None)
         pve_host = getattr(config, self.pve_host_attr, None)
+        ssh_user = config.ssh_user
 
         if not vm_id or not pve_host:
             return ActionResult(
@@ -71,7 +73,7 @@ class WaitForGuestAgentAction:
             )
 
         logger.info(f"[{self.name}] Waiting for guest agent on VM {vm_id}...")
-        ip = wait_for_guest_agent(vm_id, pve_host, timeout=self.timeout)
+        ip = wait_for_guest_agent(vm_id, pve_host, timeout=self.timeout, user=ssh_user)
 
         if not ip:
             return ActionResult(

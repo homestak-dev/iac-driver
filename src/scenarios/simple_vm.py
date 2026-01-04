@@ -31,12 +31,17 @@ class EnsureImageAction:
         start = time.time()
 
         pve_host = config.ssh_host
+        ssh_user = config.ssh_user
         image_name = config.packer_image.replace('.qcow2', '.img')
         image_path = f'/var/lib/vz/template/iso/{image_name}'
 
+        # Use sudo if not root
+        sudo = '' if ssh_user == 'root' else 'sudo '
+
         # Check if image exists
         logger.info(f"[{self.name}] Checking for {image_name} on {pve_host}...")
-        rc, out, err = run_ssh(pve_host, f'test -f {image_path} && echo exists', timeout=30)
+        rc, out, err = run_ssh(pve_host, f'{sudo}test -f {image_path} && echo exists',
+                               user=ssh_user, timeout=30)
 
         if rc == 0 and 'exists' in out:
             return ActionResult(
@@ -53,7 +58,8 @@ class EnsureImageAction:
         logger.info(f"[{self.name}] Downloading {config.packer_image} from {repo} {tag}...")
 
         # Create directory and download
-        rc, out, err = run_ssh(pve_host, f'mkdir -p /var/lib/vz/template/iso', timeout=30)
+        rc, out, err = run_ssh(pve_host, f'{sudo}mkdir -p /var/lib/vz/template/iso',
+                               user=ssh_user, timeout=30)
         if rc != 0:
             return ActionResult(
                 success=False,
@@ -61,8 +67,8 @@ class EnsureImageAction:
                 duration=time.time() - start
             )
 
-        dl_cmd = f'curl -fSL -o {image_path} {url}'
-        rc, out, err = run_ssh(pve_host, dl_cmd, timeout=300)
+        dl_cmd = f'{sudo}curl -fSL -o {image_path} {url}'
+        rc, out, err = run_ssh(pve_host, dl_cmd, user=ssh_user, timeout=300)
         if rc != 0:
             return ActionResult(
                 success=False,
