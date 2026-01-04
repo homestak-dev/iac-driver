@@ -100,10 +100,11 @@ def wait_for_ssh(host: str, user: str = 'root', timeout: int = 300, interval: in
     return False
 
 
-def get_vm_ip(vm_id: int, pve_host: str, interface: str = 'eth0') -> Optional[str]:
+def get_vm_ip(vm_id: int, pve_host: str, interface: str = 'eth0', user: str = 'root') -> Optional[str]:
     """Get VM IP via qm guest cmd on PVE host."""
     import json as json_module
-    rc, out, err = run_ssh(pve_host, f'qm guest cmd {vm_id} network-get-interfaces')
+    sudo = '' if user == 'root' else 'sudo '
+    rc, out, err = run_ssh(pve_host, f'{sudo}qm guest cmd {vm_id} network-get-interfaces', user=user)
     if rc != 0:
         return None
 
@@ -125,13 +126,14 @@ def wait_for_guest_agent(
     vm_id: int,
     pve_host: str,
     timeout: int = 300,
-    interval: int = 10
+    interval: int = 10,
+    user: str = 'root'
 ) -> Optional[str]:
     """Wait for guest agent and return IP."""
     logger.info(f"Waiting for guest agent on VM {vm_id}...")
     start = time.time()
     while time.time() - start < timeout:
-        ip = get_vm_ip(vm_id, pve_host, '*')
+        ip = get_vm_ip(vm_id, pve_host, '*', user=user)
         if ip:
             logger.info(f"VM {vm_id} has IP: {ip}")
             return ip
@@ -141,8 +143,9 @@ def wait_for_guest_agent(
     return None
 
 
-def start_vm(vm_id: int, pve_host: str) -> bool:
+def start_vm(vm_id: int, pve_host: str, user: str = 'root') -> bool:
     """Start a VM on the PVE host."""
     logger.info(f"Starting VM {vm_id} on {pve_host}...")
-    rc, out, err = run_ssh(pve_host, f'qm start {vm_id}')
+    sudo = '' if user == 'root' else 'sudo '
+    rc, out, err = run_ssh(pve_host, f'{sudo}qm start {vm_id}', user=user)
     return rc == 0

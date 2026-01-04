@@ -36,13 +36,15 @@ class HostConfig:
         if isinstance(self.ssh_key, str):
             self.ssh_key = Path(self.ssh_key)
 
-        # Read api_endpoint and node_name from tfvars if not set
-        if self.tfvars_file.exists() and (not self.api_endpoint or not self.node_name):
+        # Read config from tfvars if file exists
+        if self.tfvars_file.exists():
             tfvars = _parse_tfvars(self.tfvars_file)
             if not self.api_endpoint:
                 self.api_endpoint = tfvars.get('proxmox_api_endpoint', '')
             if not self.node_name:
                 self.node_name = tfvars.get('proxmox_node_name', '')
+            if ssh_user := tfvars.get('ssh_user'):
+                self.ssh_user = ssh_user
 
         # Derive ssh_host from api_endpoint if not set
         if not self.ssh_host and self.api_endpoint:
