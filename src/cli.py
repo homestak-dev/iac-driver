@@ -76,6 +76,14 @@ def main():
         '--remote',
         help='Target host IP for remote execution (for pve-configure)'
     )
+    parser.add_argument(
+        '--vm-ip',
+        help='Target VM IP (for bootstrap-install scenario)'
+    )
+    parser.add_argument(
+        '--homestak-user',
+        help='Create this user during bootstrap (for bootstrap-install scenario)'
+    )
 
     args = parser.parse_args()
 
@@ -118,6 +126,12 @@ def main():
         orchestrator.context['local_mode'] = True
     if args.remote:
         orchestrator.context['remote_ip'] = args.remote
+
+    # Pre-populate context for bootstrap-install scenario
+    if args.vm_ip:
+        orchestrator.context['vm_ip'] = args.vm_ip
+    if args.homestak_user:
+        orchestrator.context['homestak_user'] = args.homestak_user
 
     success = orchestrator.run()
     return 0 if success else 1
