@@ -9,6 +9,7 @@ This repo provides scenario-based workflows that coordinate the [homestak-dev](h
 | Repo | Purpose |
 |------|---------|
 | [bootstrap](https://github.com/homestak-dev/bootstrap) | Entry point - curl\|bash setup |
+| [site-config](https://github.com/homestak-dev/site-config) | Site-specific secrets and configuration |
 | [ansible](https://github.com/homestak-dev/ansible) | Proxmox host configuration, PVE installation |
 | [tofu](https://github.com/homestak-dev/tofu) | VM provisioning with OpenTofu |
 | [packer](https://github.com/homestak-dev/packer) | Custom Debian cloud images |
@@ -16,13 +17,16 @@ This repo provides scenario-based workflows that coordinate the [homestak-dev](h
 ## Quick Start
 
 ```bash
-# Clone and setup
+# Clone iac-driver and site-config
 git clone https://github.com/homestak-dev/iac-driver.git
-cd iac-driver
-make setup      # Configure git hooks
-make decrypt    # Decrypt secrets (requires age key)
+git clone https://github.com/homestak-dev/site-config.git
 
-# Clone sibling repos
+# Setup secrets
+cd site-config
+make setup && make decrypt
+
+# Clone sibling tool repos
+cd ../iac-driver
 ./scripts/setup-tools.sh
 
 # List available scenarios
@@ -61,20 +65,19 @@ Options:
 
 ## Secrets Management
 
-Credentials are encrypted with [SOPS](https://github.com/getsops/sops) + [age](https://github.com/FiloSottile/age).
+Credentials are managed in the [site-config](https://github.com/homestak-dev/site-config) repository using SOPS + age.
 
 ```bash
+cd ../site-config
 make setup    # Configure git hooks, check dependencies
-make decrypt  # Decrypt secrets
-make encrypt  # Re-encrypt after changes
-make check    # Verify setup
+make decrypt  # Decrypt secrets (requires age key)
 ```
 
-**First-time setup:** You need an age key at `~/.config/sops/age/keys.txt`. See `secrets/README.md` for details.
+See [site-config README](https://github.com/homestak-dev/site-config#readme) for setup instructions.
 
 ## Prerequisites
 
-- age + sops for secrets decryption
+- [site-config](https://github.com/homestak-dev/site-config) set up and decrypted
 - Ansible 2.0+, OpenTofu, Packer
 - SSH key at `~/.ssh/id_rsa`
 - Proxmox VE host with API access
