@@ -55,7 +55,8 @@ All repos are siblings in a common parent directory:
 │   ├── src/              # Python package
 │   │   ├── cli.py        # CLI implementation
 │   │   ├── common.py     # ActionResult + shared utilities
-│   │   ├── config.py     # Host configuration (auto-discovery from site-config)
+│   │   ├── config.py          # Host configuration (auto-discovery from site-config)
+│   │   ├── config_resolver.py # ConfigResolver - resolves site-config for tofu
 │   │   ├── actions/      # Reusable primitive operations
 │   │   │   ├── tofu.py   # TofuApplyAction, TofuDestroyAction
 │   │   │   ├── ansible.py# AnsiblePlaybookAction
@@ -82,6 +83,65 @@ All repos are siblings in a common parent directory:
 ```
 
 Scripts use relative paths (`../ansible`, `../tofu`, `../packer`) so the parent directory can be anywhere.
+
+## ConfigResolver
+
+The `ConfigResolver` class resolves site-config YAML files into flat configurations for tofu. All template and preset inheritance is resolved in Python, so tofu receives fully-computed values.
+
+### Usage
+
+```python
+from src.config_resolver import ConfigResolver
+
+# Auto-discover site-config (env var, sibling, /opt/homestak)
+resolver = ConfigResolver()
+
+# Or specify path explicitly
+resolver = ConfigResolver('/path/to/site-config')
+
+# Resolve environment for a target node
+config = resolver.resolve_env(env='dev', node='pve')
+
+# Write tfvars.json for tofu
+resolver.write_tfvars(config, '/tmp/tfvars.json')
+```
+
+### Resolution Order
+
+1. `vms/presets/{preset}.yaml` - Size presets (if template uses `preset:`)
+2. `vms/{template}.yaml` - Template definition
+3. `envs/{env}.yaml` - Instance overrides (name, ip, vmid)
+
+### Output Structure
+
+```python
+{
+    "node": "pve",
+    "api_endpoint": "https://localhost:8006",
+    "api_token": "root@pam!tofu=...",
+    "ssh_user": "root",
+    "datastore": "local-zfs",
+    "root_password": "$6$...",
+    "ssh_keys": ["ssh-rsa ...", ...],
+    "vms": [
+        {
+            "name": "test",
+            "vmid": 99900,
+            "image": "debian-12",
+            "cores": 1,
+            "memory": 2048,
+            "disk": 20,
+            "bridge": "vmbr0"
+        }
+    ]
+}
+```
+
+### vmid Allocation
+
+- If `vmid_base` is defined in env: `vmid = vmid_base + index`
+- If `vmid_base` is not defined: `vmid = null` (PVE auto-assigns)
+- Per-VM `vmid` override always takes precedence
 
 ## Common Commands
 
