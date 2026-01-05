@@ -47,10 +47,17 @@ class TofuApplyAction:
         logger.info(f"[{self.name}] Running tofu apply...")
         cmd = ['tofu', 'apply', '-auto-approve']
 
-        # Use provided var_file or fall back to config's tfvars
-        var_file = self.var_file or config.tfvars_file
-        if var_file and var_file.exists():
-            cmd.extend(['-var-file', str(var_file)])
+        # Pass node name for config-loader module (YAML config)
+        # or var-file for legacy tfvars
+        if self.var_file and self.var_file.exists():
+            cmd.extend(['-var-file', str(self.var_file)])
+        elif config.config_file.suffix == '.yaml':
+            # YAML config: pass node name and site-config path
+            from config import get_site_config_dir
+            cmd.extend(['-var', f'node={config.name}'])
+            cmd.extend(['-var', f'site_config_path={get_site_config_dir()}'])
+        elif config.config_file.exists():
+            cmd.extend(['-var-file', str(config.config_file)])
 
         rc, out, err = run_command(cmd, cwd=tofu_dir, timeout=self.timeout_apply)
         if rc != 0:
@@ -90,9 +97,17 @@ class TofuDestroyAction:
         logger.info(f"[{self.name}] Running tofu destroy...")
         cmd = ['tofu', 'destroy', '-auto-approve']
 
-        var_file = self.var_file or config.tfvars_file
-        if var_file and var_file.exists():
-            cmd.extend(['-var-file', str(var_file)])
+        # Pass node name for config-loader module (YAML config)
+        # or var-file for legacy tfvars
+        if self.var_file and self.var_file.exists():
+            cmd.extend(['-var-file', str(self.var_file)])
+        elif config.config_file.suffix == '.yaml':
+            # YAML config: pass node name and site-config path
+            from config import get_site_config_dir
+            cmd.extend(['-var', f'node={config.name}'])
+            cmd.extend(['-var', f'site_config_path={get_site_config_dir()}'])
+        elif config.config_file.exists():
+            cmd.extend(['-var-file', str(config.config_file)])
 
         rc, out, err = run_command(cmd, cwd=tofu_dir, timeout=self.timeout)
         if rc != 0:

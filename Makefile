@@ -16,5 +16,5 @@ help:
 install-deps:
 	@echo "Installing iac-driver dependencies..."
 	@apt-get update -qq
-	@apt-get install -y -qq python3 > /dev/null
+	@apt-get install -y -qq python3 python3-yaml > /dev/null
 	@echo "Done."
