@@ -168,17 +168,15 @@ PVE node configuration is stored in `site-config/nodes/*.yaml`:
 
 | File | Node | API Endpoint |
 |------|------|--------------|
-| `site-config/nodes/pve.yaml` | pve | https://pve.homestak:8006 |
-| `site-config/nodes/father.yaml` | father | https://father.core:8006 |
-| `site-config/nodes/mother.yaml` | mother | https://mother.core:8006 |
+| `site-config/nodes/pve.yaml` | pve | https://localhost:8006 |
 | `site-config/nodes/pve-deb.yaml` | pve-deb | (dynamic, nested PVE) |
 
 API tokens are stored separately in `site-config/secrets.yaml` and resolved by key reference:
 ```yaml
-# nodes/pve.yaml
-node: pve
-api_endpoint: https://pve.homestak:8006
-api_token: pve  # → secrets.api_tokens.pve
+# nodes/pve.yaml (primary key derived from filename)
+host: pve                         # FK -> hosts/pve.yaml
+api_endpoint: https://localhost:8006
+api_token: pve                    # FK -> secrets.api_tokens.pve
 ```
 
 **Setup:** First-time clone requires:
@@ -233,7 +231,7 @@ The orchestrator runs scenarios composed of reusable actions:
 ./run.sh --scenario nested-pve-destructor --host pve --inner-ip 10.0.12.x
 
 # Simple VM test (deploy, verify SSH, destroy)
-./run.sh --scenario simple-vm-roundtrip --host father
+./run.sh --scenario simple-vm-roundtrip --host pve
 
 # Configure PVE host (local)
 ./run.sh --scenario pve-configure --local
