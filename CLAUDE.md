@@ -176,9 +176,35 @@ TofuApplyRemoteAction(
 # After tofu apply, context contains:
 context['test_vm_id'] = 99900  # From vm name 'test' with vmid 99900
 context['inner_vm_id'] = 99913  # From vm name 'inner' with vmid 99913
+context['provisioned_vms'] = [{'name': 'test', 'vmid': 99900}, ...]  # All VMs
 ```
 
 Downstream actions (StartVMAction, WaitForGuestAgentAction) check context first, then fall back to config attributes.
+
+**Multi-VM Actions:** For environments with multiple VMs, use these actions instead of single-VM variants:
+
+| Action | Description |
+|--------|-------------|
+| `StartProvisionedVMsAction` | Start all VMs from `provisioned_vms` context |
+| `WaitForProvisionedVMsAction` | Wait for guest agent on all VMs, collect IPs |
+
+```python
+# Multi-VM scenario phases
+('start', StartProvisionedVMsAction(
+    name='start-vms',
+    pve_host_attr='ssh_host',
+), 'Start VM(s)'),
+
+('wait_ip', WaitForProvisionedVMsAction(
+    name='wait-for-ips',
+    pve_host_attr='ssh_host',
+    timeout=180,
+), 'Wait for VM IP(s)'),
+```
+
+After `WaitForProvisionedVMsAction`, context contains:
+- `{vm_name}_ip` for each VM (e.g., `deb12-test_ip`, `deb13-test_ip`)
+- `vm_ip` - first VM's IP (backward compatibility)
 
 ## Common Commands
 
@@ -342,6 +368,9 @@ The orchestrator runs scenarios composed of reusable actions:
 # Simple VM test (deploy, verify SSH, destroy)
 ./run.sh --scenario simple-vm-roundtrip --host pve
 
+# Deploy custom environment (multi-VM)
+./run.sh --scenario simple-vm-constructor --host father --env ansible-test
+
 # Configure PVE host (local)
 ./run.sh --scenario pve-configure --local
 
@@ -357,6 +386,7 @@ The orchestrator runs scenarios composed of reusable actions:
 |--------|-------------|
 | `--scenario`, `-S` | Scenario to run (required) |
 | `--host`, `-H` | Target PVE host (default: pve) |
+| `--env`, `-E` | Environment to deploy (overrides scenario default) |
 | `--verbose`, `-v` | Enable verbose logging |
 | `--skip`, `-s` | Phases to skip (repeatable) |
 | `--list-scenarios` | List available scenarios |

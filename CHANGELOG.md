@@ -17,7 +17,10 @@
 - Update proxmox actions to check context first, then config (dynamic VMID support)
 - Add `env` parameter to `run_command()` for environment variable passthrough
 - Add `--env`/`-E` CLI flag to override scenario environment
+- Add `StartProvisionedVMsAction` and `WaitForProvisionedVMsAction` for multi-VM environments
+- TofuApplyAction now adds `provisioned_vms` list to context for downstream actions
 - E2E validated with nested-pve-roundtrip on father (~8.5 min)
+- Tested `ansible-test` environment with Debian 12 + 13 VMs on father
 
 ### Bug Fixes
 
