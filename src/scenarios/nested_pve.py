@@ -14,6 +14,7 @@ from actions import (
     StartVMRemoteAction,
     WaitForGuestAgentRemoteAction,
     DownloadGitHubReleaseAction,
+    SyncReposToVMAction,
     VerifySSHChainAction,
 )
 from config import HostConfig, get_sibling_dir
@@ -40,14 +41,14 @@ class NestedPVEConstructor:
             # Phase 2: Start VM (tofu creates it stopped)
             ('start_vm', StartVMAction(
                 name='start-inner-pve',
-                vm_id_attr='inner_vm_id',
+                vm_id_attr='nested-pve_vm_id',
                 pve_host_attr='ssh_host',
             ), 'Start inner PVE VM'),
 
             # Phase 3: Wait for guest agent and get IP
             ('wait_ip', WaitForGuestAgentAction(
                 name='wait-for-inner-ip',
-                vm_id_attr='inner_vm_id',
+                vm_id_attr='nested-pve_vm_id',
                 pve_host_attr='ssh_host',
                 ip_context_key='inner_ip',
                 timeout=300,
@@ -119,7 +120,15 @@ class NestedPVEConstructor:
                 timeout=300,
             ), 'Wait for test VM IP'),
 
-            # Phase 10: Verify SSH chain
+            # Phase 10: Sync repos to test VM
+            ('sync_repos', SyncReposToVMAction(
+                name='sync-repos-to-test-vm',
+                target_host_key='test_ip',
+                intermediate_host_key='inner_ip',
+                timeout=300,
+            ), 'Sync /opt/homestak to test VM'),
+
+            # Phase 11: Verify SSH chain
             ('verify', VerifySSHChainAction(
                 name='verify-ssh-chain',
                 target_host_key='test_ip',
@@ -147,13 +156,13 @@ class NestedPVERoundtrip:
 
             ('start_vm', StartVMAction(
                 name='start-inner-pve',
-                vm_id_attr='inner_vm_id',
+                vm_id_attr='nested-pve_vm_id',
                 pve_host_attr='ssh_host',
             ), 'Start inner PVE VM'),
 
             ('wait_ip', WaitForGuestAgentAction(
                 name='wait-for-inner-ip',
-                vm_id_attr='inner_vm_id',
+                vm_id_attr='nested-pve_vm_id',
                 pve_host_attr='ssh_host',
                 ip_context_key='inner_ip',
                 timeout=300,
@@ -219,6 +228,13 @@ class NestedPVERoundtrip:
                 timeout=300,
             ), 'Wait for test VM IP'),
 
+            ('sync_repos', SyncReposToVMAction(
+                name='sync-repos-to-test-vm',
+                target_host_key='test_ip',
+                intermediate_host_key='inner_ip',
+                timeout=300,
+            ), 'Sync /opt/homestak to test VM'),
+
             # === VERIFY ===
             ('verify', VerifySSHChainAction(
                 name='verify-ssh-chain',
@@ -237,7 +253,7 @@ class NestedPVERoundtrip:
 
             ('stop_inner', StopVMAction(
                 name='stop-inner-pve',
-                vm_id_attr='inner_vm_id',
+                vm_id_attr='nested-pve_vm_id',
                 pve_host_attr='ssh_host',
             ), 'Stop inner PVE VM'),
 

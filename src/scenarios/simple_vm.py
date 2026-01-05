@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from actions import (
     TofuApplyAction,
     TofuDestroyAction,
-    StartVMAction,
-    WaitForGuestAgentAction,
+    StartProvisionedVMsAction,
+    WaitForProvisionedVMsAction,
     WaitForSSHAction,
 )
 from common import ActionResult, run_ssh
@@ -100,21 +100,18 @@ class SimpleVMConstructor:
             ('provision', TofuApplyAction(
                 name='provision-vm',
                 env_name='test',
-            ), 'Provision test VM'),
+            ), 'Provision VM(s)'),
 
-            ('start', StartVMAction(
-                name='start-vm',
-                vm_id_attr='test_vm_id',
+            ('start', StartProvisionedVMsAction(
+                name='start-vms',
                 pve_host_attr='ssh_host',
-            ), 'Start test VM'),
+            ), 'Start VM(s)'),
 
-            ('wait_ip', WaitForGuestAgentAction(
-                name='wait-for-ip',
-                vm_id_attr='test_vm_id',
+            ('wait_ip', WaitForProvisionedVMsAction(
+                name='wait-for-ips',
                 pve_host_attr='ssh_host',
-                ip_context_key='vm_ip',
                 timeout=180,
-            ), 'Wait for VM IP'),
+            ), 'Wait for VM IP(s)'),
 
             ('verify_ssh', WaitForSSHAction(
                 name='verify-ssh',
@@ -158,21 +155,18 @@ class SimpleVMRoundtrip:
             ('provision', TofuApplyAction(
                 name='provision-vm',
                 env_name='test',
-            ), 'Provision test VM'),
+            ), 'Provision VM(s)'),
 
-            ('start', StartVMAction(
-                name='start-vm',
-                vm_id_attr='test_vm_id',
+            ('start', StartProvisionedVMsAction(
+                name='start-vms',
                 pve_host_attr='ssh_host',
-            ), 'Start test VM'),
+            ), 'Start VM(s)'),
 
-            ('wait_ip', WaitForGuestAgentAction(
-                name='wait-for-ip',
-                vm_id_attr='test_vm_id',
+            ('wait_ip', WaitForProvisionedVMsAction(
+                name='wait-for-ips',
                 pve_host_attr='ssh_host',
-                ip_context_key='vm_ip',
                 timeout=180,
-            ), 'Wait for VM IP'),
+            ), 'Wait for VM IP(s)'),
 
             ('verify_ssh', WaitForSSHAction(
                 name='verify-ssh',
@@ -183,5 +177,5 @@ class SimpleVMRoundtrip:
             ('destroy', TofuDestroyAction(
                 name='destroy-vm',
                 env_name='test',
-            ), 'Destroy test VM'),
+            ), 'Destroy VM(s)'),
         ]

@@ -2,10 +2,12 @@
 
 from actions.tofu import TofuApplyAction, TofuDestroyAction, TofuApplyRemoteAction, TofuDestroyRemoteAction
 from actions.ansible import AnsiblePlaybookAction, AnsibleLocalPlaybookAction
-from actions.ssh import SSHCommandAction, WaitForSSHAction, VerifySSHChainAction
+from actions.ssh import SSHCommandAction, WaitForSSHAction, SyncReposToVMAction, VerifySSHChainAction
 from actions.proxmox import (
     StartVMAction,
     WaitForGuestAgentAction,
+    StartProvisionedVMsAction,
+    WaitForProvisionedVMsAction,
     StartVMRemoteAction,
     WaitForGuestAgentRemoteAction,
 )
@@ -20,9 +22,12 @@ __all__ = [
     'AnsibleLocalPlaybookAction',
     'SSHCommandAction',
     'WaitForSSHAction',
+    'SyncReposToVMAction',
     'VerifySSHChainAction',
     'StartVMAction',
     'WaitForGuestAgentAction',
+    'StartProvisionedVMsAction',
+    'WaitForProvisionedVMsAction',
     'StartVMRemoteAction',
     'WaitForGuestAgentRemoteAction',
     'RemoveImageAction',

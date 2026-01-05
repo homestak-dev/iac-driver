@@ -26,8 +26,9 @@ class StopVMAction:
         """Stop the VM if running."""
         start = time.time()
 
-        vm_id = getattr(config, self.vm_id_attr, None)
-        pve_host = getattr(config, self.pve_host_attr, None)
+        # Check context first (from TofuApplyAction), then config
+        vm_id = context.get(self.vm_id_attr) or getattr(config, self.vm_id_attr, None)
+        pve_host = context.get(self.pve_host_attr) or getattr(config, self.pve_host_attr, None)
 
         if not vm_id or not pve_host:
             return ActionResult(
@@ -145,7 +146,7 @@ class NestedPVEDestructor:
             # Phase 2: Stop inner PVE VM (if running)
             ('stop_inner', StopVMAction(
                 name='stop-inner-pve',
-                vm_id_attr='inner_vm_id',
+                vm_id_attr='nested-pve_vm_id',
                 pve_host_attr='ssh_host',
             ), 'Stop inner PVE VM'),
 
