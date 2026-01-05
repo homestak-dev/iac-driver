@@ -22,6 +22,10 @@
 - E2E validated with nested-pve-roundtrip on father (~8.5 min)
 - Tested `ansible-test` environment with Debian 12 + 13 VMs on father
 
+### Housekeeping
+
+- Rename `pve-deb` to `nested-pve` across codebase (closes #13)
+
 ### Bug Fixes
 
 - **OpenTofu state version 4 workaround**: Separate `TF_DATA_DIR` (data/) from state file location to avoid legacy code path that rejects v4 states. See [opentofu/opentofu#3643](https://github.com/opentofu/opentofu/issues/3643)

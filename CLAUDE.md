@@ -292,7 +292,7 @@ PVE node configuration is stored in `site-config/nodes/*.yaml`:
 | File | Node | API Endpoint |
 |------|------|--------------|
 | `site-config/nodes/pve.yaml` | pve | https://localhost:8006 |
-| `site-config/nodes/pve-deb.yaml` | pve-deb | (dynamic, nested PVE) |
+| `site-config/nodes/nested-pve.yaml` | nested-pve | (dynamic, nested PVE) |
 
 API tokens are stored separately in `site-config/secrets.yaml` and resolved by key reference:
 ```yaml
@@ -338,7 +338,7 @@ End-to-end testing uses nested virtualization to validate the full stack: VM pro
 ```
 Outer PVE Host (pve)
 ├── IP: 10.0.12.x
-└── VM 99913 (pve-deb) - Inner PVE
+└── VM 99913 (nested-pve) - Inner PVE
     ├── Debian 13 + Proxmox VE
     ├── 2 cores, 8GB RAM, 64GB disk
     └── VM 99901 (test1) - Test VM
@@ -426,12 +426,12 @@ Both JSON and markdown reports are generated for each run.
 
 ### Tofu Environments
 
-**pve-deb** - Inner PVE VM (in `../tofu/envs/pve-deb/`):
+**nested-pve** - Inner PVE VM (in `../tofu/envs/nested-pve/`):
 
 | Property | Value |
 |----------|-------|
 | VM ID | 99913 |
-| Hostname | pve-deb |
+| Hostname | nested-pve |
 | CPU | 2 cores (faster packer builds) |
 | Memory | 8192 MB |
 | Disk | 64 GB on local-zfs |
@@ -446,7 +446,7 @@ Works on both outer and inner PVE via `-var="node=..."` override:
 cd ../tofu/envs/test && tofu apply
 
 # Deploy to nested PVE
-tofu apply -var="node=pve-deb"
+tofu apply -var="node=nested-pve"
 ```
 
 Configuration is loaded from `site-config/nodes/{node}.yaml` and `site-config/envs/test.yaml`.
@@ -468,7 +468,7 @@ Depends on `pve-iac` role:
 
 Synced to inner PVE at `/opt/homestak/`:
 - `iac-driver/` - ConfigResolver for recursive deployment
-- `site-config/` - Configuration with test.yaml override (node: pve-deb)
+- `site-config/` - Configuration with test.yaml override (node: nested-pve)
 - `tofu/` - Modules and environments
 - `packer/` - Templates and scripts
 - API token created via `pveum` and injected into secrets.yaml
