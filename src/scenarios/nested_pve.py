@@ -15,7 +15,7 @@ from actions import (
     DownloadGitHubReleaseAction,
     VerifySSHChainAction,
 )
-from config import HostConfig
+from config import HostConfig, get_sibling_dir
 from scenarios import register_scenario
 from scenarios.cleanup_nested_pve import StopVMAction, DestroyRemoteVMAction
 
@@ -57,7 +57,7 @@ class NestedPVEConstructor:
                 name='install-pve',
                 playbook='playbooks/pve-install.yml',
                 inventory='inventory/remote-dev.yml',
-                extra_vars={'pve_hostname': 'pve-deb'},
+                extra_vars={'pve_hostname': 'pve-deb', 'ansible_user': 'root'},
                 host_key='inner_ip',
                 wait_for_ssh_before=True,
                 wait_for_ssh_after=True,
@@ -70,6 +70,12 @@ class NestedPVEConstructor:
                 name='configure-inner-pve',
                 playbook='playbooks/nested-pve-setup.yml',
                 inventory='inventory/remote-dev.yml',
+                extra_vars={
+                    'ansible_user': 'root',
+                    'packer_src_dir': str(get_sibling_dir('packer')),
+                    'tofu_src_dir': str(get_sibling_dir('tofu')),
+                    'site_config_src_dir': str(get_sibling_dir('site-config')),
+                },
                 host_key='inner_ip',
                 wait_for_ssh_before=True,
                 timeout=600,
@@ -88,7 +94,7 @@ class NestedPVEConstructor:
             # Phase 7: Provision test VM on inner PVE
             ('test_vm_apply', TofuApplyRemoteAction(
                 name='provision-test-vm',
-                remote_path='/root/tofu/envs/test',
+                remote_path='/opt/homestak/tofu/envs/test',
                 host_key='inner_ip',
                 timeout_init=120,
                 timeout_apply=300,
@@ -154,7 +160,7 @@ class NestedPVERoundtrip:
                 name='install-pve',
                 playbook='playbooks/pve-install.yml',
                 inventory='inventory/remote-dev.yml',
-                extra_vars={'pve_hostname': 'pve-deb'},
+                extra_vars={'pve_hostname': 'pve-deb', 'ansible_user': 'root'},
                 host_key='inner_ip',
                 wait_for_ssh_before=True,
                 wait_for_ssh_after=True,
@@ -166,6 +172,12 @@ class NestedPVERoundtrip:
                 name='configure-inner-pve',
                 playbook='playbooks/nested-pve-setup.yml',
                 inventory='inventory/remote-dev.yml',
+                extra_vars={
+                    'ansible_user': 'root',
+                    'packer_src_dir': str(get_sibling_dir('packer')),
+                    'tofu_src_dir': str(get_sibling_dir('tofu')),
+                    'site_config_src_dir': str(get_sibling_dir('site-config')),
+                },
                 host_key='inner_ip',
                 wait_for_ssh_before=True,
                 timeout=600,
@@ -182,7 +194,7 @@ class NestedPVERoundtrip:
 
             ('test_vm_apply', TofuApplyRemoteAction(
                 name='provision-test-vm',
-                remote_path='/root/tofu/envs/test',
+                remote_path='/opt/homestak/tofu/envs/test',
                 host_key='inner_ip',
                 timeout_init=120,
                 timeout_apply=300,

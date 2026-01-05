@@ -143,7 +143,7 @@ class WaitForGuestAgentRemoteAction:
     pve_host_key: str = 'inner_ip'
     ip_context_key: str = 'test_ip'
     timeout: int = 300
-    interval: int = 10
+    interval: int = 5
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
         """Wait for guest agent on remote PVE."""

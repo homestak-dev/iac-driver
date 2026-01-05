@@ -80,7 +80,7 @@ def wait_for_ping(host: str, timeout: int = 60, interval: int = 2) -> bool:
     return False
 
 
-def wait_for_ssh(host: str, user: str = 'root', timeout: int = 300, interval: int = 5) -> bool:
+def wait_for_ssh(host: str, user: str = 'root', timeout: int = 300, interval: int = 3) -> bool:
     """Wait for SSH to become available. Uses ping first for faster detection."""
     logger.info(f"Waiting for SSH on {host}...")
     start = time.time()
@@ -126,7 +126,7 @@ def wait_for_guest_agent(
     vm_id: int,
     pve_host: str,
     timeout: int = 300,
-    interval: int = 10,
+    interval: int = 5,
     user: str = 'root'
 ) -> Optional[str]:
     """Wait for guest agent and return IP."""

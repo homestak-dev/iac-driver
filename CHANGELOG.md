@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.5.0-rc1 - 2026-01-04
+
+Consolidated pre-release with full YAML configuration support.
+
+### Highlights
+
+- YAML configuration via site-config (nodes/*.yaml, secrets.yaml)
+- config-loader integration with tofu
+- Full E2E validation with nested-pve-roundtrip
+
+### Changes
+
+- Fix ansible.posix.synchronize for /opt/homestak path
+- Fix API token creation idempotency in nested-pve role
+- Reduce polling intervals for faster E2E tests
+
 ## v0.4.0 - 2026-01-04
 
 ### Features
