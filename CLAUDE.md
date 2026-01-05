@@ -272,7 +272,7 @@ The orchestrator runs scenarios composed of reusable actions:
 | `simple-vm-destructor` | 1 | Destroy test VM |
 | `simple-vm-roundtrip` | 6 | Full cycle: construct → verify → destruct |
 
-**nested-pve-roundtrip runtime: ~12 minutes**
+**nested-pve-roundtrip runtime: ~8.5 minutes**
 
 ### Test Reports
 
@@ -327,12 +327,13 @@ Reusable for any Proxmox host (dev, k8s, etc.):
 Depends on `pve-iac` role:
 - `network.yml` - Configure vmbr0 bridge (required after Debian→PVE conversion)
 - `ssh-keys.yml` - Copy SSH keys for nested VM access
-- `copy-files.yml` - Deploy packer/tofu files, generate tfvars
+- `copy-files.yml` - Sync homestak repos, create API token, configure test env
 
-Generated files on inner PVE:
-- `/root/packer/` - Packer templates and scripts
-- `/root/tofu/` - Tofu modules and environments
-- `/root/tofu/envs/test/terraform.tfvars` - Auto-generated with API token
+Synced to inner PVE at `/opt/homestak/`:
+- `site-config/` - Configuration with test.yaml override (node: pve-deb)
+- `tofu/` - Modules and environments
+- `packer/` - Templates and scripts
+- API token created via `pveum` and injected into secrets.yaml
 
 ## Prerequisites
 
