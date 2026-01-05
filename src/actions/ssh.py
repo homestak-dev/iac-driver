@@ -108,6 +108,70 @@ class WaitForSSHAction:
 
 
 @dataclass
+class SyncReposToVMAction:
+    """Sync /opt/homestak from intermediate host to target VM."""
+    name: str
+    target_host_key: str = 'test_ip'  # context key for target VM
+    intermediate_host_key: str = 'inner_ip'  # context key for intermediate host
+    timeout: int = 300
+
+    def run(self, config: HostConfig, context: dict) -> ActionResult:
+        """Sync repos from intermediate host to target VM."""
+        start = time.time()
+
+        target = context.get(self.target_host_key)
+        intermediate = context.get(self.intermediate_host_key)
+
+        if not target:
+            return ActionResult(
+                success=False,
+                message=f"No {self.target_host_key} in context",
+                duration=time.time() - start
+            )
+
+        if not intermediate:
+            return ActionResult(
+                success=False,
+                message=f"No {self.intermediate_host_key} in context",
+                duration=time.time() - start
+            )
+
+        # Run sync on the intermediate host to target VM
+        # Use tar pipe as fallback since rsync may not be installed on target
+        sync_cmd = f'''
+SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+# Create target directory
+ssh $SSH_OPTS root@{target} "mkdir -p /opt/homestak"
+
+# Try rsync first, fall back to tar pipe if rsync not available
+if ssh $SSH_OPTS root@{target} "which rsync" >/dev/null 2>&1; then
+    rsync -avz --exclude=.git --exclude=__pycache__ --exclude=reports --exclude=.states \
+        -e "ssh $SSH_OPTS" /opt/homestak/ root@{target}:/opt/homestak/
+else
+    # Fallback: use tar pipe (works without rsync on target)
+    cd /opt/homestak && tar --exclude=.git --exclude=__pycache__ --exclude=reports --exclude=.states -czf - . | \
+        ssh $SSH_OPTS root@{target} "cd /opt/homestak && tar -xzf -"
+fi
+'''
+        logger.info(f"[{self.name}] Syncing repos from {intermediate} to {target}...")
+        rc, out, err = run_ssh(intermediate, sync_cmd, timeout=self.timeout)
+
+        if rc != 0:
+            return ActionResult(
+                success=False,
+                message=f"Rsync failed: {err}",
+                duration=time.time() - start
+            )
+
+        return ActionResult(
+            success=True,
+            message=f"Repos synced to {target}",
+            duration=time.time() - start
+        )
+
+
+@dataclass
 class VerifySSHChainAction:
     """Verify SSH connectivity through a jump host chain."""
     name: str

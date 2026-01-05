@@ -1,31 +1,50 @@
-"""OpenTofu actions."""
+"""OpenTofu actions using ConfigResolver."""
 
 import logging
+import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 from common import ActionResult, run_command
 from config import HostConfig, get_sibling_dir
+from config_resolver import ConfigResolver
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class TofuApplyAction:
-    """Run tofu init and apply on an environment."""
+    """Run tofu init and apply using ConfigResolver + envs/generic."""
     name: str
-    env_path: str  # e.g., "envs/pve-deb"
-    var_file: Optional[Path] = None
+    env_name: str  # e.g., "test", "nested-pve"
     timeout_init: int = 120
     timeout_apply: int = 600
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
-        """Execute tofu init + apply."""
+        """Execute tofu init + apply with resolved config."""
         start = time.time()
 
-        tofu_dir = get_sibling_dir('tofu') / self.env_path
+        # Use context env_name if provided (CLI override), otherwise use action default
+        env_name = context.get('env_name', self.env_name)
+
+        # Resolve config to tfvars
+        try:
+            resolver = ConfigResolver()
+            resolved = resolver.resolve_env(env=env_name, node=config.name)
+            tfvars_path = Path(f'/tmp/{env_name}-{config.name}.tfvars.json')
+            resolver.write_tfvars(resolved, str(tfvars_path))
+            logger.info(f"[{self.name}] Generated tfvars: {tfvars_path}")
+        except Exception as e:
+            return ActionResult(
+                success=False,
+                message=f"ConfigResolver failed: {e}",
+                duration=time.time() - start
+            )
+
+        # Always use generic env
+        tofu_dir = get_sibling_dir('tofu') / 'envs' / 'generic'
         if not tofu_dir.exists():
             return ActionResult(
                 success=False,
@@ -33,9 +52,19 @@ class TofuApplyAction:
                 duration=time.time() - start
             )
 
+        # State isolation: each env+node gets its own state directory
+        # IMPORTANT: TF_DATA_DIR must NOT contain terraform.tfstate, otherwise
+        # OpenTofu's legacy code path reads it and rejects version 4 states.
+        # We use a 'data/' subdirectory for TF_DATA_DIR (modules/providers).
+        state_dir = tofu_dir / '.states' / f'{env_name}-{config.name}'
+        data_dir = state_dir / 'data'
+        data_dir.mkdir(parents=True, exist_ok=True)
+        state_file = state_dir / 'terraform.tfstate'
+        env = {**os.environ, 'TF_DATA_DIR': str(data_dir)}
+
         # Run tofu init
         logger.info(f"[{self.name}] Running tofu init...")
-        rc, out, err = run_command(['tofu', 'init'], cwd=tofu_dir, timeout=self.timeout_init)
+        rc, out, err = run_command(['tofu', 'init'], cwd=tofu_dir, timeout=self.timeout_init, env=env)
         if rc != 0:
             return ActionResult(
                 success=False,
@@ -43,23 +72,10 @@ class TofuApplyAction:
                 duration=time.time() - start
             )
 
-        # Run tofu apply
-        logger.info(f"[{self.name}] Running tofu apply...")
-        cmd = ['tofu', 'apply', '-auto-approve']
-
-        # Pass node name for config-loader module (YAML config)
-        # or var-file for legacy tfvars
-        if self.var_file and self.var_file.exists():
-            cmd.extend(['-var-file', str(self.var_file)])
-        elif config.config_file.suffix == '.yaml':
-            # YAML config: pass node name and site-config path
-            from config import get_site_config_dir
-            cmd.extend(['-var', f'node={config.name}'])
-            cmd.extend(['-var', f'site_config_path={get_site_config_dir()}'])
-        elif config.config_file.exists():
-            cmd.extend(['-var-file', str(config.config_file)])
-
-        rc, out, err = run_command(cmd, cwd=tofu_dir, timeout=self.timeout_apply)
+        # Run tofu apply with explicit state file
+        logger.info(f"[{self.name}] Running tofu apply (state: {state_file})...")
+        cmd = ['tofu', 'apply', '-auto-approve', f'-state={state_file}', f'-var-file={tfvars_path}']
+        rc, out, err = run_command(cmd, cwd=tofu_dir, timeout=self.timeout_apply, env=env)
         if rc != 0:
             return ActionResult(
                 success=False,
@@ -67,26 +83,57 @@ class TofuApplyAction:
                 duration=time.time() - start
             )
 
+        # Extract VM IDs from resolved config for downstream actions
+        context_updates = {}
+        provisioned_vms = []
+        for vm in resolved.get('vms', []):
+            vm_name = vm.get('name')
+            vmid = vm.get('vmid')
+            if vm_name and vmid:
+                # Add as {name}_vm_id (e.g., test_vm_id, inner_vm_id)
+                context_updates[f'{vm_name}_vm_id'] = vmid
+                provisioned_vms.append({'name': vm_name, 'vmid': vmid})
+
+        # Add list of all provisioned VMs for multi-VM scenarios
+        context_updates['provisioned_vms'] = provisioned_vms
+
         return ActionResult(
             success=True,
-            message=f"Tofu apply completed for {self.env_path}",
-            duration=time.time() - start
+            message=f"Tofu apply completed for {env_name} on {config.name}",
+            duration=time.time() - start,
+            context_updates=context_updates
         )
 
 
 @dataclass
 class TofuDestroyAction:
-    """Run tofu destroy on an environment."""
+    """Run tofu destroy using ConfigResolver + envs/generic."""
     name: str
-    env_path: str
-    var_file: Optional[Path] = None
+    env_name: str
     timeout: int = 300
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
-        """Execute tofu destroy."""
+        """Execute tofu destroy with resolved config."""
         start = time.time()
 
-        tofu_dir = get_sibling_dir('tofu') / self.env_path
+        # Use context env_name if provided (CLI override), otherwise use action default
+        env_name = context.get('env_name', self.env_name)
+
+        # Resolve config to tfvars
+        try:
+            resolver = ConfigResolver()
+            resolved = resolver.resolve_env(env=env_name, node=config.name)
+            tfvars_path = Path(f'/tmp/{env_name}-{config.name}.tfvars.json')
+            resolver.write_tfvars(resolved, str(tfvars_path))
+        except Exception as e:
+            return ActionResult(
+                success=False,
+                message=f"ConfigResolver failed: {e}",
+                duration=time.time() - start
+            )
+
+        # Always use generic env
+        tofu_dir = get_sibling_dir('tofu') / 'envs' / 'generic'
         if not tofu_dir.exists():
             return ActionResult(
                 success=False,
@@ -94,22 +141,22 @@ class TofuDestroyAction:
                 duration=time.time() - start
             )
 
-        logger.info(f"[{self.name}] Running tofu destroy...")
-        cmd = ['tofu', 'destroy', '-auto-approve']
+        # State isolation: use same state directory layout as apply
+        # TF_DATA_DIR points to data/ subdirectory (see TofuApplyAction comment)
+        state_dir = tofu_dir / '.states' / f'{env_name}-{config.name}'
+        data_dir = state_dir / 'data'
+        state_file = state_dir / 'terraform.tfstate'
+        if not state_file.exists():
+            return ActionResult(
+                success=False,
+                message=f"No state found for {env_name}-{config.name} at {state_file}",
+                duration=time.time() - start
+            )
+        env = {**os.environ, 'TF_DATA_DIR': str(data_dir)}
 
-        # Pass node name for config-loader module (YAML config)
-        # or var-file for legacy tfvars
-        if self.var_file and self.var_file.exists():
-            cmd.extend(['-var-file', str(self.var_file)])
-        elif config.config_file.suffix == '.yaml':
-            # YAML config: pass node name and site-config path
-            from config import get_site_config_dir
-            cmd.extend(['-var', f'node={config.name}'])
-            cmd.extend(['-var', f'site_config_path={get_site_config_dir()}'])
-        elif config.config_file.exists():
-            cmd.extend(['-var-file', str(config.config_file)])
-
-        rc, out, err = run_command(cmd, cwd=tofu_dir, timeout=self.timeout)
+        logger.info(f"[{self.name}] Running tofu destroy (state: {state_file})...")
+        cmd = ['tofu', 'destroy', '-auto-approve', f'-state={state_file}', f'-var-file={tfvars_path}']
+        rc, out, err = run_command(cmd, cwd=tofu_dir, timeout=self.timeout, env=env)
         if rc != 0:
             return ActionResult(
                 success=False,
@@ -119,22 +166,23 @@ class TofuDestroyAction:
 
         return ActionResult(
             success=True,
-            message=f"Tofu destroy completed for {self.env_path}",
+            message=f"Tofu destroy completed for {env_name} on {config.name}",
             duration=time.time() - start
         )
 
 
 @dataclass
 class TofuApplyRemoteAction:
-    """Run tofu init and apply on a remote host via SSH."""
+    """Run ConfigResolver + tofu apply on a remote host via SSH."""
     name: str
-    remote_path: str  # e.g., "/root/tofu/envs/test"
+    env_name: str  # e.g., "test"
+    node_name: str = 'nested-pve'  # Node name on remote site-config
     host_key: str = 'inner_ip'  # context key for target host
     timeout_init: int = 120
     timeout_apply: int = 300
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
-        """Execute tofu init + apply on remote host."""
+        """Execute ConfigResolver + tofu on remote host."""
         from common import run_ssh
         start = time.time()
 
@@ -146,28 +194,117 @@ class TofuApplyRemoteAction:
                 duration=time.time() - start
             )
 
-        # Run tofu init on remote
-        logger.info(f"[{self.name}] Running tofu init on {host}...")
-        rc, out, err = run_ssh(host, f'cd {self.remote_path} && tofu init', timeout=self.timeout_init)
+        # Resolve config locally to extract VM IDs for context updates
+        # (remote has the same site-config, so VM IDs will match)
+        try:
+            resolver = ConfigResolver()
+            resolved = resolver.resolve_env(env=self.env_name, node=self.node_name)
+        except Exception as e:
+            logger.warning(f"[{self.name}] Could not resolve config locally: {e}")
+            resolved = {}
+
+        # Run ConfigResolver + tofu on remote host
+        # The remote host has iac-driver, site-config, and tofu at /opt/homestak/
+        # IMPORTANT: TF_DATA_DIR must NOT contain terraform.tfstate, otherwise
+        # OpenTofu's legacy code path reads it and rejects version 4 states.
+        state_dir = f'/opt/homestak/tofu/envs/generic/.states/{self.env_name}-{self.node_name}'
+        data_dir = f'{state_dir}/data'
+        state_file = f'{state_dir}/terraform.tfstate'
+        remote_script = f'''
+cd /opt/homestak/iac-driver/src
+python3 -c "
+from config_resolver import ConfigResolver
+r = ConfigResolver('/opt/homestak/site-config')
+config = r.resolve_env('{self.env_name}', '{self.node_name}')
+r.write_tfvars(config, '/tmp/{self.env_name}.tfvars.json')
+print('Generated tfvars for {self.env_name}')
+"
+
+cd /opt/homestak/tofu/envs/generic
+export TF_DATA_DIR="{data_dir}"
+mkdir -p "$TF_DATA_DIR"
+mkdir -p "{state_dir}"
+tofu init
+tofu apply -auto-approve -state={state_file} -var-file=/tmp/{self.env_name}.tfvars.json
+'''
+
+        logger.info(f"[{self.name}] Running ConfigResolver + tofu on {host}...")
+        rc, out, err = run_ssh(host, remote_script, timeout=self.timeout_init + self.timeout_apply)
         if rc != 0:
             return ActionResult(
                 success=False,
-                message=f"tofu init failed on {host}: {err}",
+                message=f"Remote tofu failed on {host}: {err}",
                 duration=time.time() - start
             )
 
-        # Run tofu apply on remote
-        logger.info(f"[{self.name}] Running tofu apply on {host}...")
-        rc, out, err = run_ssh(host, f'cd {self.remote_path} && tofu apply -auto-approve', timeout=self.timeout_apply)
+        # Extract VM IDs from locally resolved config for downstream actions
+        context_updates = {}
+        for vm in resolved.get('vms', []):
+            vm_name = vm.get('name')
+            vmid = vm.get('vmid')
+            if vm_name and vmid:
+                context_updates[f'{vm_name}_vm_id'] = vmid
+                logger.debug(f"[{self.name}] Added {vm_name}_vm_id={vmid} to context")
+
+        return ActionResult(
+            success=True,
+            message=f"Tofu apply completed on {host} for {self.env_name}",
+            duration=time.time() - start,
+            context_updates=context_updates
+        )
+
+
+@dataclass
+class TofuDestroyRemoteAction:
+    """Run ConfigResolver + tofu destroy on a remote host via SSH."""
+    name: str
+    env_name: str
+    node_name: str = 'nested-pve'
+    host_key: str = 'inner_ip'
+    timeout: int = 300
+
+    def run(self, config: HostConfig, context: dict) -> ActionResult:
+        """Execute ConfigResolver + tofu destroy on remote host."""
+        from common import run_ssh
+        start = time.time()
+
+        host = context.get(self.host_key)
+        if not host:
+            return ActionResult(
+                success=False,
+                message=f"No {self.host_key} in context",
+                duration=time.time() - start
+            )
+
+        # Same directory layout as TofuApplyRemoteAction
+        state_dir = f'/opt/homestak/tofu/envs/generic/.states/{self.env_name}-{self.node_name}'
+        data_dir = f'{state_dir}/data'
+        state_file = f'{state_dir}/terraform.tfstate'
+        remote_script = f'''
+cd /opt/homestak/iac-driver/src
+python3 -c "
+from config_resolver import ConfigResolver
+r = ConfigResolver('/opt/homestak/site-config')
+config = r.resolve_env('{self.env_name}', '{self.node_name}')
+r.write_tfvars(config, '/tmp/{self.env_name}.tfvars.json')
+"
+
+cd /opt/homestak/tofu/envs/generic
+export TF_DATA_DIR="{data_dir}"
+tofu destroy -auto-approve -state={state_file} -var-file=/tmp/{self.env_name}.tfvars.json
+'''
+
+        logger.info(f"[{self.name}] Running tofu destroy on {host}...")
+        rc, out, err = run_ssh(host, remote_script, timeout=self.timeout)
         if rc != 0:
             return ActionResult(
                 success=False,
-                message=f"tofu apply failed on {host}: {err}",
+                message=f"Remote tofu destroy failed on {host}: {err}",
                 duration=time.time() - start
             )
 
         return ActionResult(
             success=True,
-            message=f"Tofu apply completed on {host}",
+            message=f"Tofu destroy completed on {host} for {self.env_name}",
             duration=time.time() - start
         )

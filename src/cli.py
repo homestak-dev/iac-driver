@@ -6,7 +6,7 @@ import logging
 import sys
 from pathlib import Path
 
-from config import list_hosts, load_host_config, get_base_dir
+from config import list_hosts, list_envs, load_host_config, get_base_dir
 from scenarios import Orchestrator, get_scenario, list_scenarios
 
 # Configure logging
@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 def main():
     available_hosts = list_hosts()
+    available_envs = list_envs()
     available_scenarios = list_scenarios()
 
     parser = argparse.ArgumentParser(
@@ -35,6 +36,11 @@ def main():
         default='pve',
         choices=available_hosts,
         help=f'Target PVE host (default: pve)'
+    )
+    parser.add_argument(
+        '--env', '-E',
+        choices=available_envs,
+        help=f'Environment to deploy (overrides scenario default)'
     )
     parser.add_argument(
         '--report-dir', '-r',
@@ -120,6 +126,10 @@ def main():
     # Pre-populate context if inner-ip provided
     if args.inner_ip:
         orchestrator.context['inner_ip'] = args.inner_ip
+
+    # Pre-populate context with env override
+    if args.env:
+        orchestrator.context['env_name'] = args.env
 
     # Pre-populate context for pve-configure scenario
     if args.local:

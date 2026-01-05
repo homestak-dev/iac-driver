@@ -7,17 +7,19 @@ from actions import (
     TofuApplyAction,
     TofuApplyRemoteAction,
     TofuDestroyAction,
+    TofuDestroyRemoteAction,
     AnsiblePlaybookAction,
     StartVMAction,
     WaitForGuestAgentAction,
     StartVMRemoteAction,
     WaitForGuestAgentRemoteAction,
     DownloadGitHubReleaseAction,
+    SyncReposToVMAction,
     VerifySSHChainAction,
 )
 from config import HostConfig, get_sibling_dir
 from scenarios import register_scenario
-from scenarios.cleanup_nested_pve import StopVMAction, DestroyRemoteVMAction
+from scenarios.cleanup_nested_pve import StopVMAction
 
 
 @register_scenario
@@ -33,20 +35,20 @@ class NestedPVEConstructor:
             # Phase 1: Provision inner PVE VM
             ('provision', TofuApplyAction(
                 name='provision-inner-pve',
-                env_path='envs/pve-deb',
+                env_name='nested-pve',
             ), 'Provision inner PVE VM'),
 
             # Phase 2: Start VM (tofu creates it stopped)
             ('start_vm', StartVMAction(
                 name='start-inner-pve',
-                vm_id_attr='inner_vm_id',
+                vm_id_attr='nested-pve_vm_id',
                 pve_host_attr='ssh_host',
             ), 'Start inner PVE VM'),
 
             # Phase 3: Wait for guest agent and get IP
             ('wait_ip', WaitForGuestAgentAction(
                 name='wait-for-inner-ip',
-                vm_id_attr='inner_vm_id',
+                vm_id_attr='nested-pve_vm_id',
                 pve_host_attr='ssh_host',
                 ip_context_key='inner_ip',
                 timeout=300,
@@ -75,6 +77,7 @@ class NestedPVEConstructor:
                     'packer_src_dir': str(get_sibling_dir('packer')),
                     'tofu_src_dir': str(get_sibling_dir('tofu')),
                     'site_config_src_dir': str(get_sibling_dir('site-config')),
+                    'iac_driver_src_dir': str(get_sibling_dir('iac-driver')),
                 },
                 host_key='inner_ip',
                 wait_for_ssh_before=True,
@@ -94,7 +97,8 @@ class NestedPVEConstructor:
             # Phase 7: Provision test VM on inner PVE
             ('test_vm_apply', TofuApplyRemoteAction(
                 name='provision-test-vm',
-                remote_path='/opt/homestak/tofu/envs/test',
+                env_name='test',
+                node_name='nested-pve',
                 host_key='inner_ip',
                 timeout_init=120,
                 timeout_apply=300,
@@ -116,7 +120,15 @@ class NestedPVEConstructor:
                 timeout=300,
             ), 'Wait for test VM IP'),
 
-            # Phase 10: Verify SSH chain
+            # Phase 10: Sync repos to test VM
+            ('sync_repos', SyncReposToVMAction(
+                name='sync-repos-to-test-vm',
+                target_host_key='test_ip',
+                intermediate_host_key='inner_ip',
+                timeout=300,
+            ), 'Sync /opt/homestak to test VM'),
+
+            # Phase 11: Verify SSH chain
             ('verify', VerifySSHChainAction(
                 name='verify-ssh-chain',
                 target_host_key='test_ip',
@@ -139,18 +151,18 @@ class NestedPVERoundtrip:
             # === CONSTRUCT ===
             ('provision', TofuApplyAction(
                 name='provision-inner-pve',
-                env_path='envs/pve-deb',
+                env_name='nested-pve',
             ), 'Provision inner PVE VM'),
 
             ('start_vm', StartVMAction(
                 name='start-inner-pve',
-                vm_id_attr='inner_vm_id',
+                vm_id_attr='nested-pve_vm_id',
                 pve_host_attr='ssh_host',
             ), 'Start inner PVE VM'),
 
             ('wait_ip', WaitForGuestAgentAction(
                 name='wait-for-inner-ip',
-                vm_id_attr='inner_vm_id',
+                vm_id_attr='nested-pve_vm_id',
                 pve_host_attr='ssh_host',
                 ip_context_key='inner_ip',
                 timeout=300,
@@ -177,6 +189,7 @@ class NestedPVERoundtrip:
                     'packer_src_dir': str(get_sibling_dir('packer')),
                     'tofu_src_dir': str(get_sibling_dir('tofu')),
                     'site_config_src_dir': str(get_sibling_dir('site-config')),
+                    'iac_driver_src_dir': str(get_sibling_dir('iac-driver')),
                 },
                 host_key='inner_ip',
                 wait_for_ssh_before=True,
@@ -194,7 +207,8 @@ class NestedPVERoundtrip:
 
             ('test_vm_apply', TofuApplyRemoteAction(
                 name='provision-test-vm',
-                remote_path='/opt/homestak/tofu/envs/test',
+                env_name='test',
+                node_name='nested-pve',
                 host_key='inner_ip',
                 timeout_init=120,
                 timeout_apply=300,
@@ -214,6 +228,13 @@ class NestedPVERoundtrip:
                 timeout=300,
             ), 'Wait for test VM IP'),
 
+            ('sync_repos', SyncReposToVMAction(
+                name='sync-repos-to-test-vm',
+                target_host_key='test_ip',
+                intermediate_host_key='inner_ip',
+                timeout=300,
+            ), 'Sync /opt/homestak to test VM'),
+
             # === VERIFY ===
             ('verify', VerifySSHChainAction(
                 name='verify-ssh-chain',
@@ -223,20 +244,21 @@ class NestedPVERoundtrip:
             ), 'Verify SSH chain'),
 
             # === DESTRUCT ===
-            ('cleanup_remote', DestroyRemoteVMAction(
+            ('cleanup_remote', TofuDestroyRemoteAction(
                 name='cleanup-remote-vm',
-                vm_id_attr='test_vm_id',
-                inner_ip_key='inner_ip',
+                env_name='test',
+                node_name='nested-pve',
+                host_key='inner_ip',
             ), 'Cleanup test VM'),
 
             ('stop_inner', StopVMAction(
                 name='stop-inner-pve',
-                vm_id_attr='inner_vm_id',
+                vm_id_attr='nested-pve_vm_id',
                 pve_host_attr='ssh_host',
             ), 'Stop inner PVE VM'),
 
             ('destroy_inner', TofuDestroyAction(
                 name='destroy-inner-pve',
-                env_path='envs/pve-deb',
+                env_name='nested-pve',
             ), 'Destroy inner PVE VM'),
         ]

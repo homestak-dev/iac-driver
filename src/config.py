@@ -39,8 +39,8 @@ class HostConfig:
     api_endpoint: str = ''
     node_name: str = ''
     ssh_host: str = ''
-    inner_vm_id: int = 99913
-    test_vm_id: int = 99901
+    inner_vm_id: int = 99800  # Match site-config/envs/nested-pve.yaml vmid_base
+    test_vm_id: int = 99900   # Match site-config/envs/test.yaml vmid_base
     ssh_user: str = 'root'
     ssh_key: Path = field(default_factory=lambda: Path.home() / '.ssh' / 'id_rsa')
     datastore: str = 'local-zfs'
@@ -195,6 +195,20 @@ def get_site_config_dir() -> Path:
         "site-config not found. "
         "Set HOMESTAK_SITE_CONFIG or clone site-config as sibling directory."
     )
+
+
+def list_envs() -> list[str]:
+    """List available environments from site-config/envs/*.yaml."""
+    try:
+        site_config = get_site_config_dir()
+    except ConfigError:
+        return []
+
+    envs_dir = site_config / 'envs'
+    if envs_dir.exists():
+        return sorted([f.stem for f in envs_dir.glob('*.yaml') if f.is_file()])
+
+    return []
 
 
 def list_hosts() -> list[str]:

@@ -22,8 +22,9 @@ class StartVMAction:
         """Start the VM."""
         start = time.time()
 
-        vm_id = getattr(config, self.vm_id_attr, None)
-        pve_host = getattr(config, self.pve_host_attr, None)
+        # Check context first (from TofuApplyAction), then config
+        vm_id = context.get(self.vm_id_attr) or getattr(config, self.vm_id_attr, None)
+        pve_host = context.get(self.pve_host_attr) or getattr(config, self.pve_host_attr, None)
         ssh_user = config.ssh_user
 
         if not vm_id or not pve_host:
@@ -61,8 +62,9 @@ class WaitForGuestAgentAction:
         """Wait for guest agent and extract IP."""
         start = time.time()
 
-        vm_id = getattr(config, self.vm_id_attr, None)
-        pve_host = getattr(config, self.pve_host_attr, None)
+        # Check context first (from TofuApplyAction), then config
+        vm_id = context.get(self.vm_id_attr) or getattr(config, self.vm_id_attr, None)
+        pve_host = context.get(self.pve_host_attr) or getattr(config, self.pve_host_attr, None)
         ssh_user = config.ssh_user
 
         if not vm_id or not pve_host:
@@ -91,6 +93,118 @@ class WaitForGuestAgentAction:
 
 
 @dataclass
+class StartProvisionedVMsAction:
+    """Start all VMs from provisioned_vms context (for multi-VM environments)."""
+    name: str
+    pve_host_attr: str = 'ssh_host'
+
+    def run(self, config: HostConfig, context: dict) -> ActionResult:
+        """Start all provisioned VMs."""
+        start = time.time()
+
+        provisioned_vms = context.get('provisioned_vms', [])
+        if not provisioned_vms:
+            return ActionResult(
+                success=False,
+                message="No provisioned_vms in context",
+                duration=time.time() - start
+            )
+
+        pve_host = context.get(self.pve_host_attr) or getattr(config, self.pve_host_attr, None)
+        ssh_user = config.ssh_user
+
+        if not pve_host:
+            return ActionResult(
+                success=False,
+                message=f"Missing config: {self.pve_host_attr}",
+                duration=time.time() - start
+            )
+
+        started = []
+        for vm in provisioned_vms:
+            vm_name = vm.get('name')
+            vm_id = vm.get('vmid')
+            logger.info(f"[{self.name}] Starting VM {vm_id} ({vm_name}) on {pve_host}...")
+            if start_vm(vm_id, pve_host, user=ssh_user):
+                started.append(vm_name)
+            else:
+                return ActionResult(
+                    success=False,
+                    message=f"Failed to start VM {vm_id} ({vm_name})",
+                    duration=time.time() - start
+                )
+
+        return ActionResult(
+            success=True,
+            message=f"Started {len(started)} VMs: {', '.join(started)}",
+            duration=time.time() - start
+        )
+
+
+@dataclass
+class WaitForProvisionedVMsAction:
+    """Wait for guest agent on all provisioned VMs and collect their IPs."""
+    name: str
+    pve_host_attr: str = 'ssh_host'
+    timeout: int = 300
+
+    def run(self, config: HostConfig, context: dict) -> ActionResult:
+        """Wait for guest agent on all provisioned VMs."""
+        start = time.time()
+
+        provisioned_vms = context.get('provisioned_vms', [])
+        if not provisioned_vms:
+            return ActionResult(
+                success=False,
+                message="No provisioned_vms in context",
+                duration=time.time() - start
+            )
+
+        pve_host = context.get(self.pve_host_attr) or getattr(config, self.pve_host_attr, None)
+        ssh_user = config.ssh_user
+
+        if not pve_host:
+            return ActionResult(
+                success=False,
+                message=f"Missing config: {self.pve_host_attr}",
+                duration=time.time() - start
+            )
+
+        context_updates = {}
+        vm_ips = {}
+
+        for vm in provisioned_vms:
+            vm_name = vm.get('name')
+            vm_id = vm.get('vmid')
+            logger.info(f"[{self.name}] Waiting for guest agent on VM {vm_id} ({vm_name})...")
+
+            ip = wait_for_guest_agent(vm_id, pve_host, timeout=self.timeout, user=ssh_user)
+            if not ip:
+                return ActionResult(
+                    success=False,
+                    message=f"Failed to get IP for VM {vm_id} ({vm_name})",
+                    duration=time.time() - start
+                )
+
+            # Store IP as {name}_ip (e.g., deb12-test_ip)
+            context_updates[f'{vm_name}_ip'] = ip
+            vm_ips[vm_name] = ip
+            logger.info(f"[{self.name}] VM {vm_name} has IP: {ip}")
+
+        # Also store first VM's IP as 'vm_ip' for backward compatibility
+        if vm_ips:
+            first_vm = provisioned_vms[0]['name']
+            context_updates['vm_ip'] = vm_ips[first_vm]
+
+        return ActionResult(
+            success=True,
+            message=f"Got IPs for {len(vm_ips)} VMs",
+            duration=time.time() - start,
+            context_updates=context_updates
+        )
+
+
+@dataclass
 class StartVMRemoteAction:
     """Start a VM on a remote PVE host via SSH."""
     name: str
@@ -101,7 +215,8 @@ class StartVMRemoteAction:
         """Start VM on remote PVE."""
         start = time.time()
 
-        vm_id = getattr(config, self.vm_id_attr, None)
+        # Check context first (from TofuApplyAction), then config
+        vm_id = context.get(self.vm_id_attr) or getattr(config, self.vm_id_attr, None)
         pve_host = context.get(self.pve_host_key)
 
         if not vm_id:
@@ -149,7 +264,8 @@ class WaitForGuestAgentRemoteAction:
         """Wait for guest agent on remote PVE."""
         start = time.time()
 
-        vm_id = getattr(config, self.vm_id_attr, None)
+        # Check context first (from TofuApplyAction), then config
+        vm_id = context.get(self.vm_id_attr) or getattr(config, self.vm_id_attr, None)
         pve_host = context.get(self.pve_host_key)
 
         if not vm_id:

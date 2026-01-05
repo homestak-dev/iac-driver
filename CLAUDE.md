@@ -55,9 +55,10 @@ All repos are siblings in a common parent directory:
 │   ├── src/              # Python package
 │   │   ├── cli.py        # CLI implementation
 │   │   ├── common.py     # ActionResult + shared utilities
-│   │   ├── config.py     # Host configuration (auto-discovery from site-config)
+│   │   ├── config.py          # Host configuration (auto-discovery from site-config)
+│   │   ├── config_resolver.py # ConfigResolver - resolves site-config for tofu
 │   │   ├── actions/      # Reusable primitive operations
-│   │   │   ├── tofu.py   # TofuApplyAction, TofuDestroyAction
+│   │   │   ├── tofu.py   # TofuApply/Destroy[Remote]Action
 │   │   │   ├── ansible.py# AnsiblePlaybookAction
 │   │   │   ├── ssh.py    # SSHCommandAction, WaitForSSHAction
 │   │   │   ├── proxmox.py# StartVMAction, WaitForGuestAgentAction
@@ -82,6 +83,102 @@ All repos are siblings in a common parent directory:
 ```
 
 Scripts use relative paths (`../ansible`, `../tofu`, `../packer`) so the parent directory can be anywhere.
+
+## ConfigResolver
+
+The `ConfigResolver` class resolves site-config YAML files into flat configurations for tofu. All template and preset inheritance is resolved in Python, so tofu receives fully-computed values.
+
+### Usage
+
+```python
+from src.config_resolver import ConfigResolver
+
+# Auto-discover site-config (env var, sibling, /opt/homestak)
+resolver = ConfigResolver()
+
+# Or specify path explicitly
+resolver = ConfigResolver('/path/to/site-config')
+
+# Resolve environment for a target node
+config = resolver.resolve_env(env='dev', node='pve')
+
+# Write tfvars.json for tofu
+resolver.write_tfvars(config, '/tmp/tfvars.json')
+```
+
+### Resolution Order
+
+1. `vms/presets/{preset}.yaml` - Size presets (if template uses `preset:`)
+2. `vms/{template}.yaml` - Template definition
+3. `envs/{env}.yaml` - Instance overrides (name, ip, vmid)
+
+### Output Structure
+
+```python
+{
+    "node": "pve",
+    "api_endpoint": "https://localhost:8006",
+    "api_token": "root@pam!tofu=...",
+    "ssh_user": "root",
+    "datastore": "local-zfs",
+    "root_password": "$6$...",
+    "ssh_keys": ["ssh-rsa ...", ...],
+    "vms": [
+        {
+            "name": "test",
+            "vmid": 99900,
+            "image": "debian-12",
+            "cores": 1,
+            "memory": 2048,
+            "disk": 20,
+            "bridge": "vmbr0"
+        }
+    ]
+}
+```
+
+### vmid Allocation
+
+- If `vmid_base` is defined in env: `vmid = vmid_base + index`
+- If `vmid_base` is not defined: `vmid = null` (PVE auto-assigns)
+- Per-VM `vmid` override always takes precedence
+
+### Tofu Actions
+
+Actions in `src/actions/tofu.py` use ConfigResolver to generate tfvars and run tofu:
+
+| Action | Description |
+|--------|-------------|
+| `TofuApplyAction` | Run tofu apply with ConfigResolver on local host |
+| `TofuDestroyAction` | Run tofu destroy with ConfigResolver on local host |
+| `TofuApplyRemoteAction` | Run ConfigResolver + tofu apply on remote host via SSH |
+| `TofuDestroyRemoteAction` | Run ConfigResolver + tofu destroy on remote host via SSH |
+
+**State Isolation:** Each env+node gets isolated state via explicit `-state` flag:
+```
+tofu/envs/generic/.states/{env}-{node}/terraform.tfstate
+```
+
+**Important:** The `-state` flag is required because `TF_DATA_DIR` only affects plugin/module caching, not state file location. Without explicit state isolation, running scenarios on different hosts can cause state conflicts.
+
+**Remote Actions:** Run ConfigResolver on the target host (recursive pattern):
+```python
+TofuApplyRemoteAction(
+    name='provision-test-vm',
+    env_name='test',           # Environment to deploy
+    node_name='nested-pve',    # Node in remote site-config
+    host_key='inner_ip',       # Context key for SSH target
+)
+```
+
+**Context Passing:** TofuApplyAction extracts VM IDs from resolved config and adds them to context:
+```python
+# After tofu apply, context contains:
+context['test_vm_id'] = 99900  # From vm name 'test' with vmid 99900
+context['inner_vm_id'] = 99913  # From vm name 'inner' with vmid 99913
+```
+
+Downstream actions (StartVMAction, WaitForGuestAgentAction) check context first, then fall back to config attributes.
 
 ## Common Commands
 
@@ -193,6 +290,18 @@ make decrypt  # Decrypt secrets (requires age key)
 ## Known Issues
 
 **Debian 12 Cloud-Init First-Boot Kernel Panic**: Add `serial_device {}` to VM resource config. Already handled in proxmox-vm module.
+
+**PVE SSL Certificate Generation with IPv6**: IPv6 link-local addresses with zone IDs (e.g., `fe80::...%vmbr0`) break PVE SSL certificate generation. Fix: temporarily disable IPv6, run `pvecm updatecerts --force`, re-enable IPv6. Handled in ansible `nested-pve` role.
+
+**Snippets Content Type Required**: Cloud-init user-data files require `snippets` content type on local datastore. Run `pvesm set local -content images,rootdir,vztmpl,backup,iso,snippets`. Handled in ansible `nested-pve` role.
+
+**Claude Code Autonomy**: For fully autonomous E2E test runs, add these to Claude Code allowed tools:
+```
+Bash(ansible-playbook:*), Bash(ansible:*), Bash(rsync:*)
+```
+Or run with `--dangerously-skip-permissions` flag.
+
+**OpenTofu State Version 4 Bug**: When `TF_DATA_DIR` contains a `terraform.tfstate` file, OpenTofu's legacy code path reads it and rejects valid v4 states with "does not support state version 4". **Workaround**: Store state file outside `TF_DATA_DIR` - we use a `data/` subdirectory for `TF_DATA_DIR` while keeping state at the parent level. See [opentofu/opentofu#3643](https://github.com/opentofu/opentofu/issues/3643).
 
 ## E2E Nested PVE Testing
 
@@ -328,6 +437,7 @@ Depends on `pve-iac` role:
 - `copy-files.yml` - Sync homestak repos, create API token, configure test env
 
 Synced to inner PVE at `/opt/homestak/`:
+- `iac-driver/` - ConfigResolver for recursive deployment
 - `site-config/` - Configuration with test.yaml override (node: pve-deb)
 - `tofu/` - Modules and environments
 - `packer/` - Templates and scripts

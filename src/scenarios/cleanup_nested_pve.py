@@ -7,7 +7,7 @@ import time
 import logging
 from dataclasses import dataclass
 
-from actions import TofuDestroyAction
+from actions import TofuDestroyAction, TofuDestroyRemoteAction
 from common import ActionResult, run_ssh
 from config import HostConfig
 from scenarios import register_scenario
@@ -26,8 +26,9 @@ class StopVMAction:
         """Stop the VM if running."""
         start = time.time()
 
-        vm_id = getattr(config, self.vm_id_attr, None)
-        pve_host = getattr(config, self.pve_host_attr, None)
+        # Check context first (from TofuApplyAction), then config
+        vm_id = context.get(self.vm_id_attr) or getattr(config, self.vm_id_attr, None)
+        pve_host = context.get(self.pve_host_attr) or getattr(config, self.pve_host_attr, None)
 
         if not vm_id or not pve_host:
             return ActionResult(
@@ -135,22 +136,23 @@ class NestedPVEDestructor:
         """Return phases for cleanup."""
         return [
             # Phase 1: Cleanup test VM on inner PVE (if reachable)
-            ('cleanup_remote', DestroyRemoteVMAction(
+            ('cleanup_remote', TofuDestroyRemoteAction(
                 name='cleanup-remote-vm',
-                vm_id_attr='test_vm_id',
-                inner_ip_key='inner_ip',
+                env_name='test',
+                node_name='nested-pve',
+                host_key='inner_ip',
             ), 'Cleanup test VM on inner PVE'),
 
             # Phase 2: Stop inner PVE VM (if running)
             ('stop_inner', StopVMAction(
                 name='stop-inner-pve',
-                vm_id_attr='inner_vm_id',
+                vm_id_attr='nested-pve_vm_id',
                 pve_host_attr='ssh_host',
             ), 'Stop inner PVE VM'),
 
             # Phase 3: Destroy inner PVE via tofu
             ('destroy_inner', TofuDestroyAction(
                 name='destroy-inner-pve',
-                env_path='envs/pve-deb',
+                env_name='nested-pve',
             ), 'Destroy inner PVE VM'),
         ]

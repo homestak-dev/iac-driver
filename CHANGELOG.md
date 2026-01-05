@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Phase 5: ConfigResolver
+
+- Add `ConfigResolver` class for site-config YAML resolution
+- Resolves vms/presets, vms/templates, envs with inheritance
+- vmid auto-allocation: vmid_base + index (or null for PVE auto-assign)
+- Generates flat tfvars.json for tofu (replaces config-loader)
+- Integrate ConfigResolver into tofu actions:
+  - `TofuApplyAction` / `TofuDestroyAction` - local execution with ConfigResolver
+  - `TofuApplyRemoteAction` / `TofuDestroyRemoteAction` - recursive pattern via SSH
+- State isolation via explicit `-state` flag per env+node
+- Update scenarios to use `env_name` instead of `env_path`
+- Pass VM IDs from tofu actions to context for downstream actions
+- Update proxmox actions to check context first, then config (dynamic VMID support)
+- Add `env` parameter to `run_command()` for environment variable passthrough
+- Add `--env`/`-E` CLI flag to override scenario environment
+- E2E validated with nested-pve-roundtrip on father (~8.5 min)
+
+### Bug Fixes
+
+- **OpenTofu state version 4 workaround**: Separate `TF_DATA_DIR` (data/) from state file location to avoid legacy code path that rejects v4 states. See [opentofu/opentofu#3643](https://github.com/opentofu/opentofu/issues/3643)
+- **rsync fallback**: `SyncReposToVMAction` now uses tar pipe when rsync unavailable on target
+- **VM ID context passing**: `TofuApplyRemoteAction` resolves config locally to extract VM IDs for downstream actions
+
 ## v0.5.0-rc1 - 2026-01-04
 
 Consolidated pre-release with full YAML configuration support.
