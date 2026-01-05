@@ -1,6 +1,20 @@
 # Changelog
 
-## Unreleased
+## v0.4.0 - 2026-01-04
+
+### Features
+
+- YAML configuration support via site-config
+  - Node config from `site-config/nodes/*.yaml`
+  - Secrets from `site-config/secrets.yaml` (resolved by key reference)
+  - Configuration merge order: site.yaml → nodes/{node}.yaml → secrets.yaml
+- Pass `node` and `site_config_path` vars to tofu for config-loader module
+
+### Changes
+
+- Switch from tfvars to YAML configuration parsing
+
+## v0.3.0 - 2026-01-04
 
 ### Features
 
@@ -12,9 +26,8 @@
 ### Changes
 
 - **BREAKING**: Move secrets to [site-config](https://github.com/homestak-dev/site-config) repository
-- Host discovery now reads from `site-config/hosts/*.tfvars`
+- Host discovery now reads from `site-config/nodes/*.yaml`
 - Remove in-repo SOPS encryption (Makefile, .githooks, .sops.yaml)
-- Rename `pve.tfvars` to `mother.tfvars`, update endpoint to mother.core
 
 ## v0.1.0-rc1 - 2026-01-03
 
