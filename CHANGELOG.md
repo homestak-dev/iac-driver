@@ -13,6 +13,10 @@
   - `TofuApplyRemoteAction` / `TofuDestroyRemoteAction` - recursive pattern via SSH
 - State isolation via `TF_DATA_DIR` per env+node
 - Update scenarios to use `env_name` instead of `env_path`
+- Pass VM IDs from tofu actions to context for downstream actions
+- Update proxmox actions to check context first, then config (dynamic VMID support)
+- Add `env` parameter to `run_command()` for environment variable passthrough
+- E2E validated with simple-vm-roundtrip on mother (~34s)
 
 ## v0.5.0-rc1 - 2026-01-04
 

@@ -24,7 +24,8 @@ def run_command(
     cmd: list[str],
     cwd: Optional[Path] = None,
     timeout: int = 600,
-    capture: bool = True
+    capture: bool = True,
+    env: Optional[dict] = None
 ) -> tuple[int, str, str]:
     """Run a command and return (returncode, stdout, stderr)."""
     logger.debug(f"Running: {' '.join(cmd)}")
@@ -34,7 +35,8 @@ def run_command(
             cwd=cwd,
             capture_output=capture,
             text=True,
-            timeout=timeout
+            timeout=timeout,
+            env=env
         )
         return result.returncode, result.stdout, result.stderr
     except subprocess.TimeoutExpired:

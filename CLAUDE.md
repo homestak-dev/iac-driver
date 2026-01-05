@@ -169,6 +169,15 @@ TofuApplyRemoteAction(
 )
 ```
 
+**Context Passing:** TofuApplyAction extracts VM IDs from resolved config and adds them to context:
+```python
+# After tofu apply, context contains:
+context['test_vm_id'] = 99900  # From vm name 'test' with vmid 99900
+context['inner_vm_id'] = 99913  # From vm name 'inner' with vmid 99913
+```
+
+Downstream actions (StartVMAction, WaitForGuestAgentAction) check context first, then fall back to config attributes.
+
 ## Common Commands
 
 ### Ansible (from ansible/)

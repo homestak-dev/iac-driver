@@ -22,8 +22,9 @@ class StartVMAction:
         """Start the VM."""
         start = time.time()
 
-        vm_id = getattr(config, self.vm_id_attr, None)
-        pve_host = getattr(config, self.pve_host_attr, None)
+        # Check context first (from TofuApplyAction), then config
+        vm_id = context.get(self.vm_id_attr) or getattr(config, self.vm_id_attr, None)
+        pve_host = context.get(self.pve_host_attr) or getattr(config, self.pve_host_attr, None)
         ssh_user = config.ssh_user
 
         if not vm_id or not pve_host:
@@ -61,8 +62,9 @@ class WaitForGuestAgentAction:
         """Wait for guest agent and extract IP."""
         start = time.time()
 
-        vm_id = getattr(config, self.vm_id_attr, None)
-        pve_host = getattr(config, self.pve_host_attr, None)
+        # Check context first (from TofuApplyAction), then config
+        vm_id = context.get(self.vm_id_attr) or getattr(config, self.vm_id_attr, None)
+        pve_host = context.get(self.pve_host_attr) or getattr(config, self.pve_host_attr, None)
         ssh_user = config.ssh_user
 
         if not vm_id or not pve_host:
@@ -101,7 +103,8 @@ class StartVMRemoteAction:
         """Start VM on remote PVE."""
         start = time.time()
 
-        vm_id = getattr(config, self.vm_id_attr, None)
+        # Check context first (from TofuApplyAction), then config
+        vm_id = context.get(self.vm_id_attr) or getattr(config, self.vm_id_attr, None)
         pve_host = context.get(self.pve_host_key)
 
         if not vm_id:
@@ -149,7 +152,8 @@ class WaitForGuestAgentRemoteAction:
         """Wait for guest agent on remote PVE."""
         start = time.time()
 
-        vm_id = getattr(config, self.vm_id_attr, None)
+        # Check context first (from TofuApplyAction), then config
+        vm_id = context.get(self.vm_id_attr) or getattr(config, self.vm_id_attr, None)
         pve_host = context.get(self.pve_host_key)
 
         if not vm_id:

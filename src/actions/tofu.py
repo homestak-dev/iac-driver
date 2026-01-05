@@ -75,10 +75,20 @@ class TofuApplyAction:
                 duration=time.time() - start
             )
 
+        # Extract VM IDs from resolved config for downstream actions
+        context_updates = {}
+        for vm in resolved.get('vms', []):
+            vm_name = vm.get('name')
+            vmid = vm.get('vmid')
+            if vm_name and vmid:
+                # Add as {name}_vm_id (e.g., test_vm_id, inner_vm_id)
+                context_updates[f'{vm_name}_vm_id'] = vmid
+
         return ActionResult(
             success=True,
             message=f"Tofu apply completed for {self.env_name} on {config.name}",
-            duration=time.time() - start
+            duration=time.time() - start,
+            context_updates=context_updates
         )
 
 

@@ -19,7 +19,7 @@ try:
 except ImportError:
     yaml = None
 
-from .config import ConfigError, get_site_config_dir, _parse_yaml, _load_secrets
+from config import ConfigError, get_site_config_dir, _parse_yaml, _load_secrets
 
 
 class ConfigResolver:
