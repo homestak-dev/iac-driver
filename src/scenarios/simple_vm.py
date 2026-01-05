@@ -99,7 +99,7 @@ class SimpleVMConstructor:
 
             ('provision', TofuApplyAction(
                 name='provision-vm',
-                env_path='envs/test',
+                env_name='test',
             ), 'Provision test VM'),
 
             ('start', StartVMAction(
@@ -136,7 +136,7 @@ class SimpleVMDestructor:
         return [
             ('destroy', TofuDestroyAction(
                 name='destroy-vm',
-                env_path='envs/test',
+                env_name='test',
             ), 'Destroy test VM'),
         ]
 
@@ -157,7 +157,7 @@ class SimpleVMRoundtrip:
 
             ('provision', TofuApplyAction(
                 name='provision-vm',
-                env_path='envs/test',
+                env_name='test',
             ), 'Provision test VM'),
 
             ('start', StartVMAction(
@@ -182,6 +182,6 @@ class SimpleVMRoundtrip:
 
             ('destroy', TofuDestroyAction(
                 name='destroy-vm',
-                env_path='envs/test',
+                env_name='test',
             ), 'Destroy test VM'),
         ]
