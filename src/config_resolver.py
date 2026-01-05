@@ -96,12 +96,19 @@ class ConfigResolver:
             resolved = self._resolve_vm(vm_instance, default_vmid, defaults)
             vms.append(resolved)
 
+        # Resolve passwords and SSH keys from secrets
+        passwords = self.secrets.get("passwords", {})
+        ssh_keys_dict = self.secrets.get("ssh_keys", {})
+        ssh_keys_list = list(ssh_keys_dict.values())
+
         return {
             "node": node_config.get("node", node),
             "api_endpoint": node_config.get("api_endpoint", ""),
             "api_token": api_token,
             "ssh_user": defaults.get("ssh_user", "root"),
             "datastore": node_config.get("datastore", defaults.get("datastore", "local-zfs")),
+            "root_password": passwords.get("vm_root", ""),
+            "ssh_keys": ssh_keys_list,
             "vms": vms,
         }
 
