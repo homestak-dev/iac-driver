@@ -58,7 +58,7 @@ All repos are siblings in a common parent directory:
 │   │   ├── config.py          # Host configuration (auto-discovery from site-config)
 │   │   ├── config_resolver.py # ConfigResolver - resolves site-config for tofu
 │   │   ├── actions/      # Reusable primitive operations
-│   │   │   ├── tofu.py   # TofuApplyAction, TofuDestroyAction
+│   │   │   ├── tofu.py   # TofuApply/Destroy[Remote]Action
 │   │   │   ├── ansible.py# AnsiblePlaybookAction
 │   │   │   ├── ssh.py    # SSHCommandAction, WaitForSSHAction
 │   │   │   ├── proxmox.py# StartVMAction, WaitForGuestAgentAction
@@ -142,6 +142,32 @@ resolver.write_tfvars(config, '/tmp/tfvars.json')
 - If `vmid_base` is defined in env: `vmid = vmid_base + index`
 - If `vmid_base` is not defined: `vmid = null` (PVE auto-assigns)
 - Per-VM `vmid` override always takes precedence
+
+### Tofu Actions
+
+Actions in `src/actions/tofu.py` use ConfigResolver to generate tfvars and run tofu:
+
+| Action | Description |
+|--------|-------------|
+| `TofuApplyAction` | Run tofu apply with ConfigResolver on local host |
+| `TofuDestroyAction` | Run tofu destroy with ConfigResolver on local host |
+| `TofuApplyRemoteAction` | Run ConfigResolver + tofu apply on remote host via SSH |
+| `TofuDestroyRemoteAction` | Run ConfigResolver + tofu destroy on remote host via SSH |
+
+**State Isolation:** Each env+node gets isolated state via `TF_DATA_DIR`:
+```
+tofu/envs/generic/.states/{env}-{node}/
+```
+
+**Remote Actions:** Run ConfigResolver on the target host (recursive pattern):
+```python
+TofuApplyRemoteAction(
+    name='provision-test-vm',
+    env_name='test',           # Environment to deploy
+    node_name='nested-pve',    # Node in remote site-config
+    host_key='inner_ip',       # Context key for SSH target
+)
+```
 
 ## Common Commands
 
@@ -388,6 +414,7 @@ Depends on `pve-iac` role:
 - `copy-files.yml` - Sync homestak repos, create API token, configure test env
 
 Synced to inner PVE at `/opt/homestak/`:
+- `iac-driver/` - ConfigResolver for recursive deployment
 - `site-config/` - Configuration with test.yaml override (node: pve-deb)
 - `tofu/` - Modules and environments
 - `packer/` - Templates and scripts

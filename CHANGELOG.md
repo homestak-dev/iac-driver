@@ -8,6 +8,11 @@
 - Resolves vms/presets, vms/templates, envs with inheritance
 - vmid auto-allocation: vmid_base + index (or null for PVE auto-assign)
 - Generates flat tfvars.json for tofu (replaces config-loader)
+- Integrate ConfigResolver into tofu actions:
+  - `TofuApplyAction` / `TofuDestroyAction` - local execution with ConfigResolver
+  - `TofuApplyRemoteAction` / `TofuDestroyRemoteAction` - recursive pattern via SSH
+- State isolation via `TF_DATA_DIR` per env+node
+- Update scenarios to use `env_name` instead of `env_path`
 
 ## v0.5.0-rc1 - 2026-01-04
 
