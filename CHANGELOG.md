@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Phase 5: ConfigResolver
+
+- Add `ConfigResolver` class for site-config YAML resolution
+- Resolves vms/presets, vms/templates, envs with inheritance
+- vmid auto-allocation: vmid_base + index (or null for PVE auto-assign)
+- Generates flat tfvars.json for tofu (replaces config-loader)
+
 ## v0.5.0-rc1 - 2026-01-04
 
 Consolidated pre-release with full YAML configuration support.
