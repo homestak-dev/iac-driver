@@ -154,10 +154,12 @@ Actions in `src/actions/tofu.py` use ConfigResolver to generate tfvars and run t
 | `TofuApplyRemoteAction` | Run ConfigResolver + tofu apply on remote host via SSH |
 | `TofuDestroyRemoteAction` | Run ConfigResolver + tofu destroy on remote host via SSH |
 
-**State Isolation:** Each env+node gets isolated state via `TF_DATA_DIR`:
+**State Isolation:** Each env+node gets isolated state via explicit `-state` flag:
 ```
-tofu/envs/generic/.states/{env}-{node}/
+tofu/envs/generic/.states/{env}-{node}/terraform.tfstate
 ```
+
+**Important:** The `-state` flag is required because `TF_DATA_DIR` only affects plugin/module caching, not state file location. Without explicit state isolation, running scenarios on different hosts can cause state conflicts.
 
 **Remote Actions:** Run ConfigResolver on the target host (recursive pattern):
 ```python
@@ -288,6 +290,18 @@ make decrypt  # Decrypt secrets (requires age key)
 ## Known Issues
 
 **Debian 12 Cloud-Init First-Boot Kernel Panic**: Add `serial_device {}` to VM resource config. Already handled in proxmox-vm module.
+
+**PVE SSL Certificate Generation with IPv6**: IPv6 link-local addresses with zone IDs (e.g., `fe80::...%vmbr0`) break PVE SSL certificate generation. Fix: temporarily disable IPv6, run `pvecm updatecerts --force`, re-enable IPv6. Handled in ansible `nested-pve` role.
+
+**Snippets Content Type Required**: Cloud-init user-data files require `snippets` content type on local datastore. Run `pvesm set local -content images,rootdir,vztmpl,backup,iso,snippets`. Handled in ansible `nested-pve` role.
+
+**Claude Code Autonomy**: For fully autonomous E2E test runs, add these to Claude Code allowed tools:
+```
+Bash(ansible-playbook:*), Bash(ansible:*), Bash(rsync:*)
+```
+Or run with `--dangerously-skip-permissions` flag.
+
+**OpenTofu State Version 4 Bug**: When `TF_DATA_DIR` contains a `terraform.tfstate` file, OpenTofu's legacy code path reads it and rejects valid v4 states with "does not support state version 4". **Workaround**: Store state file outside `TF_DATA_DIR` - we use a `data/` subdirectory for `TF_DATA_DIR` while keeping state at the parent level. See [opentofu/opentofu#3643](https://github.com/opentofu/opentofu/issues/3643).
 
 ## E2E Nested PVE Testing
 

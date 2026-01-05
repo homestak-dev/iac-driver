@@ -85,12 +85,17 @@ class TofuApplyAction:
 
         # Extract VM IDs from resolved config for downstream actions
         context_updates = {}
+        provisioned_vms = []
         for vm in resolved.get('vms', []):
             vm_name = vm.get('name')
             vmid = vm.get('vmid')
             if vm_name and vmid:
                 # Add as {name}_vm_id (e.g., test_vm_id, inner_vm_id)
                 context_updates[f'{vm_name}_vm_id'] = vmid
+                provisioned_vms.append({'name': vm_name, 'vmid': vmid})
+
+        # Add list of all provisioned VMs for multi-VM scenarios
+        context_updates['provisioned_vms'] = provisioned_vms
 
         return ActionResult(
             success=True,
