@@ -1,5 +1,41 @@
 # Changelog
 
+## v0.8.0-rc1 - 2026-01-06
+
+### Features
+
+- Add `--context-file`/`-C` flag for scenario chaining (closes #38)
+  - Persist VM IDs and IPs between constructor/destructor runs
+  - Enables split workflows without `--inner-ip` workarounds
+- Add `--packer-release` flag for image version override (closes #39)
+  - Defaults to `latest` tag (maintained by packer release process)
+  - Override with specific version: `--packer-release v0.7.0-rc1`
+- Add CIDR validation for static IP configuration (closes #35)
+  - ConfigResolver validates IPs use CIDR notation (e.g., `10.0.12.100/24`)
+  - Catches misconfiguration before tofu/cloud-init errors
+
+### Changes
+
+- Remove default `--host` value (closes #36)
+  - CLI now requires explicit `--host` for scenarios that need it
+  - Prevents accidental operations on wrong host
+- Harmonize and reduce timeout defaults (closes #34)
+  - `TofuApplyAction.timeout_apply`: 600s → 300s
+  - `wait_for_ssh()`: 300s → 60s
+  - `WaitForSSHAction.timeout`: 120s → 60s
+  - SSH waits now consistent across actions
+
+### Bug Fixes
+
+- Fix context loss between constructor and destructor runs (closes #37)
+  - Resolved by `--context-file` feature
+
+### Documentation
+
+- Add Timeout Configuration section to CLAUDE.md
+- Document `--context-file` usage patterns
+- Document packer release resolution order
+
 ## v0.7.0-rc1 - 2026-01-06
 
 ### Features
