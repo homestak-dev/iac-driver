@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.7.0-rc1 - 2026-01-06
+
+### Features
+
+- Pass `gateway` through ConfigResolver for static IP configurations (closes #30)
+
+### Changes
+
+- Move state storage from `tofu/.states/` to `iac-driver/.states/` (closes #29)
+  - State now lives alongside the orchestrator that manages it
+  - Each env+node gets isolated state: `.states/{env}-{node}/terraform.tfstate`
+- Update docs: replace deprecated `pve` with real node names (`father`, `mother`)
+
+### Documentation
+
+- Fix state storage path in CLAUDE.md
+
 ## v0.6.0-rc1 - 2026-01-06
 
 ### Phase 5: ConfigResolver
