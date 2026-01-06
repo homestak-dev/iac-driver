@@ -35,6 +35,18 @@
 - **rsync fallback**: `SyncReposToVMAction` now uses tar pipe when rsync unavailable on target
 - **VM ID context passing**: `TofuApplyRemoteAction` resolves config locally to extract VM IDs for downstream actions
 
+### Packer Build Scenarios (closes #25)
+
+- Add `packer-build` scenarios for remote image builds
+  - `packer-build`: Build images locally or remotely
+  - `packer-build-fetch`: Build on remote, fetch to local (for releases)
+  - `packer-build-publish`: Build and publish to PVE storage
+  - `packer-sync`: Sync local packer repo to remote
+  - `packer-sync-build-fetch`: Dev workflow (sync, build, fetch)
+- Add `--templates` CLI flag for building specific templates
+- Add `--local`/`--remote` support for packer scenarios
+- Prerequisites: Remote host must be bootstrapped with `homestak install packer`
+
 ## v0.5.0-rc1 - 2026-01-04
 
 Consolidated pre-release with full YAML configuration support.
