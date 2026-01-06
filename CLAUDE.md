@@ -222,6 +222,38 @@ ansible-playbook -i inventory/remote-dev.yml playbooks/pve-install.yml \
 ./publish.sh     # Copy images to /var/lib/vz/template/iso/
 ```
 
+### Packer Build Scenarios (via iac-driver)
+
+Build images on a remote host with proper QEMU/KVM support:
+
+```bash
+# Prerequisites: remote host must be bootstrapped
+ssh root@<host> "curl -fsSL .../install.sh | bash && homestak install packer"
+
+# Build and fetch images (for release)
+./run.sh --scenario packer-build-fetch --remote <host-ip>
+
+# Build and publish to PVE storage (for local use)
+./run.sh --scenario packer-build-publish --remote <host-ip>
+
+# Build specific template only
+./run.sh --scenario packer-build-fetch --remote <host-ip> --templates debian-12-custom
+
+# Dev workflow: sync local changes, build, fetch
+./run.sh --scenario packer-sync-build-fetch --remote <host-ip>
+```
+
+**Available packer scenarios:**
+| Scenario | Description |
+|----------|-------------|
+| `packer-build` | Build images (local or remote) |
+| `packer-build-publish` | Build and publish to PVE storage |
+| `packer-build-fetch` | Build remotely, fetch to local |
+| `packer-sync` | Sync local packer to remote |
+| `packer-sync-build-fetch` | Sync, build, fetch (dev workflow) |
+
+**Output:** Images fetched to `/tmp/packer-images/`
+
 ### OpenTofu (from tofu/envs/<env>/)
 ```bash
 tofu init        # Initialize providers/modules
@@ -392,8 +424,9 @@ The orchestrator runs scenarios composed of reusable actions:
 | `--list-scenarios` | List available scenarios |
 | `--list-phases` | List phases for selected scenario |
 | `--inner-ip` | Inner PVE IP (for nested-pve-destructor) |
-| `--local` | Run locally (for pve-configure) |
-| `--remote` | Remote host IP (for pve-configure) |
+| `--local` | Run locally (for pve-configure, packer-build) |
+| `--remote` | Remote host IP (for pve-configure, packer-build) |
+| `--templates` | Comma-separated packer templates (for packer-build) |
 | `--vm-ip` | Target VM IP (for bootstrap-install) |
 | `--homestak-user` | User to create during bootstrap |
 
@@ -404,6 +437,11 @@ The orchestrator runs scenarios composed of reusable actions:
 | `nested-pve-constructor` | 10 | Provision inner PVE, install Proxmox, create test VM, verify |
 | `nested-pve-destructor` | 3 | Cleanup test VM, stop and destroy inner PVE |
 | `nested-pve-roundtrip` | 13 | Full cycle: construct → verify → destruct |
+| `packer-build` | 1 | Build packer images (local or remote) |
+| `packer-build-fetch` | 2 | Build remotely, fetch to local |
+| `packer-build-publish` | 2 | Build and publish to PVE storage |
+| `packer-sync` | 1 | Sync local packer to remote |
+| `packer-sync-build-fetch` | 3 | Sync, build, fetch (dev workflow) |
 | `pve-configure` | 2 | Configure PVE host (pve-setup + user) |
 | `simple-vm-constructor` | 5 | Ensure image, provision VM, verify SSH |
 | `simple-vm-destructor` | 1 | Destroy test VM |
