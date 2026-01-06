@@ -363,6 +363,69 @@ Or run with `--dangerously-skip-permissions` flag.
 
 **OpenTofu State Version 4 Bug**: When `TF_DATA_DIR` contains a `terraform.tfstate` file, OpenTofu's legacy code path reads it and rejects valid v4 states with "does not support state version 4". **Workaround**: Store state file outside `TF_DATA_DIR` - we use a `data/` subdirectory for `TF_DATA_DIR` while keeping state at the parent level. See [opentofu/opentofu#3643](https://github.com/opentofu/opentofu/issues/3643).
 
+## Timeout Configuration
+
+Operations use tiered timeouts based on expected duration. Scenarios can override action defaults.
+
+### Timeout Tiers
+
+| Tier | Duration | Use Case |
+|------|----------|----------|
+| Quick | 5-30s | Simple SSH commands, status checks |
+| Short | 60s | Ping waits, basic operations |
+| Medium | 120-300s | Tofu apply/destroy, downloads, SSH waits |
+| Long | 600s | Complex ansible playbooks, tofu init+apply |
+| Extended | 1200s | PVE installation with reboot |
+
+### Core Utilities (common.py)
+
+| Function | Timeout | Interval | Notes |
+|----------|---------|----------|-------|
+| `run_command()` | 600s | - | General command execution |
+| `run_ssh()` | 60s | - | SSH command (also sets ConnectTimeout) |
+| `wait_for_ping()` | 60s | 2s | ICMP ping polling |
+| `wait_for_ssh()` | 60s | 3s | SSH availability polling |
+| `wait_for_guest_agent()` | 300s | 5s | QEMU guest agent polling |
+
+### Action Defaults (src/actions/)
+
+| Action | Parameter | Default | Notes |
+|--------|-----------|---------|-------|
+| `TofuApplyAction` | timeout_init | 120s | `tofu init` |
+| `TofuApplyAction` | timeout_apply | 300s | `tofu apply` |
+| `TofuDestroyAction` | timeout | 300s | `tofu destroy` |
+| `TofuApplyRemoteAction` | timeout_init | 120s | Remote init |
+| `TofuApplyRemoteAction` | timeout_apply | 300s | Remote apply |
+| `TofuDestroyRemoteAction` | timeout | 300s | Remote destroy |
+| `AnsiblePlaybookAction` | timeout | 600s | Playbook execution |
+| `AnsiblePlaybookAction` | ssh_timeout | 60s | Pre-playbook SSH wait |
+| `WaitForSSHAction` | timeout | 60s | SSH availability |
+| `WaitForSSHAction` | interval | 5s | Retry interval |
+| `WaitForGuestAgentAction` | timeout | 300s | Guest agent |
+| `WaitForGuestAgentAction` | interval | 5s | Retry interval |
+| `SSHCommandAction` | timeout | 60s | Single SSH command |
+| `SyncReposToVMAction` | timeout | 300s | rsync/tar transfer |
+| `DownloadGitHubReleaseAction` | timeout | 300s | Asset download |
+| `VerifySSHChainAction` | timeout | 60s | Jump host verification |
+
+### Scenario Overrides (nested-pve)
+
+| Phase | Timeout | Rationale |
+|-------|---------|-----------|
+| wait_ip | 300s | Guest agent can be slow on first boot |
+| install_pve | 1200s | PVE install includes apt, kernel, reboot |
+| configure | 600s | Ansible nested-pve-setup playbook |
+| download_image | 300s | ~200MB image from GitHub |
+| test_vm_apply | 300s | Remote tofu on nested PVE |
+
+### Tuning Guidelines
+
+- **Monitor actual durations**: E2E test reports include phase timings - use these to tune
+- **Nested operations multiply**: Remote tofu = SSH + init + apply timeouts
+- **Guest agent is slow**: First boot can take 60-90s for agent to respond
+- **PVE install varies**: Network speed affects apt, allow 20+ min buffer
+- **Override in scenarios**: When a phase needs more time, override the default explicitly
+
 ## E2E Nested PVE Testing
 
 End-to-end testing uses nested virtualization to validate the full stack: VM provisioning → PVE installation → nested VM creation.
@@ -419,8 +482,9 @@ The orchestrator runs scenarios composed of reusable actions:
 | Option | Description |
 |--------|-------------|
 | `--scenario`, `-S` | Scenario to run (required) |
-| `--host`, `-H` | Target PVE host (default: pve) |
+| `--host`, `-H` | Target PVE host (required for most scenarios) |
 | `--env`, `-E` | Environment to deploy (overrides scenario default) |
+| `--context-file`, `-C` | Save/load context for chained runs |
 | `--verbose`, `-v` | Enable verbose logging |
 | `--skip`, `-s` | Phases to skip (repeatable) |
 | `--list-scenarios` | List available scenarios |
@@ -431,6 +495,39 @@ The orchestrator runs scenarios composed of reusable actions:
 | `--templates` | Comma-separated packer templates (for packer-build) |
 | `--vm-ip` | Target VM IP (for bootstrap-install) |
 | `--homestak-user` | User to create during bootstrap |
+| `--packer-release` | Packer release tag (e.g., v0.8.0-rc1, default: latest) |
+
+**Context File Usage:**
+
+The `--context-file` flag enables running constructor and destructor scenarios separately by persisting context (VM IDs, IPs) between invocations:
+
+```bash
+# Constructor saves context
+./run.sh --scenario nested-pve-constructor --host father -C /tmp/nested-pve.ctx
+
+# Inspect context
+cat /tmp/nested-pve.ctx
+# {"nested-pve_vm_id": 99913, "inner_ip": "10.0.12.152", ...}
+
+# Destructor loads context
+./run.sh --scenario nested-pve-destructor --host father -C /tmp/nested-pve.ctx
+```
+
+Context keys populated by nested-pve scenarios:
+- `nested-pve_vm_id` - Inner PVE VM ID
+- `inner_ip` - Inner PVE IP address
+- `test_vm_id` - Test VM ID (on inner PVE)
+- `test_ip` - Test VM IP address
+- `provisioned_vms` - List of all provisioned VMs
+
+**Packer Release:**
+
+The packer release tag for image downloads is resolved in this order (first match wins):
+1. CLI: `--packer-release v0.8.0-rc1`
+2. site.yaml: `defaults.packer_release: v0.8.0-rc1`
+3. Default: `latest` (points to most recent packer release with images)
+
+The `latest` tag is maintained by the packer release process (see packer#5).
 
 **Available Scenarios:**
 | Scenario | Phases | Description |

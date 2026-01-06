@@ -22,7 +22,7 @@ class AnsiblePlaybookAction:
     host_key: str = 'inner_ip'  # context key for ansible_host
     wait_for_ssh_before: bool = True
     wait_for_ssh_after: bool = False
-    ssh_timeout: int = 120
+    ssh_timeout: int = 60
     timeout: int = 600
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:

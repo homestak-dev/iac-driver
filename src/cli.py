@@ -2,6 +2,7 @@
 """CLI entry point for iac-driver."""
 
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
@@ -33,9 +34,7 @@ def main():
     )
     parser.add_argument(
         '--host', '-H',
-        default='pve',
-        choices=available_hosts,
-        help=f'Target PVE host (default: pve)'
+        help=f'Target PVE host (required for most scenarios). Available: {", ".join(available_hosts) if available_hosts else "none configured"}'
     )
     parser.add_argument(
         '--env', '-E',
@@ -94,6 +93,15 @@ def main():
         '--homestak-user',
         help='Create this user during bootstrap (for bootstrap-install scenario)'
     )
+    parser.add_argument(
+        '--context-file', '-C',
+        type=Path,
+        help='Save/load scenario context to file for chained runs (e.g., constructor then destructor)'
+    )
+    parser.add_argument(
+        '--packer-release',
+        help='Packer release tag for image downloads (e.g., v0.8.0-rc1 or latest). Overrides site.yaml default.'
+    )
 
     args = parser.parse_args()
 
@@ -106,11 +114,40 @@ def main():
             scenario = get_scenario(name)
             print(f"  {name}: {scenario.description}")
         if args.scenario is None:
-            print("\nUsage: ./run.sh --scenario <name> [--host <host>]")
+            print("\nUsage: ./run.sh --scenario <name> --host <host>")
         return 0
 
-    # Load config for phase listing
-    config = load_host_config(args.host)
+    # Scenarios that don't require --host
+    hostless_scenarios = {'pve-configure', 'packer-build', 'packer-build-fetch',
+                          'packer-build-publish', 'packer-sync', 'packer-sync-build-fetch',
+                          'bootstrap-install'}
+
+    # Validate --host is provided for scenarios that need it
+    if args.scenario not in hostless_scenarios and not args.host:
+        print(f"Error: --host is required for scenario '{args.scenario}'")
+        print(f"Available hosts: {', '.join(available_hosts) if available_hosts else 'none configured'}")
+        print(f"\nUsage: ./run.sh --scenario {args.scenario} --host <host>")
+        return 1
+
+    # Validate --host value if provided
+    if args.host and args.host not in available_hosts:
+        print(f"Error: Unknown host '{args.host}'")
+        print(f"Available hosts: {', '.join(available_hosts) if available_hosts else 'none configured'}")
+        return 1
+
+    # Load config (use dummy config for hostless scenarios without --host)
+    if args.host:
+        config = load_host_config(args.host)
+    else:
+        # Create minimal config for hostless scenarios
+        from config import HostConfig
+        config = HostConfig(name='local', config_file=Path('/dev/null'))
+
+    # Override packer release if specified (CLI takes precedence)
+    if args.packer_release:
+        config.packer_release = args.packer_release
+        logger.info(f"Using packer release override: {args.packer_release}")
+
     scenario = get_scenario(args.scenario)
 
     if args.list_phases:
@@ -126,6 +163,20 @@ def main():
         report_dir=args.report_dir,
         skip_phases=args.skip
     )
+
+    # Load context from file if specified and exists
+    if args.context_file and args.context_file.exists():
+        try:
+            with open(args.context_file) as f:
+                loaded_context = json.load(f)
+            orchestrator.context.update(loaded_context)
+            logger.info(f"Loaded context from {args.context_file}: {list(loaded_context.keys())}")
+        except json.JSONDecodeError as e:
+            print(f"Error: Invalid JSON in context file {args.context_file}: {e}")
+            return 1
+        except Exception as e:
+            print(f"Error reading context file {args.context_file}: {e}")
+            return 1
 
     # Pre-populate context if inner-ip provided
     if args.inner_ip:
@@ -150,6 +201,25 @@ def main():
         orchestrator.context['homestak_user'] = args.homestak_user
 
     success = orchestrator.run()
+
+    # Save context to file if specified
+    if args.context_file:
+        try:
+            # Convert any non-serializable values to strings
+            serializable_context = {}
+            for key, value in orchestrator.context.items():
+                try:
+                    json.dumps(value)
+                    serializable_context[key] = value
+                except (TypeError, ValueError):
+                    serializable_context[key] = str(value)
+
+            with open(args.context_file, 'w') as f:
+                json.dump(serializable_context, f, indent=2)
+            logger.info(f"Saved context to {args.context_file}: {list(serializable_context.keys())}")
+        except Exception as e:
+            logger.warning(f"Failed to save context to {args.context_file}: {e}")
+
     return 0 if success else 1
 
 

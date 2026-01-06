@@ -20,7 +20,7 @@ class TofuApplyAction:
     name: str
     env_name: str  # e.g., "test", "nested-pve"
     timeout_init: int = 120
-    timeout_apply: int = 600
+    timeout_apply: int = 300
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
         """Execute tofu init + apply with resolved config."""
