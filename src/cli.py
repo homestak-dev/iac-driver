@@ -98,6 +98,10 @@ def main():
         type=Path,
         help='Save/load scenario context to file for chained runs (e.g., constructor then destructor)'
     )
+    parser.add_argument(
+        '--packer-version',
+        help='Packer release tag for image downloads (e.g., v0.6.0-rc1). Overrides site.yaml and default.'
+    )
 
     args = parser.parse_args()
 
@@ -138,6 +142,12 @@ def main():
         # Create minimal config for hostless scenarios
         from config import HostConfig
         config = HostConfig(name='local', config_file=Path('/dev/null'))
+
+    # Override packer version if specified (CLI takes precedence)
+    if args.packer_version:
+        config.packer_release_tag = args.packer_version
+        logger.info(f"Using packer version override: {args.packer_version}")
+
     scenario = get_scenario(args.scenario)
 
     if args.list_phases:

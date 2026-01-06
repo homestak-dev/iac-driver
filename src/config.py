@@ -112,6 +112,10 @@ class HostConfig:
         if ssh_user := node_config.get('ssh_user', site_defaults.get('ssh_user')):
             self.ssh_user = ssh_user
 
+        # Packer image version: site.yaml > default
+        if packer_version := site_defaults.get('packer_image_version'):
+            self.packer_release_tag = packer_version
+
     def _load_from_tfvars(self):
         """Load configuration from legacy tfvars file."""
         tfvars = _parse_tfvars(self.config_file)
