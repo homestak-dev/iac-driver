@@ -363,6 +363,68 @@ Or run with `--dangerously-skip-permissions` flag.
 
 **OpenTofu State Version 4 Bug**: When `TF_DATA_DIR` contains a `terraform.tfstate` file, OpenTofu's legacy code path reads it and rejects valid v4 states with "does not support state version 4". **Workaround**: Store state file outside `TF_DATA_DIR` - we use a `data/` subdirectory for `TF_DATA_DIR` while keeping state at the parent level. See [opentofu/opentofu#3643](https://github.com/opentofu/opentofu/issues/3643).
 
+## Timeout Configuration
+
+Operations use tiered timeouts based on expected duration. Scenarios can override action defaults.
+
+### Timeout Tiers
+
+| Tier | Duration | Use Case |
+|------|----------|----------|
+| Quick | 5-30s | Simple SSH commands, status checks |
+| Short | 60s | Ping waits, basic operations |
+| Medium | 120-300s | Tofu apply/destroy, downloads, SSH waits |
+| Long | 600s | Complex ansible playbooks, tofu init+apply |
+| Extended | 1200s | PVE installation with reboot |
+
+### Core Utilities (common.py)
+
+| Function | Timeout | Interval | Notes |
+|----------|---------|----------|-------|
+| `run_command()` | 600s | - | General command execution |
+| `run_ssh()` | 60s | - | SSH command (also sets ConnectTimeout) |
+| `wait_for_ping()` | 60s | 2s | ICMP ping polling |
+| `wait_for_ssh()` | 300s | 3s | SSH availability polling |
+| `wait_for_guest_agent()` | 300s | 5s | QEMU guest agent polling |
+
+### Action Defaults (src/actions/)
+
+| Action | Parameter | Default | Notes |
+|--------|-----------|---------|-------|
+| `TofuApplyAction` | timeout_init | 120s | `tofu init` |
+| `TofuApplyAction` | timeout_apply | 600s | `tofu apply` |
+| `TofuDestroyAction` | timeout | 300s | `tofu destroy` |
+| `TofuApplyRemoteAction` | timeout_init | 120s | Remote init |
+| `TofuApplyRemoteAction` | timeout_apply | 300s | Remote apply |
+| `TofuDestroyRemoteAction` | timeout | 300s | Remote destroy |
+| `AnsiblePlaybookAction` | timeout | 600s | Playbook execution |
+| `AnsiblePlaybookAction` | ssh_timeout | 120s | Pre-playbook SSH wait |
+| `WaitForSSHAction` | timeout | 120s | SSH availability |
+| `WaitForSSHAction` | interval | 5s | Retry interval |
+| `WaitForGuestAgentAction` | timeout | 300s | Guest agent |
+| `WaitForGuestAgentAction` | interval | 5s | Retry interval |
+| `SSHCommandAction` | timeout | 60s | Single SSH command |
+| `SyncReposToVMAction` | timeout | 300s | rsync/tar transfer |
+| `DownloadGitHubReleaseAction` | timeout | 300s | Asset download |
+| `VerifySSHChainAction` | timeout | 120s | Jump host verification |
+
+### Scenario Overrides (nested-pve)
+
+| Phase | Timeout | Rationale |
+|-------|---------|-----------|
+| wait_ip | 300s | Guest agent can be slow on first boot |
+| install_pve | 1200s | PVE install includes apt, kernel, reboot |
+| configure | 600s | Ansible nested-pve-setup playbook |
+| download_image | 300s | ~200MB image from GitHub |
+| test_vm_apply | 300s | Remote tofu on nested PVE |
+
+### Tuning Guidelines
+
+- **Don't set timeouts too short**: False failures waste more time than waiting
+- **Nested operations multiply**: Remote tofu = SSH + init + apply timeouts
+- **Guest agent is slow**: First boot can take 60-90s for agent to respond
+- **PVE install varies**: Network speed affects apt, allow 20+ min buffer
+
 ## E2E Nested PVE Testing
 
 End-to-end testing uses nested virtualization to validate the full stack: VM provisioning → PVE installation → nested VM creation.
