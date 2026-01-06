@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from common import ActionResult, run_command
-from config import HostConfig, get_sibling_dir
+from config import HostConfig, get_sibling_dir, get_base_dir
 from config_resolver import ConfigResolver
 
 logger = logging.getLogger(__name__)
@@ -53,10 +53,11 @@ class TofuApplyAction:
             )
 
         # State isolation: each env+node gets its own state directory
+        # States stored in iac-driver (orchestrator owns state, tofu is dumb executor)
         # IMPORTANT: TF_DATA_DIR must NOT contain terraform.tfstate, otherwise
         # OpenTofu's legacy code path reads it and rejects version 4 states.
         # We use a 'data/' subdirectory for TF_DATA_DIR (modules/providers).
-        state_dir = tofu_dir / '.states' / f'{env_name}-{config.name}'
+        state_dir = get_base_dir() / '.states' / f'{env_name}-{config.name}'
         data_dir = state_dir / 'data'
         data_dir.mkdir(parents=True, exist_ok=True)
         state_file = state_dir / 'terraform.tfstate'
@@ -142,8 +143,9 @@ class TofuDestroyAction:
             )
 
         # State isolation: use same state directory layout as apply
+        # States stored in iac-driver (orchestrator owns state)
         # TF_DATA_DIR points to data/ subdirectory (see TofuApplyAction comment)
-        state_dir = tofu_dir / '.states' / f'{env_name}-{config.name}'
+        state_dir = get_base_dir() / '.states' / f'{env_name}-{config.name}'
         data_dir = state_dir / 'data'
         state_file = state_dir / 'terraform.tfstate'
         if not state_file.exists():
@@ -205,9 +207,10 @@ class TofuApplyRemoteAction:
 
         # Run ConfigResolver + tofu on remote host
         # The remote host has iac-driver, site-config, and tofu at /opt/homestak/
+        # States stored in iac-driver (orchestrator owns state, tofu is dumb executor)
         # IMPORTANT: TF_DATA_DIR must NOT contain terraform.tfstate, otherwise
         # OpenTofu's legacy code path reads it and rejects version 4 states.
-        state_dir = f'/opt/homestak/tofu/envs/generic/.states/{self.env_name}-{self.node_name}'
+        state_dir = f'/opt/homestak/iac-driver/.states/{self.env_name}-{self.node_name}'
         data_dir = f'{state_dir}/data'
         state_file = f'{state_dir}/terraform.tfstate'
         remote_script = f'''
@@ -277,7 +280,8 @@ class TofuDestroyRemoteAction:
             )
 
         # Same directory layout as TofuApplyRemoteAction
-        state_dir = f'/opt/homestak/tofu/envs/generic/.states/{self.env_name}-{self.node_name}'
+        # States stored in iac-driver (orchestrator owns state)
+        state_dir = f'/opt/homestak/iac-driver/.states/{self.env_name}-{self.node_name}'
         data_dir = f'{state_dir}/data'
         state_file = f'{state_dir}/terraform.tfstate'
         remote_script = f'''
