@@ -11,6 +11,7 @@ Resolution order:
 """
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -154,7 +155,49 @@ class ConfigResolver:
         if "gateway" not in base and "gateway" in defaults:
             base["gateway"] = defaults.get("gateway")
 
+        # Validate IP format
+        if "ip" in base:
+            self._validate_ip(base["ip"], base.get("name", "unknown"))
+
         return base
+
+    def _validate_ip(self, ip: Any, vm_name: str) -> None:
+        """Validate IP is 'dhcp', None, or valid CIDR notation.
+
+        Args:
+            ip: IP value from config
+            vm_name: VM name for error context
+
+        Raises:
+            ConfigError: If IP format is invalid
+        """
+        if ip is None or ip == "dhcp":
+            return
+
+        # Must be a string at this point
+        if not isinstance(ip, str):
+            raise ConfigError(
+                f"Invalid IP type for VM '{vm_name}': expected string, got {type(ip).__name__}"
+            )
+
+        # IPv4 CIDR: x.x.x.x/y where y is 0-32
+        ipv4_cidr = r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})$'
+        match = re.match(ipv4_cidr, ip)
+
+        if not match:
+            raise ConfigError(
+                f"Invalid IP format for VM '{vm_name}': '{ip}'. "
+                f"Static IPs must use CIDR notation (e.g., '10.0.12.124/24'). "
+                f"Use 'dhcp' for dynamic assignment."
+            )
+
+        # Validate CIDR prefix (0-32)
+        prefix = int(match.group(5))
+        if prefix > 32:
+            raise ConfigError(
+                f"Invalid CIDR prefix for VM '{vm_name}': /{prefix}. "
+                f"Must be between 0 and 32."
+            )
 
     def write_tfvars(self, config: dict, output_path: str) -> None:
         """Write resolved config as tfvars.json.
