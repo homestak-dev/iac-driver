@@ -156,7 +156,7 @@ Actions in `src/actions/tofu.py` use ConfigResolver to generate tfvars and run t
 
 **State Isolation:** Each env+node gets isolated state via explicit `-state` flag:
 ```
-tofu/envs/generic/.states/{env}-{node}/terraform.tfstate
+iac-driver/.states/{env}-{node}/terraform.tfstate
 ```
 
 **Important:** The `-state` flag is required because `TF_DATA_DIR` only affects plugin/module caching, not state file location. Without explicit state isolation, running scenarios on different hosts can cause state conflicts.
