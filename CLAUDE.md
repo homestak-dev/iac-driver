@@ -323,15 +323,17 @@ PVE node configuration is stored in `site-config/nodes/*.yaml`:
 
 | File | Node | API Endpoint |
 |------|------|--------------|
-| `site-config/nodes/pve.yaml` | pve | https://localhost:8006 |
+| `site-config/nodes/{nodename}.yaml` | {nodename} | https://{ip}:8006 |
 | `site-config/nodes/nested-pve.yaml` | nested-pve | (dynamic, nested PVE) |
+
+**Important:** The filename must match the actual PVE node name (check with `pvesh get /nodes`).
 
 API tokens are stored separately in `site-config/secrets.yaml` and resolved by key reference:
 ```yaml
-# nodes/pve.yaml (primary key derived from filename)
-host: pve                         # FK -> hosts/pve.yaml
-api_endpoint: https://localhost:8006
-api_token: pve                    # FK -> secrets.api_tokens.pve
+# nodes/father.yaml (primary key derived from filename)
+host: father                      # FK -> hosts/father.yaml
+api_endpoint: https://10.0.12.61:8006
+api_token: father                 # FK -> secrets.api_tokens.father
 ```
 
 **Setup:** First-time clone requires:
@@ -389,16 +391,16 @@ The orchestrator runs scenarios composed of reusable actions:
 ./run.sh --scenario nested-pve-roundtrip --list-phases
 
 # Run full E2E roundtrip (construct, verify, destruct)
-./run.sh --scenario nested-pve-roundtrip --host pve --verbose
+./run.sh --scenario nested-pve-roundtrip --host father --verbose
 
 # Run only constructor (leave environment running)
-./run.sh --scenario nested-pve-constructor --host pve
+./run.sh --scenario nested-pve-constructor --host father
 
 # Run only destructor (cleanup existing environment)
-./run.sh --scenario nested-pve-destructor --host pve --inner-ip 10.0.12.x
+./run.sh --scenario nested-pve-destructor --host father --inner-ip 10.0.12.x
 
 # Simple VM test (deploy, verify SSH, destroy)
-./run.sh --scenario simple-vm-roundtrip --host pve
+./run.sh --scenario simple-vm-roundtrip --host father
 
 # Deploy custom environment (multi-VM)
 ./run.sh --scenario simple-vm-constructor --host father --env ansible-test
