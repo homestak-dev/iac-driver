@@ -52,7 +52,7 @@ class EnsureImageAction:
 
         # Download from release
         repo = config.packer_release_repo
-        tag = config.packer_release_tag
+        tag = config.packer_release
         url = f'https://github.com/{repo}/releases/download/{tag}/{config.packer_image}'
 
         logger.info(f"[{self.name}] Downloading {config.packer_image} from {repo} {tag}...")

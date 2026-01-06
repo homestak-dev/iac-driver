@@ -495,7 +495,7 @@ The orchestrator runs scenarios composed of reusable actions:
 | `--templates` | Comma-separated packer templates (for packer-build) |
 | `--vm-ip` | Target VM IP (for bootstrap-install) |
 | `--homestak-user` | User to create during bootstrap |
-| `--packer-version` | Packer release tag override (e.g., v0.7.0-rc1) |
+| `--packer-release` | Packer release tag (e.g., v0.8.0-rc1, default: latest) |
 
 **Context File Usage:**
 
@@ -520,14 +520,14 @@ Context keys populated by nested-pve scenarios:
 - `test_ip` - Test VM IP address
 - `provisioned_vms` - List of all provisioned VMs
 
-**Packer Image Version:**
+**Packer Release:**
 
 The packer release tag for image downloads is resolved in this order (first match wins):
-1. CLI: `--packer-version v0.7.0-rc1`
-2. site.yaml: `defaults.packer_image_version: v0.7.0-rc1`
-3. Default: `v0.6.0-rc1` (hardcoded in config.py)
+1. CLI: `--packer-release v0.8.0-rc1`
+2. site.yaml: `defaults.packer_release: v0.8.0-rc1`
+3. Default: `latest` (points to most recent packer release with images)
 
-This allows overriding the version at runtime without modifying source files.
+The `latest` tag is maintained by the packer release process (see packer#5).
 
 **Available Scenarios:**
 | Scenario | Phases | Description |

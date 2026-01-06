@@ -99,8 +99,8 @@ def main():
         help='Save/load scenario context to file for chained runs (e.g., constructor then destructor)'
     )
     parser.add_argument(
-        '--packer-version',
-        help='Packer release tag for image downloads (e.g., v0.6.0-rc1). Overrides site.yaml and default.'
+        '--packer-release',
+        help='Packer release tag for image downloads (e.g., v0.8.0-rc1 or latest). Overrides site.yaml default.'
     )
 
     args = parser.parse_args()
@@ -143,10 +143,10 @@ def main():
         from config import HostConfig
         config = HostConfig(name='local', config_file=Path('/dev/null'))
 
-    # Override packer version if specified (CLI takes precedence)
-    if args.packer_version:
-        config.packer_release_tag = args.packer_version
-        logger.info(f"Using packer version override: {args.packer_version}")
+    # Override packer release if specified (CLI takes precedence)
+    if args.packer_release:
+        config.packer_release = args.packer_release
+        logger.info(f"Using packer release override: {args.packer_release}")
 
     scenario = get_scenario(args.scenario)
 

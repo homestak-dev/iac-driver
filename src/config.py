@@ -47,7 +47,7 @@ class HostConfig:
 
     # Packer release settings
     packer_release_repo: str = 'homestak-dev/packer'
-    packer_release_tag: str = 'v0.6.0-rc1'
+    packer_release: str = 'latest'
     packer_image: str = 'debian-12-custom.qcow2'
 
     # Keep tfvars_file as alias for backward compatibility
@@ -112,9 +112,9 @@ class HostConfig:
         if ssh_user := node_config.get('ssh_user', site_defaults.get('ssh_user')):
             self.ssh_user = ssh_user
 
-        # Packer image version: site.yaml > default
-        if packer_version := site_defaults.get('packer_image_version'):
-            self.packer_release_tag = packer_version
+        # Packer release: site.yaml > default
+        if packer_release := site_defaults.get('packer_release'):
+            self.packer_release = packer_release
 
     def _load_from_tfvars(self):
         """Load configuration from legacy tfvars file."""

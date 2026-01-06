@@ -162,14 +162,7 @@ class DownloadGitHubReleaseAction:
             )
 
         repo = config.packer_release_repo
-        tag = config.packer_release_tag
-
-        if tag == 'latest':
-            return ActionResult(
-                success=False,
-                message="'latest' tag not supported - specify explicit tag",
-                duration=time.time() - start
-            )
+        tag = config.packer_release
 
         url = f'https://github.com/{repo}/releases/download/{tag}/{self.asset_name}'
         dest = f"{self.dest_dir}/{self.asset_name}"
