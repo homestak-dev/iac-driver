@@ -2,6 +2,7 @@
 """CLI entry point for iac-driver."""
 
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
@@ -92,6 +93,11 @@ def main():
         '--homestak-user',
         help='Create this user during bootstrap (for bootstrap-install scenario)'
     )
+    parser.add_argument(
+        '--context-file', '-C',
+        type=Path,
+        help='Save/load scenario context to file for chained runs (e.g., constructor then destructor)'
+    )
 
     args = parser.parse_args()
 
@@ -148,6 +154,20 @@ def main():
         skip_phases=args.skip
     )
 
+    # Load context from file if specified and exists
+    if args.context_file and args.context_file.exists():
+        try:
+            with open(args.context_file) as f:
+                loaded_context = json.load(f)
+            orchestrator.context.update(loaded_context)
+            logger.info(f"Loaded context from {args.context_file}: {list(loaded_context.keys())}")
+        except json.JSONDecodeError as e:
+            print(f"Error: Invalid JSON in context file {args.context_file}: {e}")
+            return 1
+        except Exception as e:
+            print(f"Error reading context file {args.context_file}: {e}")
+            return 1
+
     # Pre-populate context if inner-ip provided
     if args.inner_ip:
         orchestrator.context['inner_ip'] = args.inner_ip
@@ -171,6 +191,25 @@ def main():
         orchestrator.context['homestak_user'] = args.homestak_user
 
     success = orchestrator.run()
+
+    # Save context to file if specified
+    if args.context_file:
+        try:
+            # Convert any non-serializable values to strings
+            serializable_context = {}
+            for key, value in orchestrator.context.items():
+                try:
+                    json.dumps(value)
+                    serializable_context[key] = value
+                except (TypeError, ValueError):
+                    serializable_context[key] = str(value)
+
+            with open(args.context_file, 'w') as f:
+                json.dump(serializable_context, f, indent=2)
+            logger.info(f"Saved context to {args.context_file}: {list(serializable_context.keys())}")
+        except Exception as e:
+            logger.warning(f"Failed to save context to {args.context_file}: {e}")
+
     return 0 if success else 1
 
 

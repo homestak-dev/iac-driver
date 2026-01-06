@@ -483,6 +483,7 @@ The orchestrator runs scenarios composed of reusable actions:
 | `--scenario`, `-S` | Scenario to run (required) |
 | `--host`, `-H` | Target PVE host (required for most scenarios) |
 | `--env`, `-E` | Environment to deploy (overrides scenario default) |
+| `--context-file`, `-C` | Save/load context for chained runs |
 | `--verbose`, `-v` | Enable verbose logging |
 | `--skip`, `-s` | Phases to skip (repeatable) |
 | `--list-scenarios` | List available scenarios |
@@ -493,6 +494,29 @@ The orchestrator runs scenarios composed of reusable actions:
 | `--templates` | Comma-separated packer templates (for packer-build) |
 | `--vm-ip` | Target VM IP (for bootstrap-install) |
 | `--homestak-user` | User to create during bootstrap |
+
+**Context File Usage:**
+
+The `--context-file` flag enables running constructor and destructor scenarios separately by persisting context (VM IDs, IPs) between invocations:
+
+```bash
+# Constructor saves context
+./run.sh --scenario nested-pve-constructor --host father -C /tmp/nested-pve.ctx
+
+# Inspect context
+cat /tmp/nested-pve.ctx
+# {"nested-pve_vm_id": 99913, "inner_ip": "10.0.12.152", ...}
+
+# Destructor loads context
+./run.sh --scenario nested-pve-destructor --host father -C /tmp/nested-pve.ctx
+```
+
+Context keys populated by nested-pve scenarios:
+- `nested-pve_vm_id` - Inner PVE VM ID
+- `inner_ip` - Inner PVE IP address
+- `test_vm_id` - Test VM ID (on inner PVE)
+- `test_ip` - Test VM IP address
+- `provisioned_vms` - List of all provisioned VMs
 
 **Available Scenarios:**
 | Scenario | Phases | Description |
