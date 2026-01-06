@@ -33,9 +33,7 @@ def main():
     )
     parser.add_argument(
         '--host', '-H',
-        default='pve',
-        choices=available_hosts,
-        help=f'Target PVE host (default: pve)'
+        help=f'Target PVE host (required for most scenarios). Available: {", ".join(available_hosts) if available_hosts else "none configured"}'
     )
     parser.add_argument(
         '--env', '-E',
@@ -106,11 +104,34 @@ def main():
             scenario = get_scenario(name)
             print(f"  {name}: {scenario.description}")
         if args.scenario is None:
-            print("\nUsage: ./run.sh --scenario <name> [--host <host>]")
+            print("\nUsage: ./run.sh --scenario <name> --host <host>")
         return 0
 
-    # Load config for phase listing
-    config = load_host_config(args.host)
+    # Scenarios that don't require --host
+    hostless_scenarios = {'pve-configure', 'packer-build', 'packer-build-fetch',
+                          'packer-build-publish', 'packer-sync', 'packer-sync-build-fetch',
+                          'bootstrap-install'}
+
+    # Validate --host is provided for scenarios that need it
+    if args.scenario not in hostless_scenarios and not args.host:
+        print(f"Error: --host is required for scenario '{args.scenario}'")
+        print(f"Available hosts: {', '.join(available_hosts) if available_hosts else 'none configured'}")
+        print(f"\nUsage: ./run.sh --scenario {args.scenario} --host <host>")
+        return 1
+
+    # Validate --host value if provided
+    if args.host and args.host not in available_hosts:
+        print(f"Error: Unknown host '{args.host}'")
+        print(f"Available hosts: {', '.join(available_hosts) if available_hosts else 'none configured'}")
+        return 1
+
+    # Load config (use dummy config for hostless scenarios without --host)
+    if args.host:
+        config = load_host_config(args.host)
+    else:
+        # Create minimal config for hostless scenarios
+        from config import HostConfig
+        config = HostConfig(name='local', config_file=Path('/dev/null'))
     scenario = get_scenario(args.scenario)
 
     if args.list_phases:

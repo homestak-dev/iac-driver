@@ -481,7 +481,7 @@ The orchestrator runs scenarios composed of reusable actions:
 | Option | Description |
 |--------|-------------|
 | `--scenario`, `-S` | Scenario to run (required) |
-| `--host`, `-H` | Target PVE host (default: pve) |
+| `--host`, `-H` | Target PVE host (required for most scenarios) |
 | `--env`, `-E` | Environment to deploy (overrides scenario default) |
 | `--verbose`, `-v` | Enable verbose logging |
 | `--skip`, `-s` | Phases to skip (repeatable) |
