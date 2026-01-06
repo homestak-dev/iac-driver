@@ -25,6 +25,9 @@
 ### Housekeeping
 
 - Rename `pve-deb` to `nested-pve` across codebase (closes #13)
+- Update documentation for ansible collection structure (closes #19)
+  - Roles now in `homestak.debian` and `homestak.proxmox` collections
+  - Playbooks use FQCN (e.g., `homestak.debian.iac_tools`)
 
 ### Bug Fixes
 

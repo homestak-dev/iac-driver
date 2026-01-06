@@ -47,7 +47,7 @@ class HostConfig:
 
     # Packer release settings
     packer_release_repo: str = 'homestak-dev/packer'
-    packer_release_tag: str = 'v0.1.0-rc1'
+    packer_release_tag: str = 'v0.5.0-rc1'
     packer_image: str = 'debian-12-custom.qcow2'
 
     # Keep tfvars_file as alias for backward compatibility

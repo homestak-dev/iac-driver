@@ -280,7 +280,7 @@ Environments use SDN VXLAN with a router VM as gateway:
 | File | Purpose |
 |------|---------|
 | `ansible/inventory/group_vars/*.yml` | Environment-specific Ansible variables |
-| `ansible/roles/pve-install/defaults/main.yml` | PVE installation defaults |
+| `ansible/collections/.../proxmox/roles/install/defaults/main.yml` | PVE installation defaults |
 | `tofu/envs/common/locals.tf` | Configuration inheritance logic |
 | `tofu/envs/*/locals.tf` | Per-environment cluster definitions |
 | `packer/templates/*.pkr.hcl` | Debian image build definitions |
@@ -451,17 +451,27 @@ tofu apply -var="node=nested-pve"
 
 Configuration is loaded from `site-config/nodes/{node}.yaml` and `site-config/envs/test.yaml`.
 
-### Ansible Roles
+### Ansible Collections
 
-**pve-iac** - Generic IaC tooling (in `../ansible/roles/pve-iac/`):
+Ansible roles are now organized in collections (see `ansible/CLAUDE.md` for details):
 
-Reusable for any Proxmox host (dev, k8s, etc.):
-- `tools.yml` - Install packer and tofu from official repos
-- `api-token.yml` - Create `root@pam!tofu` API token
+| Collection | Roles | Purpose |
+|------------|-------|---------|
+| `homestak.debian` | base, users, security, iac_tools | Debian-generic configuration |
+| `homestak.proxmox` | install, configure, networking, api_token | PVE-specific roles |
+
+Playbooks use fully qualified collection names (FQCN):
+```yaml
+roles:
+  - homestak.debian.iac_tools
+  - homestak.proxmox.api_token
+```
+
+### E2E Testing Role
 
 **nested-pve** - E2E test configuration (in `../ansible/roles/nested-pve/`):
 
-Depends on `pve-iac` role:
+Depends on `homestak.debian.iac_tools` and `homestak.proxmox.api_token`:
 - `network.yml` - Configure vmbr0 bridge (required after Debian→PVE conversion)
 - `ssh-keys.yml` - Copy SSH keys for nested VM access
 - `copy-files.yml` - Sync homestak repos, create API token, configure test env
@@ -475,7 +485,7 @@ Synced to inner PVE at `/opt/homestak/`:
 
 ## Prerequisites
 
-- Ansible 2.0+, OpenTofu, Packer with QEMU/KVM
+- Ansible 2.15+ (via pipx), OpenTofu, Packer with QEMU/KVM
 - SSH key at `~/.ssh/id_rsa`
 - age + sops for secrets decryption (see `make setup`)
 - age key at `~/.config/sops/age/keys.txt`
