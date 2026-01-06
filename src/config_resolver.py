@@ -150,6 +150,10 @@ class ConfigResolver:
         if "bridge" not in base:
             base["bridge"] = defaults.get("bridge", "vmbr0")
 
+        # Apply gateway default for static IPs
+        if "gateway" not in base and "gateway" in defaults:
+            base["gateway"] = defaults.get("gateway")
+
         return base
 
     def write_tfvars(self, config: dict, output_path: str) -> None:
