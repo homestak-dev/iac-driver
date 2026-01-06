@@ -384,7 +384,7 @@ Operations use tiered timeouts based on expected duration. Scenarios can overrid
 | `run_command()` | 600s | - | General command execution |
 | `run_ssh()` | 60s | - | SSH command (also sets ConnectTimeout) |
 | `wait_for_ping()` | 60s | 2s | ICMP ping polling |
-| `wait_for_ssh()` | 300s | 3s | SSH availability polling |
+| `wait_for_ssh()` | 60s | 3s | SSH availability polling |
 | `wait_for_guest_agent()` | 300s | 5s | QEMU guest agent polling |
 
 ### Action Defaults (src/actions/)
@@ -392,21 +392,21 @@ Operations use tiered timeouts based on expected duration. Scenarios can overrid
 | Action | Parameter | Default | Notes |
 |--------|-----------|---------|-------|
 | `TofuApplyAction` | timeout_init | 120s | `tofu init` |
-| `TofuApplyAction` | timeout_apply | 600s | `tofu apply` |
+| `TofuApplyAction` | timeout_apply | 300s | `tofu apply` |
 | `TofuDestroyAction` | timeout | 300s | `tofu destroy` |
 | `TofuApplyRemoteAction` | timeout_init | 120s | Remote init |
 | `TofuApplyRemoteAction` | timeout_apply | 300s | Remote apply |
 | `TofuDestroyRemoteAction` | timeout | 300s | Remote destroy |
 | `AnsiblePlaybookAction` | timeout | 600s | Playbook execution |
-| `AnsiblePlaybookAction` | ssh_timeout | 120s | Pre-playbook SSH wait |
-| `WaitForSSHAction` | timeout | 120s | SSH availability |
+| `AnsiblePlaybookAction` | ssh_timeout | 60s | Pre-playbook SSH wait |
+| `WaitForSSHAction` | timeout | 60s | SSH availability |
 | `WaitForSSHAction` | interval | 5s | Retry interval |
 | `WaitForGuestAgentAction` | timeout | 300s | Guest agent |
 | `WaitForGuestAgentAction` | interval | 5s | Retry interval |
 | `SSHCommandAction` | timeout | 60s | Single SSH command |
 | `SyncReposToVMAction` | timeout | 300s | rsync/tar transfer |
 | `DownloadGitHubReleaseAction` | timeout | 300s | Asset download |
-| `VerifySSHChainAction` | timeout | 120s | Jump host verification |
+| `VerifySSHChainAction` | timeout | 60s | Jump host verification |
 
 ### Scenario Overrides (nested-pve)
 
@@ -420,10 +420,11 @@ Operations use tiered timeouts based on expected duration. Scenarios can overrid
 
 ### Tuning Guidelines
 
-- **Don't set timeouts too short**: False failures waste more time than waiting
+- **Monitor actual durations**: E2E test reports include phase timings - use these to tune
 - **Nested operations multiply**: Remote tofu = SSH + init + apply timeouts
 - **Guest agent is slow**: First boot can take 60-90s for agent to respond
 - **PVE install varies**: Network speed affects apt, allow 20+ min buffer
+- **Override in scenarios**: When a phase needs more time, override the default explicitly
 
 ## E2E Nested PVE Testing
 

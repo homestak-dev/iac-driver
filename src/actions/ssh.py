@@ -63,7 +63,7 @@ class WaitForSSHAction:
     name: str
     host_key: str = 'inner_ip'
     jump_host_key: Optional[str] = None
-    timeout: int = 120
+    timeout: int = 60
     interval: int = 5
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
@@ -177,7 +177,7 @@ class VerifySSHChainAction:
     name: str
     target_host_key: str = 'test_ip'
     jump_host_key: str = 'inner_ip'
-    timeout: int = 120
+    timeout: int = 60
     interval: int = 5
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
