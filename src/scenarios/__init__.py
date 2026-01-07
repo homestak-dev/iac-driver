@@ -105,5 +105,6 @@ from scenarios import nested_pve  # noqa: E402, F401
 from scenarios import vm  # noqa: E402, F401
 from scenarios import cleanup_nested_pve  # noqa: E402, F401
 from scenarios import pve_setup  # noqa: E402, F401
+from scenarios import user_setup  # noqa: E402, F401
 from scenarios import bootstrap  # noqa: E402, F401
 from scenarios import packer_build  # noqa: E402, F401
