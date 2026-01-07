@@ -1,4 +1,4 @@
-"""PVE configuration scenario.
+"""PVE setup scenario.
 
 Runs pve-setup.yml and user.yml playbooks to configure a Proxmox VE host.
 Supports both local and remote execution.
@@ -10,14 +10,14 @@ from scenarios import register_scenario
 
 
 @register_scenario
-class PVEConfigure:
-    """Configure a PVE host with pve-setup and user playbooks."""
+class PVESetup:
+    """Setup a PVE host with pve-setup and user playbooks."""
 
-    name = 'pve-configure'
-    description = 'Configure PVE host (pve-setup + user)'
+    name = 'pve-setup'
+    description = 'Setup PVE host (pve-setup + user)'
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
-        """Return phases for PVE configuration.
+        """Return phases for PVE setup.
 
         Uses local or remote actions based on context:
         - context['local_mode'] = True: Run playbooks locally
@@ -26,8 +26,8 @@ class PVEConfigure:
         # Note: Context is checked at runtime by the orchestrator
         # We return a factory function that creates the right action
         return [
-            ('pve_setup', _PVESetupPhase(), 'Run pve-setup.yml'),
-            ('user', _UserPhase(), 'Run user.yml'),
+            ('setup_pve', _PVESetupPhase(), 'Run pve-setup.yml'),
+            ('create_user', _UserPhase(), 'Run user.yml'),
         ]
 
 

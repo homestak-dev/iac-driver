@@ -1,7 +1,7 @@
 """Reusable infrastructure actions."""
 
 from actions.tofu import TofuApplyAction, TofuDestroyAction, TofuApplyRemoteAction, TofuDestroyRemoteAction
-from actions.ansible import AnsiblePlaybookAction, AnsibleLocalPlaybookAction
+from actions.ansible import AnsiblePlaybookAction, AnsibleLocalPlaybookAction, EnsurePVEAction
 from actions.ssh import SSHCommandAction, WaitForSSHAction, SyncReposToVMAction, VerifySSHChainAction
 from actions.proxmox import (
     StartVMAction,
@@ -20,6 +20,7 @@ __all__ = [
     'TofuDestroyRemoteAction',
     'AnsiblePlaybookAction',
     'AnsibleLocalPlaybookAction',
+    'EnsurePVEAction',
     'SSHCommandAction',
     'WaitForSSHAction',
     'SyncReposToVMAction',
