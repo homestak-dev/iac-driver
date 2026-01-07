@@ -54,17 +54,16 @@ def run_ssh(
 ) -> tuple[int, str, str]:
     """Run command over SSH."""
     # Use relaxed host key checking for tests where VMs are recreated
-    ssh_opts = [
-        '-o', 'StrictHostKeyChecking=no',
-        '-o', 'UserKnownHostsFile=/dev/null',
-        '-o', 'LogLevel=ERROR',
-        '-o', f'ConnectTimeout={timeout}'
-    ]
+    ssh_opts = '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR'
 
     if jump_host:
-        cmd = ['ssh'] + ssh_opts + ['-J', f'{user}@{jump_host}', f'{user}@{host}', command]
+        # Use nested SSH instead of -J flag because ProxyJump has issues with
+        # PVE's /etc/ssh/ssh_known_hosts symlink to /etc/pve/priv/known_hosts
+        # which non-root users can't read
+        inner_cmd = f"ssh {ssh_opts} -o ConnectTimeout={timeout} {user}@{host} '{command}'"
+        cmd = ['ssh'] + ssh_opts.split() + ['-o', f'ConnectTimeout={timeout}', f'{user}@{jump_host}', inner_cmd]
     else:
-        cmd = ['ssh'] + ssh_opts + [f'{user}@{host}', command]
+        cmd = ['ssh'] + ssh_opts.split() + ['-o', f'ConnectTimeout={timeout}', f'{user}@{host}', command]
 
     return run_command(cmd, timeout=timeout)
 
