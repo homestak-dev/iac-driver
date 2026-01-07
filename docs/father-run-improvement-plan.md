@@ -74,7 +74,7 @@ The run.sh script is pre-approved. If all orchestration goes through it, no addi
 **C. Hybrid approach (recommended):**
 1. Pre-approve ansible/rsync in Claude Code settings
 2. Refactor scenarios to minimize direct shell commands
-3. Use run.sh for all E2E testing
+3. Use run.sh for all integration testing
 
 ### 4. Scenario Execution Path
 

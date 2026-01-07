@@ -4,7 +4,7 @@ Utility scripts for the homestak IaC project.
 
 ## generate-test-summary.sh
 
-Generates a markdown summary of an end-to-end nested PVE test run.
+Generates a markdown summary of an integration nested PVE test run.
 
 ### Usage
 
@@ -13,7 +13,7 @@ Generates a markdown summary of an end-to-end nested PVE test run.
 ./generate-test-summary.sh
 
 # Specify test name and inner PVE IP
-./generate-test-summary.sh nested-pve-e2e 10.0.12.195
+./generate-test-summary.sh nested-pve-integration 10.0.12.195
 ```
 
 ### Output

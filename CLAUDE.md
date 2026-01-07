@@ -290,7 +290,7 @@ Node configuration merges in `tofu/envs/common/locals.tf`:
 ### Ansible Role Hierarchy
 - Core playbooks: `pve-setup.yml`, `user.yml`, `pve-install.yml`
 - Core roles: base, users, security, proxmox, pve-install
-- E2E roles: pve-iac (generic IaC tools), nested-pve (E2E test config)
+- integration roles: pve-iac (generic IaC tools), nested-pve (integration test config)
 - Environment-specific variables in `inventory/group_vars/`
 
 ## Conventions
@@ -405,7 +405,7 @@ make decrypt  # Decrypt secrets (requires age key)
 
 **Snippets Content Type Required**: Cloud-init user-data files require `snippets` content type on local datastore. Run `pvesm set local -content images,rootdir,vztmpl,backup,iso,snippets`. Handled in ansible `nested-pve` role.
 
-**Claude Code Autonomy**: For fully autonomous E2E test runs, add these to Claude Code allowed tools:
+**Claude Code Autonomy**: For fully autonomous integration test runs, add these to Claude Code allowed tools:
 ```
 Bash(ansible-playbook:*), Bash(ansible:*), Bash(rsync:*)
 ```
@@ -470,13 +470,13 @@ Operations use tiered timeouts based on expected duration. Scenarios can overrid
 
 ### Tuning Guidelines
 
-- **Monitor actual durations**: E2E test reports include phase timings - use these to tune
+- **Monitor actual durations**: integration test reports include phase timings - use these to tune
 - **Nested operations multiply**: Remote tofu = SSH + init + apply timeouts
 - **Guest agent is slow**: First boot can take 60-90s for agent to respond
 - **PVE install varies**: Network speed affects apt, allow 20+ min buffer
 - **Override in scenarios**: When a phase needs more time, override the default explicitly
 
-## E2E Nested PVE Testing
+## integration Nested PVE Testing
 
 End-to-end testing uses nested virtualization to validate the full stack: VM provisioning → PVE installation → nested VM creation.
 
@@ -503,7 +503,7 @@ The orchestrator runs scenarios composed of reusable actions:
 # List phases for a scenario
 ./run.sh --scenario nested-pve-roundtrip --list-phases
 
-# Run full E2E roundtrip (construct, verify, destruct)
+# Run full integration roundtrip (construct, verify, destruct)
 ./run.sh --scenario nested-pve-roundtrip --host father --verbose
 
 # Run only constructor (leave environment running)
@@ -662,9 +662,9 @@ roles:
   - homestak.proxmox.api_token
 ```
 
-### E2E Testing Role
+### integration Testing Role
 
-**nested-pve** - E2E test configuration (in `../ansible/roles/nested-pve/`):
+**nested-pve** - integration test configuration (in `../ansible/roles/nested-pve/`):
 
 Depends on `homestak.debian.iac_tools` and `homestak.proxmox.api_token`:
 - `network.yml` - Configure vmbr0 bridge (required after Debian→PVE conversion)
