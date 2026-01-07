@@ -300,6 +300,55 @@ Node configuration merges in `tofu/envs/common/locals.tf`:
 - **Cloud-init files**: `{hostname}-meta.yaml`, `{hostname}-user.yaml`
 - **Environments**: dev (permissive SSH, passwordless sudo) vs prod (strict SSH, fail2ban)
 
+## Naming Conventions
+
+### Scenarios, Phases, and Actions
+
+| Type | Pattern | Examples |
+|------|---------|----------|
+| **Scenarios** | `noun-verb` | `pve-setup`, `vm-constructor`, `user-setup`, `nested-pve-roundtrip` |
+| **Phases** | `verb_noun` | `ensure_pve`, `setup_pve`, `provision_vm`, `create_user` |
+| **Actions** | `VerbNounAction` | `EnsurePVEAction`, `StartVMAction`, `WaitForSSHAction` |
+
+### Phase Verb Conventions
+
+| Verb | Meaning | Idempotent? |
+|------|---------|-------------|
+| `ensure_*` | Make sure X exists/is running | Yes - checks first |
+| `setup_*` | Configure X for use | Usually yes |
+| `provision_*` | Create new resource | No - creates |
+| `start_*` | Start existing resource | Yes - checks state |
+| `wait_*` | Wait for condition | Yes |
+| `verify_*` | Check/validate | Yes |
+| `destroy_*` | Remove resource | Yes - checks exists |
+| `sync_*` | Synchronize data | Yes |
+
+### Examples
+
+```python
+# Scenario class (noun-verb pattern)
+class VMConstructor:
+    name = 'vm-constructor'
+
+# Phase definitions (verb_noun pattern)
+phases = [
+    ('provision_vm', TofuApplyAction(...), 'Provision VM'),
+    ('start_vm', StartVMAction(...), 'Start VM'),
+    ('wait_ip', WaitForGuestAgentAction(...), 'Wait for IP'),
+    ('verify_ssh', WaitForSSHAction(...), 'Verify SSH'),
+]
+
+# Action class (VerbNounAction pattern)
+class EnsurePVEAction:
+    """Idempotent action - checks if PVE running before installing."""
+    def run(self, config, context):
+        # Check first (idempotent)
+        if self._pve_running(context):
+            return ActionResult(success=True, message="PVE already running")
+        # Then act
+        return self._install_pve(config, context)
+```
+
 ## Network Topology
 
 Environments use SDN VXLAN with a router VM as gateway:
