@@ -66,7 +66,8 @@ All repos are siblings in a common parent directory:
 │   │   ├── scenarios/    # Workflow definitions
 │   │   │   ├── nested_pve.py        # nested-pve-{constructor,destructor,roundtrip}
 │   │   │   ├── vm.py                # vm-{constructor,destructor,roundtrip}
-│   │   │   ├── pve_configure.py     # pve-configure (local/remote)
+│   │   │   ├── pve_setup.py         # pve-setup (local/remote)
+│   │   │   ├── user_setup.py        # user-setup (local/remote)
 │   │   │   ├── bootstrap.py         # bootstrap-install
 │   │   │   └── cleanup_nested_pve.py # Shared cleanup actions
 │   │   └── reporting/    # Test report generation (JSON + markdown)
@@ -267,7 +268,7 @@ tofu fmt         # Format HCL files
 
 ### Typical Deployment Workflow
 ```
-1. Bootstrap Proxmox host → iac-driver (pve-configure) or ansible (pve-setup.yml, user.yml)
+1. Bootstrap Proxmox host → iac-driver (pve-setup) or ansible (pve-setup.yml, user.yml)
 2. Build custom images     → packer (build.sh, publish.sh)
 3. Provision VMs           → tofu (plan, apply)
 4. Reconfigure as needed   → ansible (pve-setup.yml, user.yml)
@@ -517,11 +518,17 @@ The orchestrator runs scenarios composed of reusable actions:
 # Deploy custom environment (multi-VM)
 ./run.sh --scenario vm-constructor --host father --env ansible-test
 
-# Configure PVE host (local)
-./run.sh --scenario pve-configure --local
+# Install + configure PVE (local)
+./run.sh --scenario pve-setup --local
 
-# Configure PVE host (remote)
-./run.sh --scenario pve-configure --remote 10.0.12.x
+# Install + configure PVE (remote)
+./run.sh --scenario pve-setup --remote 10.0.12.x
+
+# Create homestak user (local)
+./run.sh --scenario user-setup --local
+
+# Create homestak user (remote)
+./run.sh --scenario user-setup --remote 10.0.12.x
 
 # Test bootstrap on a VM (requires vm_ip)
 ./run.sh --scenario bootstrap-install --vm-ip 10.0.12.x --homestak-user homestak
@@ -539,8 +546,8 @@ The orchestrator runs scenarios composed of reusable actions:
 | `--list-scenarios` | List available scenarios |
 | `--list-phases` | List phases for selected scenario |
 | `--inner-ip` | Inner PVE IP (for nested-pve-destructor) |
-| `--local` | Run locally (for pve-configure, packer-build) |
-| `--remote` | Remote host IP (for pve-configure, packer-build) |
+| `--local` | Run locally (for pve-setup, user-setup, packer-build) |
+| `--remote` | Remote host IP (for pve-setup, user-setup, packer-build) |
 | `--templates` | Comma-separated packer templates (for packer-build) |
 | `--vm-ip` | Target VM IP (for bootstrap-install) |
 | `--homestak-user` | User to create during bootstrap |
@@ -590,7 +597,8 @@ The `latest` tag is maintained by the packer release process (see packer#5).
 | `packer-build-publish` | 2 | Build and publish to PVE storage |
 | `packer-sync` | 1 | Sync local packer to remote |
 | `packer-sync-build-fetch` | 3 | Sync, build, fetch (dev workflow) |
-| `pve-configure` | 2 | Configure PVE host (pve-setup + user) |
+| `pve-setup` | 2 | Install PVE (if needed) and configure host |
+| `user-setup` | 1 | Create homestak user |
 | `vm-constructor` | 5 | Ensure image, provision VM, verify SSH |
 | `vm-destructor` | 1 | Destroy VM |
 | `vm-roundtrip` | 6 | Full cycle: construct → verify → destruct |

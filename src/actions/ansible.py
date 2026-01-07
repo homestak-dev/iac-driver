@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from common import ActionResult, run_command, wait_for_ssh
+from common import ActionResult, run_command, run_ssh, wait_for_ssh
 from config import HostConfig, get_sibling_dir
 
 logger = logging.getLogger(__name__)
@@ -140,5 +140,93 @@ class AnsibleLocalPlaybookAction:
         return ActionResult(
             success=True,
             message=f"{self.playbook} completed locally",
+            duration=time.time() - start
+        )
+
+
+@dataclass
+class EnsurePVEAction:
+    """Idempotent PVE installation - checks if PVE running before installing.
+
+    Checks if pveproxy service is active. If so, skips installation.
+    Otherwise, runs pve-install.yml playbook.
+    """
+    name: str
+    host_key: str = 'inner_ip'  # context key for target host
+    pve_hostname: str = 'nested-pve'  # hostname for PVE installation
+    ssh_timeout: int = 120
+    timeout: int = 1200  # 20 min for PVE install + reboot
+
+    def run(self, config: HostConfig, context: dict) -> ActionResult:
+        """Check if PVE running, install if not."""
+        start = time.time()
+
+        target_host = context.get(self.host_key)
+        if not target_host:
+            return ActionResult(
+                success=False,
+                message=f"No {self.host_key} in context",
+                duration=time.time() - start
+            )
+
+        # Wait for SSH first
+        if not wait_for_ssh(target_host, timeout=self.ssh_timeout):
+            return ActionResult(
+                success=False,
+                message=f"SSH not available on {target_host}",
+                duration=time.time() - start
+            )
+
+        # Check if PVE is already running
+        logger.info(f"[{self.name}] Checking if PVE already installed on {target_host}...")
+        rc, out, err = run_ssh(target_host, 'systemctl is-active pveproxy', timeout=30)
+        if rc == 0 and 'active' in out:
+            logger.info(f"[{self.name}] PVE already installed and running - skipping")
+            return ActionResult(
+                success=True,
+                message="PVE already installed and running - skipped installation",
+                duration=time.time() - start
+            )
+
+        # PVE not running, install it
+        logger.info(f"[{self.name}] PVE not installed, running pve-install.yml...")
+        ansible_dir = get_sibling_dir('ansible')
+        if not ansible_dir.exists():
+            return ActionResult(
+                success=False,
+                message=f"Ansible directory not found: {ansible_dir}",
+                duration=time.time() - start
+            )
+
+        cmd = [
+            'ansible-playbook',
+            '-i', 'inventory/remote-dev.yml',
+            'playbooks/pve-install.yml',
+            '-e', f'ansible_host={target_host}',
+            '-e', f'pve_hostname={self.pve_hostname}',
+            '-e', 'ansible_user=root',
+        ]
+
+        rc, out, err = run_command(cmd, cwd=ansible_dir, timeout=self.timeout)
+        if rc != 0:
+            error_msg = err[-500:] if err else out[-500:]
+            return ActionResult(
+                success=False,
+                message=f"pve-install.yml failed: {error_msg}",
+                duration=time.time() - start
+            )
+
+        # Wait for SSH after reboot
+        logger.info(f"[{self.name}] Waiting for SSH after PVE installation...")
+        if not wait_for_ssh(target_host, timeout=self.ssh_timeout * 2):
+            return ActionResult(
+                success=False,
+                message=f"SSH not available after PVE installation on {target_host}",
+                duration=time.time() - start
+            )
+
+        return ActionResult(
+            success=True,
+            message=f"PVE installed successfully on {target_host}",
             duration=time.time() - start
         )

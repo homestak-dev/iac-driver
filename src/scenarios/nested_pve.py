@@ -1,4 +1,4 @@
-"""Nested PVE E2E test scenario.
+"""Nested PVE test scenarios.
 
 Tests the full stack: VM provisioning -> PVE installation -> nested VM creation.
 """
@@ -9,6 +9,7 @@ from actions import (
     TofuDestroyAction,
     TofuDestroyRemoteAction,
     AnsiblePlaybookAction,
+    EnsurePVEAction,
     StartVMAction,
     WaitForGuestAgentAction,
     StartVMRemoteAction,
@@ -54,21 +55,15 @@ class NestedPVEConstructor:
                 timeout=300,
             ), 'Wait for inner PVE IP'),
 
-            # Phase 4: Install Proxmox VE
-            ('install_pve', AnsiblePlaybookAction(
-                name='install-pve',
-                playbook='playbooks/pve-install.yml',
-                inventory='inventory/remote-dev.yml',
-                extra_vars={'pve_hostname': 'nested-pve', 'ansible_user': 'root'},
+            # Phase 4: Ensure PVE installed
+            ('ensure_pve', EnsurePVEAction(
+                name='ensure-pve',
                 host_key='inner_ip',
-                wait_for_ssh_before=True,
-                wait_for_ssh_after=True,
-                ssh_timeout=120,
-                timeout=1200,  # 20 min for PVE install + reboot
-            ), 'Install Proxmox VE'),
+                pve_hostname='nested-pve',
+            ), 'Ensure PVE installed'),
 
-            # Phase 5: Configure inner PVE
-            ('configure', AnsiblePlaybookAction(
+            # Phase 5: Setup nested PVE environment
+            ('setup_nested', AnsiblePlaybookAction(
                 name='configure-inner-pve',
                 playbook='playbooks/nested-pve-setup.yml',
                 inventory='inventory/remote-dev.yml',
@@ -168,19 +163,13 @@ class NestedPVERoundtrip:
                 timeout=300,
             ), 'Wait for inner PVE IP'),
 
-            ('install_pve', AnsiblePlaybookAction(
-                name='install-pve',
-                playbook='playbooks/pve-install.yml',
-                inventory='inventory/remote-dev.yml',
-                extra_vars={'pve_hostname': 'nested-pve', 'ansible_user': 'root'},
+            ('ensure_pve', EnsurePVEAction(
+                name='ensure-pve',
                 host_key='inner_ip',
-                wait_for_ssh_before=True,
-                wait_for_ssh_after=True,
-                ssh_timeout=120,
-                timeout=1200,
-            ), 'Install Proxmox VE'),
+                pve_hostname='nested-pve',
+            ), 'Ensure PVE installed'),
 
-            ('configure', AnsiblePlaybookAction(
+            ('setup_nested', AnsiblePlaybookAction(
                 name='configure-inner-pve',
                 playbook='playbooks/nested-pve-setup.yml',
                 inventory='inventory/remote-dev.yml',
@@ -194,7 +183,7 @@ class NestedPVERoundtrip:
                 host_key='inner_ip',
                 wait_for_ssh_before=True,
                 timeout=600,
-            ), 'Configure inner PVE'),
+            ), 'Setup nested PVE environment'),
 
             ('download_image', DownloadGitHubReleaseAction(
                 name='download-packer-image',
