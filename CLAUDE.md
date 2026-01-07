@@ -65,7 +65,7 @@ All repos are siblings in a common parent directory:
 │   │   │   └── file.py   # DownloadFileAction, RemoveImageAction
 │   │   ├── scenarios/    # Workflow definitions
 │   │   │   ├── nested_pve.py        # nested-pve-{constructor,destructor,roundtrip}
-│   │   │   ├── simple_vm.py         # simple-vm-{constructor,destructor,roundtrip}
+│   │   │   ├── vm.py                # vm-{constructor,destructor,roundtrip}
 │   │   │   ├── pve_configure.py     # pve-configure (local/remote)
 │   │   │   ├── bootstrap.py         # bootstrap-install
 │   │   │   └── cleanup_nested_pve.py # Shared cleanup actions
@@ -511,11 +511,11 @@ The orchestrator runs scenarios composed of reusable actions:
 # Run only destructor (cleanup existing environment)
 ./run.sh --scenario nested-pve-destructor --host father --inner-ip 10.0.12.x
 
-# Simple VM test (deploy, verify SSH, destroy)
-./run.sh --scenario simple-vm-roundtrip --host father
+# VM test (deploy, verify SSH, destroy)
+./run.sh --scenario vm-roundtrip --host father
 
 # Deploy custom environment (multi-VM)
-./run.sh --scenario simple-vm-constructor --host father --env ansible-test
+./run.sh --scenario vm-constructor --host father --env ansible-test
 
 # Configure PVE host (local)
 ./run.sh --scenario pve-configure --local
@@ -591,9 +591,9 @@ The `latest` tag is maintained by the packer release process (see packer#5).
 | `packer-sync` | 1 | Sync local packer to remote |
 | `packer-sync-build-fetch` | 3 | Sync, build, fetch (dev workflow) |
 | `pve-configure` | 2 | Configure PVE host (pve-setup + user) |
-| `simple-vm-constructor` | 5 | Ensure image, provision VM, verify SSH |
-| `simple-vm-destructor` | 1 | Destroy test VM |
-| `simple-vm-roundtrip` | 6 | Full cycle: construct → verify → destruct |
+| `vm-constructor` | 5 | Ensure image, provision VM, verify SSH |
+| `vm-destructor` | 1 | Destroy VM |
+| `vm-roundtrip` | 6 | Full cycle: construct → verify → destruct |
 
 **nested-pve-roundtrip runtime: ~8.5 minutes**
 

@@ -1,6 +1,6 @@
-"""Simple VM test scenario.
+"""VM lifecycle scenarios.
 
-Deploys a single VM, verifies SSH access, then destroys it.
+Deploys VMs, verifies SSH access, and destroys them.
 """
 
 import time
@@ -84,11 +84,11 @@ class EnsureImageAction:
 
 
 @register_scenario
-class SimpleVMConstructor:
+class VMConstructor:
     """Deploy a VM and verify SSH access."""
 
-    name = 'simple-vm-constructor'
-    description = 'Ensure image, provision test VM, verify SSH access'
+    name = 'vm-constructor'
+    description = 'Ensure image, provision VM, verify SSH access'
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for simple VM deployment."""
@@ -122,11 +122,11 @@ class SimpleVMConstructor:
 
 
 @register_scenario
-class SimpleVMDestructor:
-    """Destroy a test VM."""
+class VMDestructor:
+    """Destroy a VM."""
 
-    name = 'simple-vm-destructor'
-    description = 'Stop and destroy test VM'
+    name = 'vm-destructor'
+    description = 'Destroy VM'
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for simple VM destruction."""
@@ -139,11 +139,11 @@ class SimpleVMDestructor:
 
 
 @register_scenario
-class SimpleVMRoundtrip:
+class VMRoundtrip:
     """Full roundtrip: deploy, verify, destroy."""
 
-    name = 'simple-vm-roundtrip'
-    description = 'Deploy test VM, verify SSH, destroy (full cycle)'
+    name = 'vm-roundtrip'
+    description = 'Deploy VM, verify SSH, destroy (full cycle)'
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for full roundtrip test."""
