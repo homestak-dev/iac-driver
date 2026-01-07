@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.8.0-rc1 - 2026-01-06
+## v0.8 - 2026-01-06
 
 ### Features
 
@@ -9,7 +9,7 @@
   - Enables split workflows without `--inner-ip` workarounds
 - Add `--packer-release` flag for image version override (closes #39)
   - Defaults to `latest` tag (maintained by packer release process)
-  - Override with specific version: `--packer-release v0.7.0-rc1`
+  - Override with specific version: `--packer-release v0.7`
 - Add CIDR validation for static IP configuration (closes #35)
   - ConfigResolver validates IPs use CIDR notation (e.g., `10.0.12.100/24`)
   - Catches misconfiguration before tofu/cloud-init errors
@@ -36,7 +36,7 @@
 - Document `--context-file` usage patterns
 - Document packer release resolution order
 
-## v0.7.0-rc1 - 2026-01-06
+## v0.7 - 2026-01-06
 
 ### Features
 
@@ -53,7 +53,7 @@
 
 - Fix state storage path in CLAUDE.md
 
-## v0.6.0-rc1 - 2026-01-06
+## v0.6 - 2026-01-06
 
 ### Phase 5: ConfigResolver
 
