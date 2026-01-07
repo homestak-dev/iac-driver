@@ -4,6 +4,8 @@
 import argparse
 import json
 import logging
+import os
+import socket
 import sys
 from pathlib import Path
 
@@ -102,6 +104,11 @@ def main():
         '--packer-release',
         help='Packer release tag for image downloads (e.g., v0.8.0-rc1 or latest). Overrides site.yaml default.'
     )
+    parser.add_argument(
+        '--timeout', '-t',
+        type=int,
+        help='Overall scenario timeout in seconds. Checked between phases (does not interrupt running phases).'
+    )
 
     args = parser.parse_args()
 
@@ -112,34 +119,72 @@ def main():
         print("Available scenarios:")
         for name in available_scenarios:
             scenario = get_scenario(name)
-            print(f"  {name}: {scenario.description}")
+            runtime = getattr(scenario, 'expected_runtime', None)
+            if runtime:
+                # Format runtime nicely (e.g., 30 -> "~30s", 540 -> "~9m")
+                if runtime >= 60:
+                    runtime_str = f"~{runtime // 60}m"
+                else:
+                    runtime_str = f"~{runtime}s"
+                print(f"  {name:30} {runtime_str:>6}  {scenario.description}")
+            else:
+                print(f"  {name:30}         {scenario.description}")
         if args.scenario is None:
             print("\nUsage: ./run.sh --scenario <name> --host <host>")
         return 0
 
-    # Scenarios that don't require --host
-    hostless_scenarios = {'pve-configure', 'packer-build', 'packer-build-fetch',
-                          'packer-build-publish', 'packer-sync', 'packer-sync-build-fetch',
-                          'bootstrap-install'}
+    # Get scenario to check its requirements
+    scenario = get_scenario(args.scenario)
 
-    # Validate --host is provided for scenarios that need it
-    if args.scenario not in hostless_scenarios and not args.host:
+    # Check scenario attributes (with defaults)
+    requires_root = getattr(scenario, 'requires_root', False)
+    requires_host_config = getattr(scenario, 'requires_host_config', True)
+
+    # Check root requirement for --local mode
+    if args.local and requires_root and os.getuid() != 0:
+        print(f"Error: Scenario '{args.scenario}' requires root privileges in --local mode")
+        print("Run with sudo or as root")
+        return 1
+
+    # Handle --host resolution
+    host = args.host
+
+    # Auto-detect host from hostname when --local and no --host
+    if args.local and not host:
+        hostname = socket.gethostname()
+        if hostname in available_hosts:
+            host = hostname
+            logger.info(f"Auto-detected host from hostname: {host}")
+        elif not requires_host_config:
+            # Scenario doesn't need host config, proceed without
+            host = None
+            logger.debug(f"No host config needed for scenario '{args.scenario}'")
+        else:
+            print(f"Error: Could not auto-detect host. Hostname '{hostname}' not in available hosts.")
+            print(f"Available hosts: {', '.join(available_hosts) if available_hosts else 'none configured'}")
+            print(f"\nEither:")
+            print(f"  1. Create nodes/{hostname}.yaml in site-config")
+            print(f"  2. Specify --host explicitly")
+            return 1
+
+    # Validate --host is provided for scenarios that need it (when not in --local mode)
+    if not args.local and requires_host_config and not host:
         print(f"Error: --host is required for scenario '{args.scenario}'")
         print(f"Available hosts: {', '.join(available_hosts) if available_hosts else 'none configured'}")
         print(f"\nUsage: ./run.sh --scenario {args.scenario} --host <host>")
         return 1
 
     # Validate --host value if provided
-    if args.host and args.host not in available_hosts:
-        print(f"Error: Unknown host '{args.host}'")
+    if host and host not in available_hosts:
+        print(f"Error: Unknown host '{host}'")
         print(f"Available hosts: {', '.join(available_hosts) if available_hosts else 'none configured'}")
         return 1
 
-    # Load config (use dummy config for hostless scenarios without --host)
-    if args.host:
-        config = load_host_config(args.host)
+    # Load config (use dummy config for scenarios without host config)
+    if host:
+        config = load_host_config(host)
     else:
-        # Create minimal config for hostless scenarios
+        # Create minimal config for scenarios that don't need host config
         from config import HostConfig
         config = HostConfig(name='local', config_file=Path('/dev/null'))
 
@@ -147,8 +192,6 @@ def main():
     if args.packer_release:
         config.packer_release = args.packer_release
         logger.info(f"Using packer release override: {args.packer_release}")
-
-    scenario = get_scenario(args.scenario)
 
     if args.list_phases:
         print(f"Phases for scenario '{args.scenario}':")
@@ -161,7 +204,8 @@ def main():
         scenario=scenario,
         config=config,
         report_dir=args.report_dir,
-        skip_phases=args.skip
+        skip_phases=args.skip,
+        timeout=args.timeout
     )
 
     # Load context from file if specified and exists

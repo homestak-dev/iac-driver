@@ -15,6 +15,9 @@ class UserSetup:
 
     name = 'user-setup'
     description = 'Create homestak user'
+    requires_root = True
+    requires_host_config = False
+    expected_runtime = 30
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for user setup.

@@ -210,6 +210,7 @@ class BootstrapInstall:
 
     name = 'bootstrap-install'
     description = 'Run bootstrap, verify installation and user (requires vm_ip in context)'
+    expected_runtime = 120  # ~2 min
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for bootstrap installation."""

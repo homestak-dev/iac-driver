@@ -552,6 +552,7 @@ The orchestrator runs scenarios composed of reusable actions:
 | `--vm-ip` | Target VM IP (for bootstrap-install) |
 | `--homestak-user` | User to create during bootstrap |
 | `--packer-release` | Packer release tag (e.g., v0.8.0-rc1, default: latest) |
+| `--timeout`, `-t` | Overall scenario timeout in seconds (checked between phases) |
 
 **Context File Usage:**
 
@@ -586,24 +587,24 @@ The packer release tag for image downloads is resolved in this order (first matc
 The `latest` tag is maintained by the packer release process (see packer#5).
 
 **Available Scenarios:**
-| Scenario | Phases | Description |
-|----------|--------|-------------|
-| `bootstrap-install` | 3 | Run bootstrap, verify installation and user |
-| `nested-pve-constructor` | 10 | Provision inner PVE, install Proxmox, create test VM, verify |
-| `nested-pve-destructor` | 3 | Cleanup test VM, stop and destroy inner PVE |
-| `nested-pve-roundtrip` | 13 | Full cycle: construct → verify → destruct |
-| `packer-build` | 1 | Build packer images (local or remote) |
-| `packer-build-fetch` | 2 | Build remotely, fetch to local |
-| `packer-build-publish` | 2 | Build and publish to PVE storage |
-| `packer-sync` | 1 | Sync local packer to remote |
-| `packer-sync-build-fetch` | 3 | Sync, build, fetch (dev workflow) |
-| `pve-setup` | 2 | Install PVE (if needed) and configure host |
-| `user-setup` | 1 | Create homestak user |
-| `vm-constructor` | 5 | Ensure image, provision VM, verify SSH |
-| `vm-destructor` | 1 | Destroy VM |
-| `vm-roundtrip` | 6 | Full cycle: construct → verify → destruct |
+| Scenario | Runtime | Phases | Description |
+|----------|---------|--------|-------------|
+| `bootstrap-install` | ~2m | 3 | Run bootstrap, verify installation and user |
+| `nested-pve-constructor` | ~6m | 10 | Provision inner PVE, install Proxmox, create test VM, verify |
+| `nested-pve-destructor` | ~2m | 3 | Cleanup test VM, stop and destroy inner PVE |
+| `nested-pve-roundtrip` | ~9m | 13 | Full cycle: construct → verify → destruct |
+| `packer-build` | ~3m | 1 | Build packer images (local or remote) |
+| `packer-build-fetch` | ~5m | 2 | Build remotely, fetch to local |
+| `packer-build-publish` | ~7m | 2 | Build and publish to PVE storage |
+| `packer-sync` | ~30s | 1 | Sync local packer to remote |
+| `packer-sync-build-fetch` | ~6m | 3 | Sync, build, fetch (dev workflow) |
+| `pve-setup` | ~3m | 2 | Install PVE (if needed) and configure host |
+| `user-setup` | ~30s | 1 | Create homestak user |
+| `vm-constructor` | ~1.5m | 5 | Ensure image, provision VM, verify SSH |
+| `vm-destructor` | ~30s | 1 | Destroy VM |
+| `vm-roundtrip` | ~2m | 6 | Full cycle: construct → verify → destruct |
 
-**nested-pve-roundtrip runtime: ~8.5 minutes**
+Runtime estimates are shown by `--list-scenarios` and used for `--timeout` defaults.
 
 ### Test Reports
 

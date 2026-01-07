@@ -89,6 +89,7 @@ class VMConstructor:
 
     name = 'vm-constructor'
     description = 'Ensure image, provision VM, verify SSH access'
+    expected_runtime = 90  # ~1.5 min
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for simple VM deployment."""
@@ -127,6 +128,7 @@ class VMDestructor:
 
     name = 'vm-destructor'
     description = 'Destroy VM'
+    expected_runtime = 30
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for simple VM destruction."""
@@ -144,6 +146,7 @@ class VMRoundtrip:
 
     name = 'vm-roundtrip'
     description = 'Deploy VM, verify SSH, destroy (full cycle)'
+    expected_runtime = 120  # ~2 min
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for full roundtrip test."""

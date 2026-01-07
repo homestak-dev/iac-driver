@@ -1,6 +1,7 @@
 """Scenario definitions and orchestration."""
 
 import logging
+import time
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -12,9 +13,21 @@ logger = logging.getLogger(__name__)
 
 @runtime_checkable
 class Scenario(Protocol):
-    """Protocol for scenario definitions."""
+    """Protocol for scenario definitions.
+
+    Class attributes:
+        name: Scenario identifier (e.g., 'pve-setup')
+        description: Human-readable description
+        requires_root: If True, --local mode requires root privileges (default: False)
+        requires_host_config: If True, --host must resolve to valid node config (default: True)
+        expected_runtime: Expected runtime in seconds for --list-scenarios display (default: None)
+    """
     name: str
     description: str
+    # Optional attributes with defaults checked in CLI
+    # requires_root: bool = False
+    # requires_host_config: bool = True
+    # expected_runtime: int = None  # seconds
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
         """Return list of (phase_name, action, description) tuples."""
@@ -29,24 +42,37 @@ class Orchestrator:
         scenario: Scenario,
         config: HostConfig,
         report_dir: Path,
-        skip_phases: list[str] = None
+        skip_phases: list[str] = None,
+        timeout: int = None
     ):
         self.scenario = scenario
         self.config = config
         self.report_dir = report_dir
         self.skip_phases = skip_phases or []
+        self.timeout = timeout  # Overall scenario timeout in seconds
         self.report = TestReport(host=config.name, report_dir=report_dir, scenario=scenario.name)
         self.context = {}
 
     def run(self) -> bool:
         """Run all phases. Returns True if all passed."""
-        logger.info(f"Starting scenario '{self.scenario.name}' on host: {self.config.name}")
+        timeout_msg = f" (timeout: {self.timeout}s)" if self.timeout else ""
+        logger.info(f"Starting scenario '{self.scenario.name}' on host: {self.config.name}{timeout_msg}")
         self.report.start()
 
         phases = self.scenario.get_phases(self.config)
         all_passed = True
+        start_time = time.time()
 
         for phase_name, action, description in phases:
+            # Check timeout before starting each phase
+            if self.timeout:
+                elapsed = time.time() - start_time
+                if elapsed >= self.timeout:
+                    logger.error(f"Scenario timeout ({self.timeout}s) exceeded after {elapsed:.1f}s")
+                    self.report.fail_phase(phase_name, f"Timeout exceeded ({elapsed:.1f}s >= {self.timeout}s)", 0)
+                    all_passed = False
+                    break
+
             if phase_name in self.skip_phases:
                 logger.info(f"Skipping phase: {phase_name}")
                 self.report.skip_phase(phase_name, description)
@@ -73,6 +99,8 @@ class Orchestrator:
                 all_passed = False
                 break
 
+        total_time = time.time() - start_time
+        logger.info(f"Scenario completed in {total_time:.1f}s")
         self.report.finish(all_passed)
         return all_passed
 

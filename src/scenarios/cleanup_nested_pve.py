@@ -131,6 +131,7 @@ class NestedPVEDestructor:
 
     name = 'nested-pve-destructor'
     description = 'Cleanup test VM (if reachable), stop and destroy inner PVE VM'
+    expected_runtime = 120  # ~2 min
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for cleanup."""

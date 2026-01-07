@@ -1,5 +1,43 @@
 # Changelog
 
+## v0.9 - 2026-01-07
+
+### Features
+
+- Add scenario annotations for declarative behavior (closes #58, #60)
+  - `requires_root`: Scenarios can declare root requirement for `--local` mode
+  - `requires_host_config`: Scenarios can opt out of requiring `--host`
+  - `expected_runtime`: Runtime estimates shown in `--list-scenarios`
+- Add `--timeout`/`-t` flag for scenario-level timeout (closes #33)
+  - Checks elapsed time before each phase
+  - Fails gracefully if timeout exceeded (does not interrupt running phases)
+- Add host auto-detection for `--local` mode (closes #58)
+  - When `--local` specified without `--host`, detects from hostname
+  - Works when hostname matches a configured node name
+- Add runtime estimates to `--list-scenarios` output (closes #33)
+  - Shows `~Nm` or `~Ns` format next to each scenario
+  - All 14 scenarios now have `expected_runtime` attribute
+
+### Changes
+
+- Scenarios without host config requirement no longer need `--host`:
+  - `pve-setup`, `user-setup`: Can auto-detect or use `--remote`
+  - All packer scenarios: Work with `--local` or `--remote`
+- Orchestrator now logs total scenario duration on completion
+
+### Testing
+
+- Add unit test suite (`tests/`) with 30 tests covering:
+  - Scenario attributes (requires_root, requires_host_config, expected_runtime)
+  - CLI integration (auto-detect, timeout flag, list-scenarios)
+  - All scenarios have required attributes
+
+### Documentation
+
+- Update CLAUDE.md Available Scenarios table with Runtime column
+- Add `--timeout` to CLI Options table
+- Document scenario annotation system in Protocol docstring
+
 ## v0.8 - 2026-01-06
 
 ### Features

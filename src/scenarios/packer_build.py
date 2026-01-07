@@ -337,6 +337,8 @@ class PackerBuild:
 
     name = 'packer-build'
     description = 'Build Debian cloud images with packer'
+    requires_host_config = False
+    expected_runtime = 180  # ~3 min per base image, ~20 min for PVE image
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for packer build."""
@@ -353,6 +355,8 @@ class PackerBuildAndPublish:
 
     name = 'packer-build-publish'
     description = 'Build and publish images to PVE storage'
+    requires_host_config = False
+    expected_runtime = 420  # ~7 min (build + compress + copy)
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for build and publish."""
@@ -372,6 +376,8 @@ class PackerBuildAndFetch:
 
     name = 'packer-build-fetch'
     description = 'Build on remote host, fetch images locally'
+    requires_host_config = False
+    expected_runtime = 300  # ~5 min (build + fetch)
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for build and fetch."""
@@ -391,6 +397,8 @@ class PackerSync:
 
     name = 'packer-sync'
     description = 'Sync local packer changes to remote host'
+    requires_host_config = False
+    expected_runtime = 30
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for sync."""
@@ -407,6 +415,8 @@ class PackerSyncBuildFetch:
 
     name = 'packer-sync-build-fetch'
     description = 'Sync local changes, build remotely, fetch images'
+    requires_host_config = False
+    expected_runtime = 360  # ~6 min (sync + build + fetch)
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for sync, build, and fetch."""
