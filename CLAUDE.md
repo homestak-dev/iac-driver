@@ -590,9 +590,9 @@ The `latest` tag is maintained by the packer release process (see packer#5).
 | Scenario | Runtime | Phases | Description |
 |----------|---------|--------|-------------|
 | `bootstrap-install` | ~2m | 3 | Run bootstrap, verify installation and user |
-| `nested-pve-constructor` | ~6m | 10 | Provision inner PVE, install Proxmox, create test VM, verify |
+| `nested-pve-constructor` | ~6m | 11 | Provision inner PVE, install Proxmox, create test VM, verify |
 | `nested-pve-destructor` | ~2m | 3 | Cleanup test VM, stop and destroy inner PVE |
-| `nested-pve-roundtrip` | ~9m | 13 | Full cycle: construct → verify → destruct |
+| `nested-pve-roundtrip` | ~9m | 14 | Full cycle: construct → verify → destruct |
 | `packer-build` | ~3m | 1 | Build packer images (local or remote) |
 | `packer-build-fetch` | ~5m | 2 | Build remotely, fetch to local |
 | `packer-build-publish` | ~7m | 2 | Build and publish to PVE storage |
