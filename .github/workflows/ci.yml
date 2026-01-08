@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install pylint pyyaml
+
+      - name: Run pylint
+        run: |
+          pylint src/ --disable=C0114,C0115,C0116,R0903,R0913,W0511 --exit-zero
+        # Disabled checks:
+        # C0114,C0115,C0116: Missing docstrings (module, class, function)
+        # R0903: Too few public methods
+        # R0913: Too many arguments
+        # W0511: TODO/FIXME comments
+        # --exit-zero: Report issues but don't fail build (Phase 1)
+
+      - name: Check Python syntax
+        run: |
+          python -m py_compile src/*.py src/**/*.py
