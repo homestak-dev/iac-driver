@@ -77,11 +77,11 @@ def main():
     parser.add_argument(
         '--local',
         action='store_true',
-        help='Run scenario locally (for pve-configure, packer-build)'
+        help='Run scenario locally (for pve-setup, packer-build)'
     )
     parser.add_argument(
         '--remote',
-        help='Target host IP for remote execution (for pve-configure, packer-build)'
+        help='Target host IP for remote execution (for pve-setup, packer-build)'
     )
     parser.add_argument(
         '--templates',
@@ -230,7 +230,7 @@ def main():
     if args.env:
         orchestrator.context['env_name'] = args.env
 
-    # Pre-populate context for pve-configure and packer-build scenarios
+    # Pre-populate context for pve-setup and packer-build scenarios
     if args.local:
         orchestrator.context['local_mode'] = True
     if args.remote:
