@@ -3,7 +3,7 @@
 import logging
 import time
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Any, Optional, Protocol, runtime_checkable
 
 from config import HostConfig
 from reporting import TestReport
@@ -29,7 +29,7 @@ class Scenario(Protocol):
     # requires_host_config: bool = True
     # expected_runtime: int = None  # seconds
 
-    def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
+    def get_phases(self, config: HostConfig) -> list[tuple[str, Any, str]]:
         """Return list of (phase_name, action, description) tuples."""
         ...
 
@@ -42,8 +42,8 @@ class Orchestrator:
         scenario: Scenario,
         config: HostConfig,
         report_dir: Path,
-        skip_phases: list[str] = None,
-        timeout: int = None
+        skip_phases: Optional[list[str]] = None,
+        timeout: Optional[int] = None
     ):
         self.scenario = scenario
         self.config = config
@@ -51,7 +51,7 @@ class Orchestrator:
         self.skip_phases = skip_phases or []
         self.timeout = timeout  # Overall scenario timeout in seconds
         self.report = TestReport(host=config.name, report_dir=report_dir, scenario=scenario.name)
-        self.context = {}
+        self.context: dict[str, Any] = {}
 
     def run(self) -> bool:
         """Run all phases. Returns True if all passed."""
@@ -106,10 +106,10 @@ class Orchestrator:
 
 
 # Registry of available scenarios
-_scenarios: dict[str, type] = {}
+_scenarios: dict[str, type[Scenario]] = {}
 
 
-def register_scenario(cls: type) -> type:
+def register_scenario(cls: type[Scenario]) -> type[Scenario]:
     """Decorator to register a scenario class."""
     _scenarios[cls.name] = cls
     return cls

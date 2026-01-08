@@ -13,18 +13,17 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import urlparse
 
 try:
     import yaml
 except ImportError:
-    yaml = None  # Fallback to tfvars parsing if yaml not available
+    yaml = None  # type: ignore[assignment]  # Fallback to tfvars parsing
 
 
 class ConfigError(Exception):
     """Configuration error."""
-    pass
 
 
 @dataclass
@@ -135,7 +134,7 @@ def _parse_yaml(path: Path) -> dict:
     """Parse a YAML file and return contents."""
     if yaml is None:
         raise ConfigError("PyYAML not installed. Run: apt install python3-yaml")
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
 

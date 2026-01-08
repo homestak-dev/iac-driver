@@ -36,7 +36,8 @@ def run_command(
             capture_output=capture,
             text=True,
             timeout=timeout,
-            env=env
+            env=env,
+            check=False  # We handle return codes explicitly
         )
         return result.returncode, result.stdout, result.stderr
     except subprocess.TimeoutExpired:
@@ -91,7 +92,7 @@ def wait_for_ssh(host: str, user: str = 'root', timeout: int = 60, interval: int
         logger.debug(f"Host {host} not pingable, continuing to try SSH...")
 
     while time.time() - start < timeout:
-        rc, out, err = run_ssh(host, 'echo ready', user=user, timeout=5)
+        rc, out, _ = run_ssh(host, 'echo ready', user=user, timeout=5)
         if rc == 0 and 'ready' in out:
             logger.info(f"SSH available on {host}")
             return True
@@ -105,7 +106,7 @@ def get_vm_ip(vm_id: int, pve_host: str, interface: str = 'eth0', user: str = 'r
     """Get VM IP via qm guest cmd on PVE host."""
     import json as json_module
     sudo = '' if user == 'root' else 'sudo '
-    rc, out, err = run_ssh(pve_host, f'{sudo}qm guest cmd {vm_id} network-get-interfaces', user=user)
+    rc, out, _ = run_ssh(pve_host, f'{sudo}qm guest cmd {vm_id} network-get-interfaces', user=user)
     if rc != 0:
         return None
 
@@ -148,5 +149,5 @@ def start_vm(vm_id: int, pve_host: str, user: str = 'root') -> bool:
     """Start a VM on the PVE host."""
     logger.info(f"Starting VM {vm_id} on {pve_host}...")
     sudo = '' if user == 'root' else 'sudo '
-    rc, out, err = run_ssh(pve_host, f'{sudo}qm start {vm_id}', user=user)
+    rc, _, _ = run_ssh(pve_host, f'{sudo}qm start {vm_id}', user=user)
     return rc == 0

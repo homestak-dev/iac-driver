@@ -112,7 +112,7 @@ class TestReport:
             ]
         }
         filename = self._report_filename('json')
-        with open(filename, 'w') as f:
+        with open(filename, 'w', encoding="utf-8") as f:
             json.dump(data, f, indent=2)
 
     def _write_markdown(self):
@@ -141,7 +141,7 @@ class TestReport:
         lines.extend(["", "---", f"Generated: {datetime.now().isoformat()}"])
 
         filename = self._report_filename('md')
-        with open(filename, 'w') as f:
+        with open(filename, 'w', encoding="utf-8") as f:
             f.write('\n'.join(lines))
 
     def _report_filename(self, ext: str) -> Path:

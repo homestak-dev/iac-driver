@@ -1,5 +1,51 @@
 # Changelog
 
+## v0.11 - 2026-01-08
+
+### Code Quality
+
+- Improve pylint score from 8.31 to 9.58/10
+- Fix all mypy type errors (8 → 0)
+- Add `.pylintrc` configuration with project-specific rules
+- Add encoding parameter to all `open()` calls
+- Add explicit `check=False` to `subprocess.run()` calls
+- Fix unused variables by using `_` convention
+- Remove unused imports across action modules
+
+### Refactoring
+
+- Rename `test_ip` context key to `leaf_ip` for generalized naming (closes #68)
+  - Better describes position in nesting hierarchy (leaf = innermost VM)
+  - Prepares for v0.20 recursive nested PVE architecture
+
+### Security
+
+- Add confirmation prompt for destructive scenarios (closes #65)
+  - `vm-destructor` and `nested-pve-destructor` now require confirmation
+  - New `--yes`/`-y` flag to skip prompt (for automation/CI)
+  - Destructive scenarios have `requires_confirmation = True` attribute
+
+### Testing
+
+- Add ConfigResolver test suite (16 tests):
+  - IP validation (CIDR format, dhcp, None, bare IP rejection)
+  - VM resolution with preset/template inheritance
+  - vmid allocation (base + index, explicit override)
+  - tfvars.json generation
+  - list_envs/templates/presets methods
+- Add action test suite (11 tests):
+  - SSHCommandAction success/failure/missing context
+  - WaitForSSHAction with mocked SSH
+  - StartVMAction with mocked Proxmox
+  - ActionResult dataclass defaults
+- Add confirmation requirement tests (4 tests)
+- Total tests: 30 → 61 (+31 tests)
+
+### Documentation
+
+- Update CLAUDE.md with `--yes`/`-y` flag
+- Update context key documentation (`test_ip` → `leaf_ip`)
+
 ## v0.10 - 2026-01-08
 
 ### Documentation

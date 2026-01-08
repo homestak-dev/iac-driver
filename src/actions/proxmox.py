@@ -3,7 +3,6 @@
 import logging
 import time
 from dataclasses import dataclass
-from typing import Optional
 
 from common import ActionResult, run_ssh, start_vm, wait_for_guest_agent
 from config import HostConfig
@@ -186,7 +185,7 @@ class WaitForProvisionedVMsAction:
                     duration=time.time() - start
                 )
 
-            # Store IP as {name}_ip (e.g., deb12-test_ip)
+            # Store IP as {name}_ip (e.g., deb12-leaf_ip)
             context_updates[f'{vm_name}_ip'] = ip
             vm_ips[vm_name] = ip
             logger.info(f"[{self.name}] VM {vm_name} has IP: {ip}")
@@ -256,7 +255,7 @@ class WaitForGuestAgentRemoteAction:
     name: str
     vm_id_attr: str = 'test_vm_id'
     pve_host_key: str = 'inner_ip'
-    ip_context_key: str = 'test_ip'
+    ip_context_key: str = 'leaf_ip'
     timeout: int = 300
     interval: int = 5
 
@@ -285,21 +284,21 @@ class WaitForGuestAgentRemoteAction:
         logger.info(f"[{self.name}] Waiting for guest agent on VM {vm_id}...")
 
         # Poll for IP via remote qm command
-        test_ip = None
+        leaf_ip = None
         deadline = time.time() + self.timeout
         while time.time() < deadline:
-            rc, out, err = run_ssh(
+            rc, out, _ = run_ssh(
                 pve_host,
                 f'qm guest cmd {vm_id} network-get-interfaces 2>/dev/null | jq -r \'.[].["ip-addresses"][]? | select(.["ip-address-type"]=="ipv4") | .["ip-address"]\' | grep -v "^127\\." | head -1',
                 timeout=30
             )
             if rc == 0 and out.strip():
-                test_ip = out.strip()
+                leaf_ip = out.strip()
                 break
             logger.debug(f"Guest agent not ready on VM {vm_id}, retrying...")
             time.sleep(self.interval)
 
-        if not test_ip:
+        if not leaf_ip:
             return ActionResult(
                 success=False,
                 message=f"Failed to get IP for VM {vm_id}",
@@ -308,7 +307,7 @@ class WaitForGuestAgentRemoteAction:
 
         return ActionResult(
             success=True,
-            message=f"VM {vm_id} has IP: {test_ip}",
+            message=f"VM {vm_id} has IP: {leaf_ip}",
             duration=time.time() - start,
-            context_updates={self.ip_context_key: test_ip}
+            context_updates={self.ip_context_key: leaf_ip}
         )

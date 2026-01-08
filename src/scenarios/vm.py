@@ -129,6 +129,7 @@ class VMDestructor:
     name = 'vm-destructor'
     description = 'Destroy VM'
     expected_runtime = 30
+    requires_confirmation = True  # Destructive scenario
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for simple VM destruction."""

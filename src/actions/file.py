@@ -90,7 +90,7 @@ class DownloadFileAction:
 
         # Create target directory
         logger.info(f"[{self.name}] Creating directory {self.dest_dir}...")
-        rc, out, err = run_ssh(host, f'mkdir -p {self.dest_dir}', timeout=30)
+        rc, _, err = run_ssh(host, f'mkdir -p {self.dest_dir}', timeout=30)
         if rc != 0:
             return ActionResult(
                 success=False,
@@ -101,7 +101,7 @@ class DownloadFileAction:
         # Download file
         logger.info(f"[{self.name}] Downloading {self.url}...")
         dl_cmd = f'curl -fSL -o {dest} {self.url}'
-        rc, out, err = run_ssh(host, dl_cmd, timeout=self.timeout)
+        rc, _, err = run_ssh(host, dl_cmd, timeout=self.timeout)
         if rc != 0:
             return ActionResult(
                 success=False,
@@ -123,7 +123,7 @@ class DownloadFileAction:
 
         # Verify file exists
         verify_path = f"{self.dest_dir}/{final_filename}"
-        rc, out, err = run_ssh(host, f'ls -la {verify_path}', timeout=30)
+        rc, _, err = run_ssh(host, f'ls -la {verify_path}', timeout=30)
         if rc != 0:
             return ActionResult(
                 success=False,
@@ -169,7 +169,7 @@ class DownloadGitHubReleaseAction:
 
         # Create target directory
         logger.info(f"[{self.name}] Creating directory {self.dest_dir}...")
-        rc, out, err = run_ssh(host, f'mkdir -p {self.dest_dir}', timeout=30)
+        rc, _, err = run_ssh(host, f'mkdir -p {self.dest_dir}', timeout=30)
         if rc != 0:
             return ActionResult(
                 success=False,
@@ -180,7 +180,7 @@ class DownloadGitHubReleaseAction:
         # Download file
         logger.info(f"[{self.name}] Downloading {self.asset_name} from {repo} release {tag}...")
         dl_cmd = f'curl -fSL -o {dest} {url}'
-        rc, out, err = run_ssh(host, dl_cmd, timeout=self.timeout)
+        rc, _, err = run_ssh(host, dl_cmd, timeout=self.timeout)
         if rc != 0:
             return ActionResult(
                 success=False,
@@ -200,7 +200,7 @@ class DownloadGitHubReleaseAction:
 
         # Verify file exists
         verify_path = f"{self.dest_dir}/{final_filename}"
-        rc, out, err = run_ssh(host, f'ls -la {verify_path}', timeout=30)
+        rc, _, err = run_ssh(host, f'ls -la {verify_path}', timeout=30)
         if rc != 0:
             return ActionResult(
                 success=False,

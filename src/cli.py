@@ -109,6 +109,11 @@ def main():
         type=int,
         help='Overall scenario timeout in seconds. Checked between phases (does not interrupt running phases).'
     )
+    parser.add_argument(
+        '--yes', '-y',
+        action='store_true',
+        help='Skip confirmation prompt for destructive scenarios'
+    )
 
     args = parser.parse_args()
 
@@ -211,7 +216,7 @@ def main():
     # Load context from file if specified and exists
     if args.context_file and args.context_file.exists():
         try:
-            with open(args.context_file) as f:
+            with open(args.context_file, encoding="utf-8") as f:
                 loaded_context = json.load(f)
             orchestrator.context.update(loaded_context)
             logger.info(f"Loaded context from {args.context_file}: {list(loaded_context.keys())}")
@@ -244,6 +249,18 @@ def main():
     if args.homestak_user:
         orchestrator.context['homestak_user'] = args.homestak_user
 
+    # Check for confirmation on destructive scenarios
+    if getattr(scenario, 'requires_confirmation', False) and not args.yes:
+        print(f"\nWARNING: '{args.scenario}' is a destructive scenario.")
+        print(f"Target: {config.name}")
+        if args.env:
+            print(f"Environment: {args.env}")
+        print("\nThis action cannot be undone.")
+        response = input("Continue? [y/N] ").strip().lower()
+        if response != 'y':
+            print("Aborted.")
+            return 1
+
     success = orchestrator.run()
 
     # Save context to file if specified
@@ -258,7 +275,7 @@ def main():
                 except (TypeError, ValueError):
                     serializable_context[key] = str(value)
 
-            with open(args.context_file, 'w') as f:
+            with open(args.context_file, 'w', encoding="utf-8") as f:
                 json.dump(serializable_context, f, indent=2)
             logger.info(f"Saved context to {args.context_file}: {list(serializable_context.keys())}")
         except Exception as e:
