@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 
-from common import ActionResult, run_ssh, wait_for_ssh, wait_for_ping
+from common import ActionResult, run_ssh, wait_for_ping
 from config import HostConfig
 
 logger = logging.getLogger(__name__)
@@ -89,7 +89,7 @@ class WaitForSSHAction:
 
         deadline = time.time() + self.timeout
         while time.time() < deadline:
-            rc, out, err = run_ssh(host, 'echo ready', timeout=5, jump_host=jump_host)
+            rc, out, _ = run_ssh(host, 'echo ready', timeout=5, jump_host=jump_host)
             if rc == 0 and 'ready' in out:
                 logger.info(f"[{self.name}] SSH available on {host}")
                 return ActionResult(
@@ -111,7 +111,7 @@ class WaitForSSHAction:
 class SyncReposToVMAction:
     """Sync /opt/homestak from intermediate host to target VM."""
     name: str
-    target_host_key: str = 'test_ip'  # context key for target VM
+    target_host_key: str = 'leaf_ip'  # context key for target VM
     intermediate_host_key: str = 'inner_ip'  # context key for intermediate host
     timeout: int = 300
 
@@ -155,7 +155,7 @@ else
 fi
 '''
         logger.info(f"[{self.name}] Syncing repos from {intermediate} to {target}...")
-        rc, out, err = run_ssh(intermediate, sync_cmd, timeout=self.timeout)
+        rc, _, err = run_ssh(intermediate, sync_cmd, timeout=self.timeout)
 
         if rc != 0:
             return ActionResult(
@@ -175,7 +175,7 @@ fi
 class VerifySSHChainAction:
     """Verify SSH connectivity through a jump host chain."""
     name: str
-    target_host_key: str = 'test_ip'
+    target_host_key: str = 'leaf_ip'
     jump_host_key: str = 'inner_ip'
     timeout: int = 60
     interval: int = 5

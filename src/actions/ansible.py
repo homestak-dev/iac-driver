@@ -3,8 +3,6 @@
 import logging
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Optional
 
 from common import ActionResult, run_command, run_ssh, wait_for_ssh
 from config import HostConfig, get_sibling_dir

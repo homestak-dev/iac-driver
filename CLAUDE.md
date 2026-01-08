@@ -204,7 +204,7 @@ Downstream actions (StartVMAction, WaitForGuestAgentAction) check context first,
 ```
 
 After `WaitForProvisionedVMsAction`, context contains:
-- `{vm_name}_ip` for each VM (e.g., `deb12-test_ip`, `deb13-test_ip`)
+- `{vm_name}_ip` for each VM (e.g., `deb12-test_ip`, `deb13-leaf_ip`)
 - `vm_ip` - first VM's IP (backward compatibility)
 
 ## Common Commands
@@ -553,6 +553,7 @@ The orchestrator runs scenarios composed of reusable actions:
 | `--homestak-user` | User to create during bootstrap |
 | `--packer-release` | Packer release tag (e.g., v0.8.0-rc1, default: latest) |
 | `--timeout`, `-t` | Overall scenario timeout in seconds (checked between phases) |
+| `--yes`, `-y` | Skip confirmation prompt for destructive scenarios |
 
 **Context File Usage:**
 
@@ -574,7 +575,7 @@ Context keys populated by nested-pve scenarios:
 - `nested-pve_vm_id` - Inner PVE VM ID
 - `inner_ip` - Inner PVE IP address
 - `test_vm_id` - Test VM ID (on inner PVE)
-- `test_ip` - Test VM IP address
+- `leaf_ip` - Leaf VM IP address (innermost VM in nesting hierarchy)
 - `provisioned_vms` - List of all provisioned VMs
 
 **Packer Release:**

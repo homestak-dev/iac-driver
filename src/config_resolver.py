@@ -18,7 +18,7 @@ from typing import Any, Optional
 try:
     import yaml
 except ImportError:
-    yaml = None
+    yaml = None  # type: ignore[assignment]
 
 from config import ConfigError, get_site_config_dir, _parse_yaml, _load_secrets
 
@@ -206,7 +206,7 @@ class ConfigResolver:
             config: Resolved configuration from resolve_env()
             output_path: Path to write tfvars.json
         """
-        with open(output_path, "w") as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
 
     def list_envs(self) -> list[str]:

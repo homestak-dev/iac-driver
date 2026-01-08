@@ -1,0 +1,46 @@
+[MAIN]
+# Minimum Python version
+py-version = 3.11
+
+# Add src to path for imports
+init-hook='import sys; sys.path.insert(0, "src")'
+
+[MESSAGES CONTROL]
+# Disable messages that are too noisy or not applicable
+disable=
+    # Too many X - we have complex scenarios that need these
+    too-many-locals,
+    too-many-arguments,
+    too-many-branches,
+    too-many-statements,
+    too-many-instance-attributes,
+    too-many-return-statements,
+    too-many-positional-arguments,
+    # Design patterns we use intentionally
+    too-few-public-methods,
+    # f-strings in logging are fine in Python 3.11+ with lazy evaluation
+    logging-fstring-interpolation,
+    # Duplicate code is sometimes clearer than abstraction
+    duplicate-code,
+    # We use broad exceptions intentionally for robustness
+    broad-exception-caught,
+    # Import outside toplevel is sometimes needed for conditional imports
+    import-outside-toplevel,
+    # Line length is handled by formatter
+    line-too-long,
+
+[FORMAT]
+# Maximum line length
+max-line-length = 120
+
+[DESIGN]
+# Relax some design constraints for infrastructure code
+max-args = 8
+max-locals = 20
+max-branches = 15
+max-statements = 60
+
+[SIMILARITIES]
+# Ignore imports when comparing for duplicates
+ignore-imports = yes
+min-similarity-lines = 10

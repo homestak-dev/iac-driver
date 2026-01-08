@@ -112,14 +112,14 @@ class NestedPVEConstructor:
                 name='wait-for-test-ip',
                 vm_id_attr='test_vm_id',
                 pve_host_key='inner_ip',
-                ip_context_key='test_ip',
+                ip_context_key='leaf_ip',
                 timeout=300,
             ), 'Wait for test VM IP'),
 
             # Phase 10: Sync repos to test VM
             ('sync_repos', SyncReposToVMAction(
                 name='sync-repos-to-test-vm',
-                target_host_key='test_ip',
+                target_host_key='leaf_ip',
                 intermediate_host_key='inner_ip',
                 timeout=300,
             ), 'Sync /opt/homestak to test VM'),
@@ -127,7 +127,7 @@ class NestedPVEConstructor:
             # Phase 11: Verify SSH chain
             ('verify', VerifySSHChainAction(
                 name='verify-ssh-chain',
-                target_host_key='test_ip',
+                target_host_key='leaf_ip',
                 jump_host_key='inner_ip',
                 timeout=300,
             ), 'Verify SSH chain'),
@@ -215,13 +215,13 @@ class NestedPVERoundtrip:
                 name='wait-for-test-ip',
                 vm_id_attr='test_vm_id',
                 pve_host_key='inner_ip',
-                ip_context_key='test_ip',
+                ip_context_key='leaf_ip',
                 timeout=300,
             ), 'Wait for test VM IP'),
 
             ('sync_repos', SyncReposToVMAction(
                 name='sync-repos-to-test-vm',
-                target_host_key='test_ip',
+                target_host_key='leaf_ip',
                 intermediate_host_key='inner_ip',
                 timeout=300,
             ), 'Sync /opt/homestak to test VM'),
@@ -229,7 +229,7 @@ class NestedPVERoundtrip:
             # === VERIFY ===
             ('verify', VerifySSHChainAction(
                 name='verify-ssh-chain',
-                target_host_key='test_ip',
+                target_host_key='leaf_ip',
                 jump_host_key='inner_ip',
                 timeout=300,
             ), 'Verify SSH chain'),

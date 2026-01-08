@@ -86,7 +86,7 @@ class SyncPackerAction:
 class PackerBuildAction:
     """Build packer images locally or remotely."""
     name: str
-    templates: list[str] = None  # None = all templates
+    templates: Optional[list[str]] = None  # None = all templates
     packer_dir: Optional[str] = None  # Override packer directory
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:

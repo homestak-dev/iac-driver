@@ -166,5 +166,29 @@ class TestExpectedRuntime:
         assert scenario.expected_runtime == 30
 
 
+class TestRequiresConfirmation:
+    """Test requires_confirmation attribute for destructive scenarios."""
+
+    def test_vm_destructor_requires_confirmation(self):
+        """VMDestructor should require confirmation."""
+        scenario = get_scenario('vm-destructor')
+        assert getattr(scenario, 'requires_confirmation', False) is True
+
+    def test_nested_pve_destructor_requires_confirmation(self):
+        """NestedPVEDestructor should require confirmation."""
+        scenario = get_scenario('nested-pve-destructor')
+        assert getattr(scenario, 'requires_confirmation', False) is True
+
+    def test_vm_constructor_does_not_require_confirmation(self):
+        """VMConstructor should not require confirmation (non-destructive)."""
+        scenario = get_scenario('vm-constructor')
+        assert getattr(scenario, 'requires_confirmation', False) is False
+
+    def test_packer_build_does_not_require_confirmation(self):
+        """PackerBuild should not require confirmation (non-destructive)."""
+        scenario = get_scenario('packer-build')
+        assert getattr(scenario, 'requires_confirmation', False) is False
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
