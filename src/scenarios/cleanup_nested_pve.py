@@ -1,6 +1,6 @@
 """Cleanup scenario for nested PVE environment.
 
-Destroys the inner PVE VM and any test VMs created during E2E testing.
+Destroys the inner PVE VM and any test VMs created during integration testing.
 """
 
 import time

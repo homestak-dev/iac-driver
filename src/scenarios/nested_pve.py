@@ -25,14 +25,14 @@ from scenarios.cleanup_nested_pve import StopVMAction
 
 @register_scenario
 class NestedPVEConstructor:
-    """E2E test for nested Proxmox VE installation."""
+    """integration test for nested Proxmox VE installation."""
 
     name = 'nested-pve-constructor'
     description = 'Provision inner PVE, install Proxmox VE, create test VM, verify SSH'
     expected_runtime = 360  # ~6 min (PVE install ~2m with pre-installed image)
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
-        """Return phases for nested PVE E2E test."""
+        """Return phases for nested PVE integration test."""
         return [
             # Phase 1: Provision inner PVE VM
             ('provision', TofuApplyAction(
@@ -136,7 +136,7 @@ class NestedPVEConstructor:
 
 @register_scenario
 class NestedPVERoundtrip:
-    """Full E2E roundtrip: construct, verify, destruct."""
+    """Full integration roundtrip: construct, verify, destruct."""
 
     name = 'nested-pve-roundtrip'
     description = 'Full cycle: provision, install PVE, test VM, verify, cleanup, destroy'

@@ -59,9 +59,9 @@ Options:
 - `simple-vm-constructor` - Deploy and verify SSH (~30s)
 - `simple-vm-destructor` - Destroy test VM (~3s)
 - `simple-vm-roundtrip` - Deploy, verify SSH, destroy (~33s)
-- `nested-pve-constructor` - Provision inner PVE for E2E (~10 min)
+- `nested-pve-constructor` - Provision inner PVE for integration testing (~10 min)
 - `nested-pve-destructor` - Cleanup inner PVE (~30s)
-- `nested-pve-roundtrip` - Full nested PVE E2E test (~12 min)
+- `nested-pve-roundtrip` - Full nested PVE integration test (~12 min)
 
 ## Secrets Management
 
