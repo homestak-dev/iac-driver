@@ -23,7 +23,7 @@ from scenarios import register_scenario
 logger = logging.getLogger(__name__)
 
 # Available templates
-TEMPLATES = ['debian-12-custom', 'debian-13-custom']
+TEMPLATES = ['debian-12-custom', 'debian-13-custom', 'debian-13-pve']
 
 
 @dataclass
@@ -156,8 +156,12 @@ class PackerBuildAction:
                 failed.append(f"{template}: build failed - {err}")
                 continue
 
-            # Check output exists - output dir is debian-{version}, file is {template}.qcow2
-            version_dir = template.rsplit('-', 1)[0]  # debian-12-custom -> debian-12
+            # Check output exists - output dir matches template pattern
+            # debian-12-custom -> debian-12, debian-13-pve -> debian-13-pve
+            if template.endswith('-custom'):
+                version_dir = template.rsplit('-', 1)[0]  # debian-12-custom -> debian-12
+            else:
+                version_dir = template  # debian-13-pve -> debian-13-pve
             output_dir = images_dir / version_dir
             qcow2_file = output_dir / f'{template}.qcow2'
             if qcow2_file.exists():
@@ -219,9 +223,12 @@ class PackerBuildAction:
                 failed.append(f"{template}: build failed - {err}")
                 continue
 
-            # Verify output - output dir is debian-{version}, file is {template}.qcow2
-            # e.g., debian-12-custom -> images/debian-12/debian-12-custom.qcow2
-            output_dir = template.rsplit('-', 1)[0]  # debian-12-custom -> debian-12
+            # Verify output - output dir matches template pattern
+            # debian-12-custom -> debian-12, debian-13-pve -> debian-13-pve
+            if template.endswith('-custom'):
+                output_dir = template.rsplit('-', 1)[0]  # debian-12-custom -> debian-12
+            else:
+                output_dir = template  # debian-13-pve -> debian-13-pve
             cmd = f'test -f {packer_path}/images/{output_dir}/{template}.qcow2 && echo exists'
             rc, out, err = run_ssh(remote_ip, cmd, user=user, timeout=30)
             if rc == 0 and 'exists' in out:
@@ -264,7 +271,12 @@ class PackerPublishAction:
 
         published = []
         for template in built_images:
-            src = f'{packer_path}/images/{template}/{template}.qcow2'
+            # Output dir matches template pattern
+            if template.endswith('-custom'):
+                output_dir = template.rsplit('-', 1)[0]  # debian-12-custom -> debian-12
+            else:
+                output_dir = template  # debian-13-pve -> debian-13-pve
+            src = f'{packer_path}/images/{output_dir}/{template}.qcow2'
             dst = f'/var/lib/vz/template/iso/{template}.img'
 
             logger.info(f"[{self.name}] Publishing {template} to PVE storage...")
@@ -305,8 +317,11 @@ class FetchImagesAction:
 
         fetched = []
         for template in built_images:
-            # Output dir is debian-{version}, file is {template}.qcow2
-            output_dir = template.rsplit('-', 1)[0]  # debian-12-custom -> debian-12
+            # Output dir matches template pattern
+            if template.endswith('-custom'):
+                output_dir = template.rsplit('-', 1)[0]  # debian-12-custom -> debian-12
+            else:
+                output_dir = template  # debian-13-pve -> debian-13-pve
             src = f'{user}@{remote_ip}:{packer_path}/images/{output_dir}/{template}.qcow2'
             dst = dest / f'{template}.qcow2'
 
