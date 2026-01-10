@@ -1,13 +1,18 @@
 """Config resolution for site-config YAML files.
 
-Resolves site-config entities (site, secrets, nodes, envs, vms) into flat
-configurations suitable for tofu. All template and preset inheritance is
-resolved here, so tofu receives fully-computed values.
+Resolves site-config entities (site, secrets, nodes, envs, vms, postures) into
+flat configurations suitable for tofu and ansible. All template and preset
+inheritance is resolved here, so consumers receive fully-computed values.
 
-Resolution order:
+Resolution order (tofu):
 1. vms/presets/{preset}.yaml (if template uses preset:)
 2. vms/{template}.yaml (template definition)
 3. envs/{env}.yaml instance overrides (name, ip, vmid)
+
+Resolution order (ansible):
+1. site.yaml defaults (timezone, packages, pve settings)
+2. postures/{posture}.yaml (security settings from env's posture FK)
+3. Packages merged: site packages + posture packages (deduplicated)
 """
 
 import json
@@ -45,6 +50,7 @@ class ConfigResolver:
         self.secrets = _load_secrets(self.path) or {}
         self.presets = self._load_dir("vms/presets")
         self.templates = self._load_dir("vms")
+        self.postures = self._load_dir("postures")
 
     def _load_yaml(self, relative_path: str) -> dict:
         """Load a YAML file from site-config directory."""
@@ -80,6 +86,13 @@ class ConfigResolver:
         if not node_config:
             raise ConfigError(f"Node config not found: nodes/{node}.yaml")
 
+        # Require datastore from node config (v0.13+)
+        if 'datastore' not in node_config:
+            raise ConfigError(
+                f"Node '{node}' missing required 'datastore' in nodes/{node}.yaml. "
+                f"Run 'make node-config FORCE=1' in site-config to regenerate."
+            )
+
         # Resolve API token from secrets
         api_token_key = node_config.get("api_token", node)
         api_token = self.secrets.get("api_tokens", {}).get(api_token_key, "")
@@ -107,7 +120,7 @@ class ConfigResolver:
             "api_endpoint": node_config.get("api_endpoint", ""),
             "api_token": api_token,
             "ssh_user": defaults.get("ssh_user", "root"),
-            "datastore": node_config.get("datastore", defaults.get("datastore", "local-zfs")),
+            "datastore": node_config["datastore"],  # Required from node config (v0.13+)
             "root_password": passwords.get("vm_root", ""),
             "ssh_keys": ssh_keys_list,
             "vms": vms,
@@ -208,6 +221,71 @@ class ConfigResolver:
         """
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
+
+    def resolve_ansible_vars(self, env: str) -> dict:
+        """Resolve environment to ansible variables.
+
+        Merges site defaults with security posture from the environment's
+        posture FK. Packages are merged (union of site + posture, deduplicated).
+
+        Args:
+            env: Environment name (matches envs/{env}.yaml)
+
+        Returns:
+            Dict with all resolved ansible variables
+        """
+        env_config = self._load_yaml(f"envs/{env}.yaml")
+        defaults = self.site.get("defaults", {})
+
+        # Load posture (default to dev if not specified)
+        posture_name = env_config.get("posture", "dev")
+        posture = self.postures.get(posture_name, {})
+
+        # Merge packages: site defaults + posture additions (deduplicated)
+        site_packages = defaults.get("packages", [])
+        posture_packages = posture.get("packages", [])
+        merged_packages = list(dict.fromkeys(site_packages + posture_packages))
+
+        # Resolve SSH keys from secrets
+        ssh_keys_dict = self.secrets.get("ssh_keys", {})
+        ssh_keys_list = list(ssh_keys_dict.values())
+
+        return {
+            # System config from site defaults
+            "timezone": defaults.get("timezone", "UTC"),
+            "pve_remove_subscription_nag": defaults.get("pve_remove_subscription_nag", True),
+
+            # Merged packages
+            "packages": merged_packages,
+
+            # Security settings from posture
+            "ssh_port": posture.get("ssh_port", 22),
+            "ssh_permit_root_login": posture.get("ssh_permit_root_login", "prohibit-password"),
+            "ssh_password_authentication": posture.get("ssh_password_authentication", "no"),
+            "sudo_nopasswd": posture.get("sudo_nopasswd", False),
+            "fail2ban_enabled": posture.get("fail2ban_enabled", False),
+
+            # Metadata
+            "env_name": env,
+            "posture_name": posture_name,
+
+            # SSH keys for authorized_keys
+            "ssh_authorized_keys": ssh_keys_list,
+        }
+
+    def write_ansible_vars(self, config: dict, output_path: str) -> None:
+        """Write resolved ansible vars as JSON.
+
+        Args:
+            config: Resolved configuration from resolve_ansible_vars()
+            output_path: Path to write ansible-vars.json
+        """
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2)
+
+    def list_postures(self) -> list[str]:
+        """List available posture names."""
+        return sorted(self.postures.keys())
 
     def list_envs(self) -> list[str]:
         """List available environment names."""

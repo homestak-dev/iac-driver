@@ -87,7 +87,7 @@ Scripts use relative paths (`../ansible`, `../tofu`, `../packer`) so the parent 
 
 ## ConfigResolver
 
-The `ConfigResolver` class resolves site-config YAML files into flat configurations for tofu. All template and preset inheritance is resolved in Python, so tofu receives fully-computed values.
+The `ConfigResolver` class resolves site-config YAML files into flat configurations for tofu and ansible. All template, preset, and posture inheritance is resolved in Python, so consumers receive fully-computed values.
 
 ### Usage
 
@@ -100,20 +100,34 @@ resolver = ConfigResolver()
 # Or specify path explicitly
 resolver = ConfigResolver('/path/to/site-config')
 
-# Resolve environment for a target node
+# Resolve environment for tofu
 config = resolver.resolve_env(env='dev', node='pve')
-
-# Write tfvars.json for tofu
 resolver.write_tfvars(config, '/tmp/tfvars.json')
+
+# Resolve environment for ansible (v0.13+)
+ansible_vars = resolver.resolve_ansible_vars(env='dev')
+resolver.write_ansible_vars(ansible_vars, '/tmp/ansible-vars.json')
+
+# List available entities
+resolver.list_envs()      # ['dev', 'test', 'nested-pve']
+resolver.list_postures()  # ['dev', 'prod', 'local']
+resolver.list_templates() # ['debian-12-custom', 'nested-pve', ...]
+resolver.list_presets()   # ['small', 'medium', 'large', ...]
 ```
 
-### Resolution Order
+### Resolution Order (Tofu)
 
 1. `vms/presets/{preset}.yaml` - Size presets (if template uses `preset:`)
 2. `vms/{template}.yaml` - Template definition
 3. `envs/{env}.yaml` - Instance overrides (name, ip, vmid)
 
-### Output Structure
+### Resolution Order (Ansible)
+
+1. `site.yaml` defaults - timezone, packages, pve settings
+2. `postures/{posture}.yaml` - Security settings from env's posture FK
+3. Packages merged: site packages + posture packages (deduplicated)
+
+### Output Structure (Tofu)
 
 ```python
 {
@@ -135,6 +149,24 @@ resolver.write_tfvars(config, '/tmp/tfvars.json')
             "bridge": "vmbr0"
         }
     ]
+}
+```
+
+### Output Structure (Ansible)
+
+```python
+{
+    "timezone": "America/Denver",
+    "pve_remove_subscription_nag": true,
+    "packages": ["htop", "curl", "wget", "net-tools", "strace"],
+    "ssh_port": 22,
+    "ssh_permit_root_login": "yes",
+    "ssh_password_authentication": "yes",
+    "sudo_nopasswd": true,
+    "fail2ban_enabled": false,
+    "env_name": "dev",
+    "posture_name": "dev",
+    "ssh_authorized_keys": ["ssh-rsa ...", ...]
 }
 ```
 
