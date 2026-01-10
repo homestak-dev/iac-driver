@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.13 - 2026-01-10
+
+### Features
+
+- Add `resolve_ansible_vars()` to ConfigResolver
+  - Resolves site-config postures to ansible-compatible variables
+  - Merges packages from site.yaml + posture (deduplicated)
+  - Outputs timezone, SSH settings, sudo, fail2ban config
+- Add `readiness.py` module with pre-flight checks:
+  - `validate_api_token()` - Test PVE API token before tofu runs
+  - `validate_host_available()` - Check host reachability via SSH
+  - `validate_host_resolvable()` - Verify DNS resolution
+
+### Testing
+
+- Add `conftest.py` with shared pytest fixtures
+  - `site_config_dir` - Temporary site-config structure
+  - `mock_config_resolver` - Pre-configured resolver for tests
+- Add tests for `resolve_ansible_vars()` (posture loading, package merging)
+- Add tests for readiness checks (API validation, host checks)
+
+### Code Quality
+
+- Add `.pre-commit-config.yaml` for pylint/mypy hooks
+- Add `mypy.ini` configuration
+- Update Makefile with `lint` and `install-hooks` targets
+
+### Documentation
+
+- Document `resolve_ansible_vars()` in CLAUDE.md
+- Add ansible output structure example
+
 ## v0.12 - 2025-01-09
 
 - Release alignment with homestak-dev v0.12
