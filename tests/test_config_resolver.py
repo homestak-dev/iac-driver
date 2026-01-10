@@ -6,11 +6,11 @@ Tests verify:
 2. VM resolution with preset/template inheritance
 3. vmid allocation (base + index, explicit override)
 4. Error handling for missing/invalid config
+5. Ansible variable resolution (v0.13)
 """
 
 import json
 import sys
-import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
@@ -19,79 +19,13 @@ import pytest
 from config import ConfigError
 from config_resolver import ConfigResolver
 
+# Note: site_config_dir fixture is provided by conftest.py
+
 
 class TestConfigResolver:
     """Test ConfigResolver functionality."""
 
-    @pytest.fixture
-    def site_config_dir(self, tmp_path):
-        """Create a minimal site-config structure for testing."""
-        # Create directories
-        (tmp_path / 'nodes').mkdir()
-        (tmp_path / 'envs').mkdir()
-        (tmp_path / 'vms').mkdir()
-        (tmp_path / 'vms/presets').mkdir()
-
-        # Create site.yaml
-        (tmp_path / 'site.yaml').write_text("""
-defaults:
-  bridge: vmbr0
-  ssh_user: root
-  datastore: local-zfs
-  gateway: 10.0.12.1
-""")
-
-        # Create secrets.yaml (decrypted format)
-        (tmp_path / 'secrets.yaml').write_text("""
-api_tokens:
-  test-node: "user@pam!token=secret"
-passwords:
-  vm_root: "$6$rounds=4096$hash"
-ssh_keys:
-  key1: "ssh-rsa AAAA... user1"
-  key2: "ssh-ed25519 AAAA... user2"
-""")
-
-        # Create node config
-        (tmp_path / 'nodes/test-node.yaml').write_text("""
-node: test-node
-api_endpoint: https://10.0.12.100:8006
-api_token: test-node
-datastore: local-zfs
-""")
-
-        # Create preset
-        (tmp_path / 'vms/presets/small.yaml').write_text("""
-cores: 1
-memory: 2048
-disk: 20
-""")
-
-        # Create template
-        (tmp_path / 'vms/debian-12.yaml').write_text("""
-preset: small
-image: debian-12-custom.img
-packages:
-  - qemu-guest-agent
-""")
-
-        # Create environment
-        (tmp_path / 'envs/test.yaml').write_text("""
-vmid_base: 99900
-vms:
-  - name: test1
-    template: debian-12
-    ip: 10.0.12.100/24
-  - name: test2
-    template: debian-12
-    ip: dhcp
-  - name: test3
-    template: debian-12
-    cores: 2
-    vmid: 99999
-""")
-
-        return tmp_path
+    # Uses site_config_dir from conftest.py
 
     def test_resolve_env_returns_expected_structure(self, site_config_dir):
         """resolve_env should return dict with required keys."""
@@ -152,6 +86,16 @@ vms:
 
         assert 'nonexistent-node' in str(exc_info.value)
 
+    def test_resolve_env_missing_datastore_raises(self, site_config_without_datastore):
+        """Missing datastore in node config should raise ConfigError."""
+        resolver = ConfigResolver(str(site_config_without_datastore))
+
+        with pytest.raises(ConfigError) as exc_info:
+            resolver.resolve_env('test', 'bad-node')
+
+        assert "missing required 'datastore'" in str(exc_info.value)
+        assert "make node-config FORCE=1" in str(exc_info.value)
+
 
 class TestIPValidation:
     """Test IP format validation."""
@@ -165,7 +109,7 @@ class TestIPValidation:
         (tmp_path / 'vms/presets').mkdir()
         (tmp_path / 'site.yaml').write_text('defaults: {}')
         (tmp_path / 'secrets.yaml').write_text('api_tokens: {}')
-        (tmp_path / 'nodes/test.yaml').write_text('node: test\napi_endpoint: https://localhost:8006')
+        (tmp_path / 'nodes/test.yaml').write_text('node: test\napi_endpoint: https://localhost:8006\ndatastore: local')
         return ConfigResolver(str(tmp_path))
 
     def test_validate_ip_accepts_dhcp(self, resolver):
@@ -214,7 +158,7 @@ class TestWriteTfvars:
         (tmp_path / 'vms/presets').mkdir()
         (tmp_path / 'site.yaml').write_text('defaults: {}')
         (tmp_path / 'secrets.yaml').write_text('api_tokens: {}\npasswords: {}')
-        (tmp_path / 'nodes/test.yaml').write_text('node: test\napi_endpoint: https://localhost:8006')
+        (tmp_path / 'nodes/test.yaml').write_text('node: test\napi_endpoint: https://localhost:8006\ndatastore: local')
         (tmp_path / 'envs/minimal.yaml').write_text('vms: []')
 
         resolver = ConfigResolver(str(tmp_path))
@@ -270,3 +214,112 @@ class TestListMethods:
         """list_presets should return sorted preset names."""
         presets = resolver.list_presets()
         assert presets == ['large', 'medium', 'small']
+
+
+class TestResolveAnsibleVars:
+    """Test ansible variable resolution from site-config."""
+
+    # Uses site_config_dir from conftest.py
+
+    def test_loads_postures(self, site_config_dir):
+        """Postures should be loaded from postures/ directory."""
+        resolver = ConfigResolver(str(site_config_dir))
+        assert 'dev' in resolver.postures
+        assert 'prod' in resolver.postures
+
+    def test_applies_posture_ssh_settings(self, site_config_dir):
+        """SSH settings should come from posture."""
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_ansible_vars('test')
+
+        # test env uses dev posture
+        assert config['ssh_permit_root_login'] == 'yes'
+        assert config['ssh_password_authentication'] == 'yes'
+
+    def test_applies_posture_sudo_settings(self, site_config_dir):
+        """Sudo settings should come from posture."""
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_ansible_vars('test')
+
+        # dev posture has sudo_nopasswd: true
+        assert config['sudo_nopasswd'] is True
+
+    def test_applies_site_timezone(self, site_config_dir):
+        """Timezone should come from site defaults."""
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_ansible_vars('test')
+
+        assert config['timezone'] == 'America/Denver'
+
+    def test_merges_site_and_posture_packages(self, site_config_dir):
+        """Packages should be merged from site and posture."""
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_ansible_vars('test')
+
+        packages = config['packages']
+        # Site packages
+        assert 'htop' in packages
+        assert 'curl' in packages
+        # Posture packages (dev posture)
+        assert 'net-tools' in packages
+        assert 'strace' in packages
+
+    def test_deduplicates_merged_packages(self, site_config_dir):
+        """Merged packages should have no duplicates."""
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_ansible_vars('test')
+
+        packages = config['packages']
+        assert len(packages) == len(set(packages))
+
+    def test_includes_env_metadata(self, site_config_dir):
+        """Result should include env and posture names."""
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_ansible_vars('test')
+
+        assert config['env_name'] == 'test'
+        assert config['posture_name'] == 'dev'
+
+    def test_resolves_ssh_keys(self, site_config_dir):
+        """SSH keys should be resolved from secrets."""
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_ansible_vars('test')
+
+        assert 'ssh_authorized_keys' in config
+        assert len(config['ssh_authorized_keys']) == 2
+
+    def test_missing_posture_defaults_to_dev(self, site_config_without_posture):
+        """Missing posture should fall back to dev."""
+        resolver = ConfigResolver(str(site_config_without_posture))
+        config = resolver.resolve_ansible_vars('no-posture')
+
+        assert config['posture_name'] == 'dev'
+        assert config['sudo_nopasswd'] is True  # from dev posture
+
+
+class TestWriteAnsibleVars:
+    """Test ansible vars JSON generation."""
+
+    def test_write_ansible_vars_creates_valid_json(self, site_config_dir, tmp_path):
+        """write_ansible_vars should create valid JSON file."""
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_ansible_vars('test')
+
+        output_path = tmp_path / 'ansible-vars.json'
+        resolver.write_ansible_vars(config, str(output_path))
+
+        assert output_path.exists()
+        with open(output_path) as f:
+            loaded = json.load(f)
+        assert loaded['timezone'] == 'America/Denver'
+        assert loaded['posture_name'] == 'dev'
+
+
+class TestListPostures:
+    """Test list_postures method."""
+
+    def test_list_postures(self, site_config_dir):
+        """list_postures should return sorted posture names."""
+        resolver = ConfigResolver(str(site_config_dir))
+        postures = resolver.list_postures()
+        assert postures == ['dev', 'prod']
