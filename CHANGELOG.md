@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.17 - 2026-01-11
+
+### Features
+- Add site-config integration to ansible actions (#92)
+  - `use_site_config` parameter to enable ConfigResolver integration
+  - `env` parameter to specify environment for posture resolution
+  - Resolves timezone, packages, SSH settings from site-config
+  - Works with both `AnsiblePlaybookAction` and `AnsibleLocalPlaybookAction`
+
 ## v0.16 - 2026-01-11
 
 ### Features
