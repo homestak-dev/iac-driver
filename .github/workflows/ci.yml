@@ -19,17 +19,13 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pylint pyyaml
+          pip install pre-commit pylint mypy pyyaml types-PyYAML types-requests
 
-      - name: Run pylint
+      - name: Run pre-commit (pylint + mypy)
         run: |
-          pylint src/ --disable=C0114,C0115,C0116,R0903,R0913,W0511 --exit-zero
-        # Disabled checks:
-        # C0114,C0115,C0116: Missing docstrings (module, class, function)
-        # R0903: Too few public methods
-        # R0913: Too many arguments
-        # W0511: TODO/FIXME comments
-        # --exit-zero: Report issues but don't fail build (Phase 1)
+          pre-commit run --all-files || true
+        # Advisory mode: report issues but don't fail build (Phase 1)
+        # Remove '|| true' to make blocking in future release
 
       - name: Check Python syntax
         run: |

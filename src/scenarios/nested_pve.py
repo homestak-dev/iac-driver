@@ -53,7 +53,6 @@ class NestedPVEConstructor:
                 vm_id_attr='nested-pve_vm_id',
                 pve_host_attr='ssh_host',
                 ip_context_key='inner_ip',
-                timeout=300,
             ), 'Wait for inner PVE IP'),
 
             # Phase 4: Ensure PVE installed
@@ -77,7 +76,6 @@ class NestedPVEConstructor:
                 },
                 host_key='inner_ip',
                 wait_for_ssh_before=True,
-                timeout=600,
             ), 'Configure inner PVE'),
 
             # Phase 6: Download packer image from release
@@ -87,7 +85,6 @@ class NestedPVEConstructor:
                 dest_dir='/var/lib/vz/template/iso',
                 host_key='inner_ip',
                 rename_ext='.img',
-                timeout=300,
             ), 'Download packer image from release'),
 
             # Phase 7: Provision test VM on inner PVE
@@ -96,8 +93,6 @@ class NestedPVEConstructor:
                 env_name='test',
                 node_name='nested-pve',
                 host_key='inner_ip',
-                timeout_init=120,
-                timeout_apply=300,
             ), 'Provision test VM'),
 
             # Phase 8: Start test VM
@@ -113,7 +108,6 @@ class NestedPVEConstructor:
                 vm_id_attr='test_vm_id',
                 pve_host_key='inner_ip',
                 ip_context_key='leaf_ip',
-                timeout=300,
             ), 'Wait for test VM IP'),
 
             # Phase 10: Sync repos to test VM
@@ -121,7 +115,6 @@ class NestedPVEConstructor:
                 name='sync-repos-to-test-vm',
                 target_host_key='leaf_ip',
                 intermediate_host_key='inner_ip',
-                timeout=300,
             ), 'Sync /opt/homestak to test VM'),
 
             # Phase 11: Verify SSH chain
@@ -129,7 +122,7 @@ class NestedPVEConstructor:
                 name='verify-ssh-chain',
                 target_host_key='leaf_ip',
                 jump_host_key='inner_ip',
-                timeout=300,
+                timeout=300,  # 5x default: multi-hop SSH chain requires longer timeout
             ), 'Verify SSH chain'),
         ]
 
@@ -162,7 +155,6 @@ class NestedPVERoundtrip:
                 vm_id_attr='nested-pve_vm_id',
                 pve_host_attr='ssh_host',
                 ip_context_key='inner_ip',
-                timeout=300,
             ), 'Wait for inner PVE IP'),
 
             ('ensure_pve', EnsurePVEAction(
@@ -184,7 +176,6 @@ class NestedPVERoundtrip:
                 },
                 host_key='inner_ip',
                 wait_for_ssh_before=True,
-                timeout=600,
             ), 'Setup nested PVE environment'),
 
             ('download_image', DownloadGitHubReleaseAction(
@@ -193,7 +184,6 @@ class NestedPVERoundtrip:
                 dest_dir='/var/lib/vz/template/iso',
                 host_key='inner_ip',
                 rename_ext='.img',
-                timeout=300,
             ), 'Download packer image'),
 
             ('test_vm_apply', TofuApplyRemoteAction(
@@ -201,8 +191,6 @@ class NestedPVERoundtrip:
                 env_name='test',
                 node_name='nested-pve',
                 host_key='inner_ip',
-                timeout_init=120,
-                timeout_apply=300,
             ), 'Provision test VM'),
 
             ('test_vm_start', StartVMRemoteAction(
@@ -216,14 +204,12 @@ class NestedPVERoundtrip:
                 vm_id_attr='test_vm_id',
                 pve_host_key='inner_ip',
                 ip_context_key='leaf_ip',
-                timeout=300,
             ), 'Wait for test VM IP'),
 
             ('sync_repos', SyncReposToVMAction(
                 name='sync-repos-to-test-vm',
                 target_host_key='leaf_ip',
                 intermediate_host_key='inner_ip',
-                timeout=300,
             ), 'Sync /opt/homestak to test VM'),
 
             # === VERIFY ===
@@ -231,7 +217,7 @@ class NestedPVERoundtrip:
                 name='verify-ssh-chain',
                 target_host_key='leaf_ip',
                 jump_host_key='inner_ip',
-                timeout=300,
+                timeout=300,  # 5x default: multi-hop SSH chain requires longer timeout
             ), 'Verify SSH chain'),
 
             # === DESTRUCT ===

@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.16 - 2026-01-11
+
+### Features
+
+- Add `--vm-id` CLI flag for ad-hoc VM ID overrides (closes #18)
+  - Repeatable: `--vm-id test=99990 --vm-id inner=99912`
+  - Format validation with clear error messages
+  - Applied via `vm_id_overrides` in TofuApplyAction
+
+### Code Quality
+
+- Align CI workflow with local pre-commit configuration (closes #71)
+  - Run `pre-commit run --all-files` in CI (advisory mode)
+  - Replaces standalone pylint/mypy steps
+  - Consistent tooling between local dev and CI
+
+### Refactoring
+
+- Remove redundant timeout overrides in nested-pve scenarios (closes #44)
+  - Delete 7 overrides that matched action defaults
+  - Keep 2 VerifySSHChainAction timeouts with rationale comments
+  - Reduces maintenance burden and improves readability
+
+### Testing
+
+- Add unit tests for `--vm-id` CLI flag (5 tests):
+  - Flag acceptance, format validation, edge cases
+- Add unit test for TofuApplyAction VM ID override logic
+
 ## v0.13 - 2026-01-10
 
 ### Features

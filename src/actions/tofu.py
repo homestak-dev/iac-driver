@@ -32,6 +32,17 @@ class TofuApplyAction:
         try:
             resolver = ConfigResolver()
             resolved = resolver.resolve_env(env=env_name, node=config.name)
+
+            # Apply VM ID overrides from context
+            vm_id_overrides = context.get('vm_id_overrides', {})
+            if vm_id_overrides:
+                for vm in resolved.get('vms', []):
+                    vm_name = vm.get('name')
+                    if vm_name in vm_id_overrides:
+                        original = vm.get('vmid')
+                        vm['vmid'] = vm_id_overrides[vm_name]
+                        logger.info(f"[{self.name}] VM ID override: {vm_name} {original} -> {vm['vmid']}")
+
             tfvars_path = Path(f'/tmp/{env_name}-{config.name}.tfvars.json')
             resolver.write_tfvars(resolved, str(tfvars_path))
             logger.info(f"[{self.name}] Generated tfvars: {tfvars_path}")

@@ -586,6 +586,7 @@ The orchestrator runs scenarios composed of reusable actions:
 | `--packer-release` | Packer release tag (e.g., v0.8.0-rc1, default: latest) |
 | `--timeout`, `-t` | Overall scenario timeout in seconds (checked between phases) |
 | `--yes`, `-y` | Skip confirmation prompt for destructive scenarios |
+| `--vm-id` | Override VM ID (repeatable): `--vm-id test=99990` |
 
 **Context File Usage:**
 

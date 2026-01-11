@@ -114,6 +114,12 @@ def main():
         action='store_true',
         help='Skip confirmation prompt for destructive scenarios'
     )
+    parser.add_argument(
+        '--vm-id',
+        action='append',
+        metavar='NAME=VMID',
+        help='Override VM ID (repeatable): --vm-id test=99990 --vm-id inner=99912'
+    )
 
     args = parser.parse_args()
 
@@ -248,6 +254,26 @@ def main():
         orchestrator.context['vm_ip'] = args.vm_ip
     if args.homestak_user:
         orchestrator.context['homestak_user'] = args.homestak_user
+
+    # Pre-populate context with VM ID overrides
+    if args.vm_id:
+        vm_id_overrides = {}
+        for override in args.vm_id:
+            if '=' not in override:
+                print(f"Error: Invalid --vm-id format '{override}'. Expected NAME=VMID (e.g., test=99990)")
+                return 1
+            name, vmid_str = override.split('=', 1)
+            if not name:
+                print(f"Error: Invalid --vm-id format '{override}'. VM name cannot be empty.")
+                return 1
+            try:
+                vmid = int(vmid_str)
+            except ValueError:
+                print(f"Error: Invalid --vm-id format '{override}'. VMID must be an integer.")
+                return 1
+            vm_id_overrides[name] = vmid
+        orchestrator.context['vm_id_overrides'] = vm_id_overrides
+        logger.info(f"VM ID overrides: {vm_id_overrides}")
 
     # Check for confirmation on destructive scenarios
     if getattr(scenario, 'requires_confirmation', False) and not args.yes:

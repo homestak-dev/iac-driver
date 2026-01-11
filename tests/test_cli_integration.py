@@ -147,5 +147,68 @@ class TestTimeoutFlag:
         assert 'timeout: 5s' in combined or 'timeout' in combined.lower()
 
 
+class TestVmIdFlag:
+    """Test CLI --vm-id flag."""
+
+    def test_vm_id_flag_accepted(self):
+        """--vm-id flag should be accepted by CLI."""
+        result = subprocess.run(
+            [str(RUN_SH), '--help'],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode == 0
+        assert '--vm-id' in result.stdout
+
+    def test_vm_id_invalid_format_no_equals(self):
+        """--vm-id without = should fail with clear error."""
+        result = subprocess.run(
+            [str(RUN_SH), '--scenario', 'vm-roundtrip', '--host', 'father', '--vm-id', 'badformat'],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode == 1
+        combined = result.stdout + result.stderr
+        assert "Invalid --vm-id format" in combined
+        assert "Expected NAME=VMID" in combined
+
+    def test_vm_id_invalid_format_non_numeric(self):
+        """--vm-id with non-numeric ID should fail with clear error."""
+        result = subprocess.run(
+            [str(RUN_SH), '--scenario', 'vm-roundtrip', '--host', 'father', '--vm-id', 'test=abc'],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode == 1
+        combined = result.stdout + result.stderr
+        assert "Invalid --vm-id format" in combined
+        assert "VMID must be an integer" in combined
+
+    def test_vm_id_empty_name_rejected(self):
+        """--vm-id with empty name should fail with clear error."""
+        result = subprocess.run(
+            [str(RUN_SH), '--scenario', 'vm-roundtrip', '--host', 'father', '--vm-id', '=99990'],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode == 1
+        combined = result.stdout + result.stderr
+        assert "Invalid --vm-id format" in combined
+        assert "VM name cannot be empty" in combined
+
+    def test_vm_id_valid_format_accepted(self):
+        """Valid --vm-id should be accepted (though scenario may fail for other reasons)."""
+        # We can't fully test without a running PVE, but we can verify parsing works
+        result = subprocess.run(
+            [str(RUN_SH), '--scenario', 'vm-roundtrip', '--host', 'father',
+             '--vm-id', 'test=99990', '--list-phases'],
+            capture_output=True,
+            text=True
+        )
+        # --list-phases should succeed even with --vm-id
+        assert result.returncode == 0
+        assert "Phases for scenario" in result.stdout
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
