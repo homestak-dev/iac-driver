@@ -3,9 +3,11 @@
 import logging
 import time
 from dataclasses import dataclass, field
+from typing import Optional
 
 from common import ActionResult, run_command, run_ssh, wait_for_ssh
 from config import HostConfig, get_sibling_dir
+from config_resolver import ConfigResolver
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,9 @@ class AnsiblePlaybookAction:
     wait_for_ssh_after: bool = False
     ssh_timeout: int = 60
     timeout: int = 600
+    # Site-config integration (v0.17+)
+    use_site_config: bool = False
+    env: Optional[str] = None  # Environment for posture resolution (e.g., 'dev', 'test')
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
         """Execute ansible playbook."""
@@ -52,6 +57,16 @@ class AnsiblePlaybookAction:
                     duration=time.time() - start
                 )
 
+        # Resolve site-config vars if enabled
+        resolved_vars = {}
+        if self.use_site_config and self.env:
+            try:
+                resolver = ConfigResolver()
+                resolved_vars = resolver.resolve_ansible_vars(self.env)
+                logger.info(f"[{self.name}] Resolved site-config vars for env '{self.env}'")
+            except Exception as e:
+                logger.warning(f"[{self.name}] Failed to resolve site-config: {e}")
+
         # Build command
         logger.info(f"[{self.name}] Running {self.playbook} on {target_host}...")
         cmd = [
@@ -61,7 +76,17 @@ class AnsiblePlaybookAction:
             '-e', f'ansible_host={target_host}'
         ]
 
-        # Add extra vars
+        # Add resolved site-config vars first (extra_vars can override)
+        for key, value in resolved_vars.items():
+            if isinstance(value, (list, dict)):
+                import json
+                cmd.extend(['-e', f'{key}={json.dumps(value)}'])
+            elif isinstance(value, bool):
+                cmd.extend(['-e', f'{key}={str(value).lower()}'])
+            else:
+                cmd.extend(['-e', f'{key}={value}'])
+
+        # Add extra vars (these override site-config)
         for key, value in self.extra_vars.items():
             cmd.extend(['-e', f'{key}={value}'])
 
@@ -100,6 +125,9 @@ class AnsibleLocalPlaybookAction:
     inventory: str = "inventory/local.yml"
     extra_vars: dict = field(default_factory=dict)
     timeout: int = 600
+    # Site-config integration (v0.17+)
+    use_site_config: bool = False
+    env: Optional[str] = None  # Environment for posture resolution (e.g., 'dev', 'test')
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
         """Execute ansible playbook locally."""
@@ -113,6 +141,16 @@ class AnsibleLocalPlaybookAction:
                 duration=time.time() - start
             )
 
+        # Resolve site-config vars if enabled
+        resolved_vars = {}
+        if self.use_site_config and self.env:
+            try:
+                resolver = ConfigResolver()
+                resolved_vars = resolver.resolve_ansible_vars(self.env)
+                logger.info(f"[{self.name}] Resolved site-config vars for env '{self.env}'")
+            except Exception as e:
+                logger.warning(f"[{self.name}] Failed to resolve site-config: {e}")
+
         # Build command
         logger.info(f"[{self.name}] Running {self.playbook} locally...")
         cmd = [
@@ -121,7 +159,17 @@ class AnsibleLocalPlaybookAction:
             self.playbook,
         ]
 
-        # Add extra vars
+        # Add resolved site-config vars first (extra_vars can override)
+        for key, value in resolved_vars.items():
+            if isinstance(value, (list, dict)):
+                import json
+                cmd.extend(['-e', f'{key}={json.dumps(value)}'])
+            elif isinstance(value, bool):
+                cmd.extend(['-e', f'{key}={str(value).lower()}'])
+            else:
+                cmd.extend(['-e', f'{key}={value}'])
+
+        # Add extra vars (these override site-config)
         for key, value in self.extra_vars.items():
             cmd.extend(['-e', f'{key}={value}'])
 
