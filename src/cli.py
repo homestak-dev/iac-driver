@@ -120,6 +120,11 @@ def main():
         metavar='NAME=VMID',
         help='Override VM ID (repeatable): --vm-id test=99990 --vm-id inner=99912'
     )
+    parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Show what would be executed without running actions'
+    )
 
     args = parser.parse_args()
 
@@ -216,7 +221,8 @@ def main():
         config=config,
         report_dir=args.report_dir,
         skip_phases=args.skip,
-        timeout=args.timeout
+        timeout=args.timeout,
+        dry_run=args.dry_run
     )
 
     # Load context from file if specified and exists
