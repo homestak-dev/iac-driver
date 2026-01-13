@@ -587,6 +587,7 @@ The orchestrator runs scenarios composed of reusable actions:
 | `--timeout`, `-t` | Overall scenario timeout in seconds (checked between phases) |
 | `--yes`, `-y` | Skip confirmation prompt for destructive scenarios |
 | `--vm-id` | Override VM ID (repeatable): `--vm-id test=99990` |
+| `--dry-run` | Preview scenario phases without executing actions |
 
 **Context File Usage:**
 
