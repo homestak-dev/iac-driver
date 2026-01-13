@@ -1,0 +1,114 @@
+"""Tests for CLI module."""
+
+import pytest
+from unittest.mock import patch, MagicMock
+from pathlib import Path
+
+
+class TestCreateLocalConfig:
+    """Tests for create_local_config() function."""
+
+    @patch('config_resolver.ConfigResolver')
+    @patch('socket.gethostname')
+    def test_creates_config_with_local_name(self, mock_hostname, mock_resolver_class):
+        """Config should have name='local'."""
+        mock_hostname.return_value = 'testhost'
+        mock_resolver_class.side_effect = Exception("Not needed")
+
+        from src.cli import create_local_config
+        config = create_local_config()
+
+        assert config.name == 'local'
+
+    @patch('config_resolver.ConfigResolver')
+    @patch('socket.gethostname')
+    def test_sets_localhost_api_endpoint(self, mock_hostname, mock_resolver_class):
+        """API endpoint should be localhost:8006."""
+        mock_hostname.return_value = 'testhost'
+        mock_resolver_class.side_effect = Exception("Not needed")
+
+        from src.cli import create_local_config
+        config = create_local_config()
+
+        assert config.api_endpoint == 'https://localhost:8006'
+
+    @patch('config_resolver.ConfigResolver')
+    @patch('socket.gethostname')
+    def test_sets_localhost_ssh_host(self, mock_hostname, mock_resolver_class):
+        """SSH host should be localhost."""
+        mock_hostname.return_value = 'testhost'
+        mock_resolver_class.side_effect = Exception("Not needed")
+
+        from src.cli import create_local_config
+        config = create_local_config()
+
+        assert config.ssh_host == 'localhost'
+        assert config.ssh_user == 'root'
+
+    @patch('config_resolver.ConfigResolver')
+    @patch('socket.gethostname')
+    def test_loads_token_for_current_hostname(self, mock_hostname, mock_resolver_class):
+        """Should try to load API token matching current hostname."""
+        mock_hostname.return_value = 'father'
+
+        mock_resolver = MagicMock()
+        mock_resolver.site_config_dir = Path('/tmp')
+        mock_resolver._load_yaml.return_value = {
+            'api_tokens': {'father': 'root@pam!homestak=secret123'}
+        }
+        mock_resolver_class.return_value = mock_resolver
+
+        from src.cli import create_local_config
+        config = create_local_config()
+
+        assert config._api_token == 'root@pam!homestak=secret123'
+
+    @patch('config_resolver.ConfigResolver')
+    @patch('socket.gethostname')
+    def test_no_token_when_hostname_not_in_secrets(self, mock_hostname, mock_resolver_class):
+        """Should handle missing token gracefully."""
+        mock_hostname.return_value = 'unknown-host'
+
+        mock_resolver = MagicMock()
+        mock_resolver.site_config_dir = Path('/tmp')
+        mock_resolver._load_yaml.return_value = {
+            'api_tokens': {'father': 'token1', 'mother': 'token2'}
+        }
+        mock_resolver_class.return_value = mock_resolver
+
+        from src.cli import create_local_config
+        config = create_local_config()
+
+        assert not hasattr(config, '_api_token') or config._api_token is None
+
+    @patch('config_resolver.ConfigResolver')
+    @patch('socket.gethostname')
+    def test_handles_missing_secrets_file(self, mock_hostname, mock_resolver_class):
+        """Should handle missing secrets.yaml gracefully."""
+        mock_hostname.return_value = 'testhost'
+
+        mock_resolver = MagicMock()
+        mock_resolver.site_config_dir = Path('/tmp')
+        mock_resolver._load_yaml.side_effect = FileNotFoundError("secrets.yaml not found")
+        mock_resolver_class.return_value = mock_resolver
+
+        from src.cli import create_local_config
+        config = create_local_config()
+
+        # Should not raise, config should still be valid
+        assert config.name == 'local'
+        assert config.api_endpoint == 'https://localhost:8006'
+
+    @patch('config_resolver.ConfigResolver')
+    @patch('socket.gethostname')
+    def test_handles_resolver_exception(self, mock_hostname, mock_resolver_class):
+        """Should handle ConfigResolver failures gracefully."""
+        mock_hostname.return_value = 'testhost'
+        mock_resolver_class.side_effect = Exception("Site config not found")
+
+        from src.cli import create_local_config
+        config = create_local_config()
+
+        # Should not raise, config should still be valid
+        assert config.name == 'local'
+        assert config.api_endpoint == 'https://localhost:8006'
