@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.18 - 2026-01-13
+
+### Features
+
+- Add `--dry-run` mode for scenario preview (#40)
+  - Shows phases, actions, and parameters without execution
+  - Useful for release verification and understanding scenario behavior
+  - Orchestrator returns preview report without side effects
+
 ## v0.17 - 2026-01-11
 
 ### Features
