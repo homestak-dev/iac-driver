@@ -43,18 +43,73 @@ class Orchestrator:
         config: HostConfig,
         report_dir: Path,
         skip_phases: Optional[list[str]] = None,
-        timeout: Optional[int] = None
+        timeout: Optional[int] = None,
+        dry_run: bool = False
     ):
         self.scenario = scenario
         self.config = config
         self.report_dir = report_dir
         self.skip_phases = skip_phases or []
         self.timeout = timeout  # Overall scenario timeout in seconds
+        self.dry_run = dry_run
         self.report = TestReport(host=config.name, report_dir=report_dir, scenario=scenario.name)
         self.context: dict[str, Any] = {}
 
+    def preview(self) -> bool:
+        """Show what would be executed without running. Returns True."""
+        phases = self.scenario.get_phases(self.config)
+
+        print("")
+        print("═══════════════════════════════════════════════════════════════")
+        print(f"  DRY-RUN: {self.scenario.name}")
+        print(f"  Host: {self.config.name}")
+        print("═══════════════════════════════════════════════════════════════")
+        print("")
+
+        print("Phases to execute:")
+        phase_count = 0
+        skip_count = 0
+
+        for phase_name, action, description in phases:
+            action_type = type(action).__name__
+            if phase_name in self.skip_phases:
+                print(f"  [SKIP] {phase_name}: {description}")
+                print(f"         Action: {action_type}")
+                skip_count += 1
+            else:
+                print(f"  [ OK ] {phase_name}: {description}")
+                print(f"         Action: {action_type}")
+
+                # Show action details if available
+                if hasattr(action, 'name'):
+                    print(f"         Name: {action.name}")
+                if hasattr(action, 'playbook'):
+                    print(f"         Playbook: {action.playbook}")
+                if hasattr(action, 'env_name'):
+                    print(f"         Environment: {action.env_name}")
+                if hasattr(action, 'timeout'):
+                    print(f"         Timeout: {action.timeout}s")
+                phase_count += 1
+            print("")
+
+        print("═══════════════════════════════════════════════════════════════")
+        print(f"  Summary: {phase_count} phases to execute, {skip_count} to skip")
+        if self.timeout:
+            print(f"  Timeout: {self.timeout}s")
+        print("  Mode: DRY-RUN (no changes made)")
+        print("═══════════════════════════════════════════════════════════════")
+        print("")
+        print("Remove --dry-run to execute the scenario.")
+        print("")
+
+        return True
+
     def run(self) -> bool:
         """Run all phases. Returns True if all passed."""
+        # Handle dry-run mode
+        if self.dry_run:
+            return self.preview()
+
         timeout_msg = f" (timeout: {self.timeout}s)" if self.timeout else ""
         logger.info(f"Starting scenario '{self.scenario.name}' on host: {self.config.name}{timeout_msg}")
         self.report.start()
