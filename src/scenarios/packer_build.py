@@ -133,23 +133,12 @@ class PackerBuildAction:
 
             logger.info(f"[{self.name}] Building {template}...")
 
-            # Initialize packer plugins
+            # Use build.sh for full workflow (version detection, renaming, checksums)
+            # build.sh handles packer init internally
             rc, out, err = run_command(
-                ['packer', 'init', str(template_file)],
+                ['./build.sh', template],
                 cwd=packer_dir,
-                timeout=120
-            )
-            if rc != 0:
-                failed.append(f"{template}: init failed - {err}")
-                continue
-
-            # Build image
-            rc, out, err = run_command(
-                ['packer', 'build', '-force',
-                 '-var', f'ssh_private_key_file={ssh_key}',
-                 str(template_file)],
-                cwd=packer_dir,
-                timeout=600,  # 10 minute timeout per image
+                timeout=900,  # 15 minute timeout per image (includes PVE builds)
                 capture=False  # Stream output
             )
             if rc != 0:
@@ -158,6 +147,7 @@ class PackerBuildAction:
 
             # Check output exists - output dir matches template pattern
             # debian-12-custom -> debian-12, debian-13-pve -> debian-13-pve
+            # Note: build.sh creates symlink from original name to versioned name
             if template.endswith('-custom'):
                 version_dir = template.rsplit('-', 1)[0]  # debian-12-custom -> debian-12
             else:
@@ -209,22 +199,17 @@ class PackerBuildAction:
         for template in templates:
             logger.info(f"[{self.name}] Building {template} on {remote_ip}...")
 
-            # Initialize packer
-            cmd = f'cd {packer_path} && packer init templates/{template}.pkr.hcl'
-            rc, out, err = run_ssh(remote_ip, cmd, user=user, timeout=120)
-            if rc != 0:
-                failed.append(f"{template}: init failed - {err}")
-                continue
-
-            # Build image (longer timeout for actual build)
-            cmd = f'cd {packer_path} && packer build -force templates/{template}.pkr.hcl'
-            rc, out, err = run_ssh(remote_ip, cmd, user=user, timeout=600)
+            # Use build.sh for full workflow (version detection, renaming, checksums)
+            # build.sh handles packer init internally
+            cmd = f'cd {packer_path} && ./build.sh {template}'
+            rc, out, err = run_ssh(remote_ip, cmd, user=user, timeout=900)
             if rc != 0:
                 failed.append(f"{template}: build failed - {err}")
                 continue
 
             # Verify output - output dir matches template pattern
             # debian-12-custom -> debian-12, debian-13-pve -> debian-13-pve
+            # Note: build.sh creates symlink from original name to versioned name
             if template.endswith('-custom'):
                 output_dir = template.rsplit('-', 1)[0]  # debian-12-custom -> debian-12
             else:
