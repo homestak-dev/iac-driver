@@ -14,6 +14,12 @@
   - Auto-discovers node config from system hostname
   - Simplifies local execution without explicit host parameter
 
+### Fixed
+
+- Fix EnsurePVEAction to detect pre-installed debian-13-pve image
+  - Checks for `/etc/pve-packages-preinstalled` marker before pveproxy status
+  - Skips ansible pve-install.yml when using pre-built PVE image
+
 ## v0.18 - 2026-01-13
 
 ### Features
