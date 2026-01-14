@@ -1,6 +1,15 @@
 # Changelog
 
-## v0.19 - Unreleased
+## v0.20 - Unreleased
+
+### Changed
+
+- Refactored packer scenarios to use build.sh wrapper
+  - PackerBuildAction now runs `./build.sh <template>` instead of direct packer commands
+  - Ensures version detection, renaming, and cleanup scripts run during scenario builds
+  - Increased timeout to 900s to accommodate PVE image builds
+
+## v0.19 - 2026-01-14
 
 ### Features
 
