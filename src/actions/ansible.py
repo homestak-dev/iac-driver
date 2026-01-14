@@ -223,8 +223,20 @@ class EnsurePVEAction:
                 duration=time.time() - start
             )
 
-        # Check if PVE is already running
+        # Check if PVE is already installed (marker file or pveproxy running)
         logger.info(f"[{self.name}] Checking if PVE already installed on {target_host}...")
+
+        # First check for pre-installed marker (debian-13-pve image)
+        rc, out, err = run_ssh(target_host, 'test -f /etc/pve-packages-preinstalled', timeout=30)
+        if rc == 0:
+            logger.info(f"[{self.name}] PVE pre-installed (marker file found) - skipping install")
+            return ActionResult(
+                success=True,
+                message="PVE pre-installed (debian-13-pve image) - skipped installation",
+                duration=time.time() - start
+            )
+
+        # Fall back to pveproxy check (for manually installed PVE)
         rc, out, err = run_ssh(target_host, 'systemctl is-active pveproxy', timeout=30)
         if rc == 0 and 'active' in out:
             logger.info(f"[{self.name}] PVE already installed and running - skipping")
