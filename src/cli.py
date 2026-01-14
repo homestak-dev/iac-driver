@@ -11,6 +11,7 @@ from pathlib import Path
 
 from config import list_hosts, list_envs, load_host_config, get_base_dir
 from scenarios import Orchestrator, get_scenario, list_scenarios
+from validation import validate_readiness
 
 # Configure logging
 logging.basicConfig(
@@ -19,6 +20,44 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
+
+
+def create_local_config():
+    """Create HostConfig for local execution with auto-derived values.
+
+    Derives API endpoint and attempts to load API token for current hostname.
+    Used when --local flag is specified.
+    """
+    from config import HostConfig
+    from config_resolver import ConfigResolver
+
+    hostname = socket.gethostname()
+    config = HostConfig(
+        name='local',
+        config_file=Path('/dev/null'),
+    )
+
+    # Derive API endpoint for local PVE
+    config.api_endpoint = 'https://localhost:8006'
+    config.ssh_host = 'localhost'
+    config.ssh_user = 'root'
+
+    # Try to load API token for current host
+    try:
+        resolver = ConfigResolver()
+        secrets = resolver._load_yaml(resolver.site_config_dir / 'secrets.yaml')
+        token = secrets.get('api_tokens', {}).get(hostname)
+        if token:
+            config._api_token = token
+            logger.info(f"Loaded API token for {hostname}")
+        else:
+            logger.debug(f"No API token found for hostname '{hostname}'")
+    except FileNotFoundError:
+        logger.debug("secrets.yaml not found, skipping API token loading")
+    except Exception as e:
+        logger.debug(f"Could not load API token for localhost: {e}")
+
+    return config
 
 
 def main():
@@ -196,18 +235,32 @@ def main():
         print(f"Available hosts: {', '.join(available_hosts) if available_hosts else 'none configured'}")
         return 1
 
-    # Load config (use dummy config for scenarios without host config)
+    # Load config (use local config with auto-derived values for --local)
     if host:
         config = load_host_config(host)
     else:
-        # Create minimal config for scenarios that don't need host config
-        from config import HostConfig
-        config = HostConfig(name='local', config_file=Path('/dev/null'))
+        # Create local config with auto-derived API endpoint and token
+        config = create_local_config()
 
     # Override packer release if specified (CLI takes precedence)
     if args.packer_release:
         config.packer_release = args.packer_release
         logger.info(f"Using packer release override: {args.packer_release}")
+
+    # Pre-flight validation (skip for --local, --dry-run, or scenarios that don't need it)
+    if host and not args.local and not args.dry_run:
+        scenario_class = type(scenario)
+        errors = validate_readiness(config, scenario_class)
+        if errors:
+            print("\nPre-flight validation failed:")
+            for error in errors:
+                # Indent multi-line errors
+                for i, line in enumerate(error.split('\n')):
+                    prefix = "  ✗ " if i == 0 else "    "
+                    print(f"{prefix}{line}")
+            print()
+            return 1
+        logger.info("Pre-flight validation passed")
 
     if args.list_phases:
         print(f"Phases for scenario '{args.scenario}':")
