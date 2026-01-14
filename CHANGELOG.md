@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.19 - Unreleased
+
+### Features
+
+- Add API token validation via `--validate-only` flag (#31)
+  - Validates API token without running scenario
+  - Reports PVE version on success
+- Add host availability check with SSH reachability test (#32)
+  - Pre-flight validation includes SSH connectivity
+  - Fails fast before scenario execution
+- Enhance `--local` flag with auto-config from hostname (#26)
+  - Auto-discovers node config from system hostname
+  - Simplifies local execution without explicit host parameter
+
 ## v0.18 - 2026-01-13
 
 ### Features
