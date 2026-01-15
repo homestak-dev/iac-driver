@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## v0.22 - 2026-01-15
+
 ### Changed
 
 - Refactor nested-pve scenario to pass `homestak_src_dir` instead of individual repo paths
