@@ -18,7 +18,7 @@ from actions import (
     SyncReposToVMAction,
     VerifySSHChainAction,
 )
-from config import HostConfig, get_sibling_dir
+from config import HostConfig, get_base_dir
 from scenarios import register_scenario
 from scenarios.cleanup_nested_pve import StopVMAction
 
@@ -69,10 +69,7 @@ class NestedPVEConstructor:
                 inventory='inventory/remote-dev.yml',
                 extra_vars={
                     'ansible_user': 'root',
-                    'packer_src_dir': str(get_sibling_dir('packer')),
-                    'tofu_src_dir': str(get_sibling_dir('tofu')),
-                    'site_config_src_dir': str(get_sibling_dir('site-config')),
-                    'iac_driver_src_dir': str(get_sibling_dir('iac-driver')),
+                    'homestak_src_dir': str(get_base_dir().parent),
                 },
                 host_key='inner_ip',
                 wait_for_ssh_before=True,
@@ -169,10 +166,7 @@ class NestedPVERoundtrip:
                 inventory='inventory/remote-dev.yml',
                 extra_vars={
                     'ansible_user': 'root',
-                    'packer_src_dir': str(get_sibling_dir('packer')),
-                    'tofu_src_dir': str(get_sibling_dir('tofu')),
-                    'site_config_src_dir': str(get_sibling_dir('site-config')),
-                    'iac_driver_src_dir': str(get_sibling_dir('iac-driver')),
+                    'homestak_src_dir': str(get_base_dir().parent),
                 },
                 host_key='inner_ip',
                 wait_for_ssh_before=True,

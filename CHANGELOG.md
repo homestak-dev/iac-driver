@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Refactor nested-pve scenario to pass `homestak_src_dir` instead of individual repo paths
+  - Aligns with ansible#13 role refactor
+  - Simplifies variable passing to ansible playbooks
+
 ## v0.20 - 2026-01-14
 
 ### Changed
