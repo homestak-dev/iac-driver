@@ -11,7 +11,7 @@ from pathlib import Path
 
 from config import list_hosts, list_envs, load_host_config, get_base_dir
 from scenarios import Orchestrator, get_scenario, list_scenarios
-from validation import validate_readiness
+from validation import validate_readiness, run_preflight_checks, format_preflight_results
 
 # Configure logging
 logging.basicConfig(
@@ -164,11 +164,38 @@ def main():
         action='store_true',
         help='Show what would be executed without running actions'
     )
+    parser.add_argument(
+        '--preflight',
+        action='store_true',
+        help='Run preflight checks only (no scenario execution)'
+    )
+    parser.add_argument(
+        '--skip-preflight',
+        action='store_true',
+        help='Skip preflight checks before scenario execution'
+    )
 
     args = parser.parse_args()
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
+
+    # Handle --preflight mode (standalone check, no scenario)
+    if args.preflight:
+        hostname = socket.gethostname()
+        # Check if nested-pve scenario would be run (for nested virt check)
+        check_nested = args.scenario and 'nested-pve' in args.scenario
+
+        logger.info(f"Running preflight checks for {hostname}")
+        success, results = run_preflight_checks(
+            local_mode=args.local or not args.host,
+            hostname=hostname,
+            check_nested_virt=check_nested,
+            verbose=args.verbose
+        )
+
+        print(format_preflight_results(hostname, results))
+        return 0 if success else 1
 
     if args.list_scenarios or args.scenario is None:
         print("Available scenarios:")
@@ -247,10 +274,14 @@ def main():
         config.packer_release = args.packer_release
         logger.info(f"Using packer release override: {args.packer_release}")
 
-    # Pre-flight validation (skip for --local, --dry-run, or scenarios that don't need it)
-    if host and not args.local and not args.dry_run:
+    # Pre-flight validation (skip for --skip-preflight, --dry-run)
+    if not args.skip_preflight and not args.dry_run:
         scenario_class = type(scenario)
-        errors = validate_readiness(config, scenario_class)
+        errors = validate_readiness(
+            config,
+            scenario_class,
+            local_mode=args.local
+        )
         if errors:
             print("\nPre-flight validation failed:")
             for error in errors:
@@ -258,6 +289,7 @@ def main():
                 for i, line in enumerate(error.split('\n')):
                     prefix = "  ✗ " if i == 0 else "    "
                     print(f"{prefix}{line}")
+            print("\nUse --skip-preflight to bypass these checks")
             print()
             return 1
         logger.info("Pre-flight validation passed")

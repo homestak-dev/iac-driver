@@ -174,25 +174,31 @@ def get_site_config_dir() -> Path:
 
     Resolution order:
     1. $HOMESTAK_SITE_CONFIG environment variable
-    2. ../site-config/ sibling directory
-    3. /opt/homestak/site-config/ bootstrap default
+    2. ../site-config/ sibling directory (dev workspace)
+    3. /usr/local/etc/homestak/ (FHS-compliant bootstrap)
+    4. /opt/homestak/site-config/ (legacy bootstrap)
     """
-    # 1. Environment variable
+    # 1. Environment variable (highest priority)
     if env_path := os.environ.get('HOMESTAK_SITE_CONFIG'):
         path = Path(env_path)
         if path.exists():
             return path
         raise ConfigError(f"HOMESTAK_SITE_CONFIG={env_path} does not exist")
 
-    # 2. Sibling directory
+    # 2. Sibling directory (dev workspace)
     sibling = get_base_dir().parent / 'site-config'
     if sibling.exists():
         return sibling
 
-    # 3. Bootstrap default
-    default = Path('/opt/homestak/site-config')
-    if default.exists():
-        return default
+    # 3. FHS-compliant path (v0.24+ bootstrap)
+    fhs_path = Path('/usr/local/etc/homestak')
+    if fhs_path.exists():
+        return fhs_path
+
+    # 4. Legacy path (pre-v0.24 bootstrap)
+    legacy = Path('/opt/homestak/site-config')
+    if legacy.exists():
+        return legacy
 
     raise ConfigError(
         "site-config not found. "

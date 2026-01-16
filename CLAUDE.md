@@ -34,8 +34,9 @@ Credentials are managed in the [site-config](https://github.com/homestak-dev/sit
 
 **Discovery:** iac-driver finds site-config via:
 1. `$HOMESTAK_SITE_CONFIG` environment variable
-2. `../site-config/` sibling directory
-3. `/opt/homestak/site-config/` bootstrap default
+2. `../site-config/` sibling directory (dev workspace)
+3. `/usr/local/etc/homestak/` (FHS-compliant bootstrap)
+4. `/opt/homestak/site-config/` (legacy bootstrap)
 
 **Setup:**
 ```bash
@@ -588,6 +589,29 @@ The orchestrator runs scenarios composed of reusable actions:
 | `--yes`, `-y` | Skip confirmation prompt for destructive scenarios |
 | `--vm-id` | Override VM ID (repeatable): `--vm-id test=99990` |
 | `--dry-run` | Preview scenario phases without executing actions |
+| `--preflight` | Run preflight checks only (no scenario execution) |
+| `--skip-preflight` | Skip preflight checks before scenario execution |
+
+**Preflight Checks:**
+
+Preflight checks validate host prerequisites before running scenarios:
+
+```bash
+# Standalone preflight check (local)
+./run.sh --preflight --local
+
+# Standalone preflight check (remote)
+./run.sh --preflight --host mother
+
+# Skip preflight for faster iteration
+./run.sh --scenario nested-pve-roundtrip --host father --skip-preflight
+```
+
+Checks include:
+- Bootstrap installation (core repos present)
+- site-init completion (secrets.yaml decrypted, node config exists)
+- PVE API connectivity and token validity
+- Nested virtualization (for nested-pve-* scenarios)
 
 **Context File Usage:**
 
