@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## v0.24 - 2026-01-16
 
 ### Added
 - Add comprehensive preflight checks (#97)
