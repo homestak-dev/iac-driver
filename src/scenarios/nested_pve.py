@@ -30,6 +30,7 @@ class NestedPVEConstructor:
     name = 'nested-pve-constructor'
     description = 'Provision inner PVE, install Proxmox VE, create test VM, verify SSH'
     expected_runtime = 360  # ~6 min (PVE install ~2m with pre-installed image)
+    requires_nested_virt = True  # Requires nested virtualization
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for nested PVE integration test."""
@@ -131,6 +132,7 @@ class NestedPVERoundtrip:
     name = 'nested-pve-roundtrip'
     description = 'Full cycle: provision, install PVE, test VM, verify, cleanup, destroy'
     expected_runtime = 540  # ~9 min
+    requires_nested_virt = True  # Requires nested virtualization
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for full roundtrip test."""

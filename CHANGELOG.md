@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Added
+- Add comprehensive preflight checks (#97)
+  - Bootstrap installation validation (checks for core repos)
+  - site-init completion check (secrets.yaml decrypted, node config exists)
+  - Nested virtualization check (for nested-pve-* scenarios)
+  - Standalone `--preflight` mode for checking without scenario execution
+  - `--skip-preflight` flag to bypass checks for experienced users
+  - Clear, actionable error messages with remediation hints
+
+### Changed
+- Update site-config discovery to support FHS-compliant paths (#97)
+  - Add `/usr/local/etc/homestak/` as priority 3 in resolution order
+  - Legacy `/opt/homestak/site-config/` remains as fallback (priority 4)
+
 ## v0.22 - 2026-01-15
 
 ### Changed
