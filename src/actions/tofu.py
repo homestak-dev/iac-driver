@@ -2,6 +2,7 @@
 
 import logging
 import os
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +12,18 @@ from config import HostConfig, get_sibling_dir, get_base_dir
 from config_resolver import ConfigResolver
 
 logger = logging.getLogger(__name__)
+
+
+def create_temp_tfvars(env_name: str, node_name: str) -> Path:
+    """Create a unique temporary file for tfvars.
+
+    Uses tempfile to avoid permission issues when different users run commands.
+    The file is created in /tmp with a unique name based on PID and timestamp.
+    Caller is responsible for cleanup.
+    """
+    fd, path = tempfile.mkstemp(prefix=f'tfvars-{env_name}-{node_name}-', suffix='.json')
+    os.close(fd)  # Close fd since we'll write via ConfigResolver
+    return Path(path)
 
 
 @dataclass
@@ -28,7 +41,8 @@ class TofuApplyAction:
         # Use context env_name if provided (CLI override), otherwise use action default
         env_name = context.get('env_name', self.env_name)
 
-        # Resolve config to tfvars
+        # Resolve config to tfvars (use unique temp file to avoid permission issues)
+        tfvars_path = None
         try:
             resolver = ConfigResolver()
             resolved = resolver.resolve_env(env=env_name, node=config.name)
@@ -43,10 +57,12 @@ class TofuApplyAction:
                         vm['vmid'] = vm_id_overrides[vm_name]
                         logger.info(f"[{self.name}] VM ID override: {vm_name} {original} -> {vm['vmid']}")
 
-            tfvars_path = Path(f'/tmp/{env_name}-{config.name}.tfvars.json')
+            tfvars_path = create_temp_tfvars(env_name, config.name)
             resolver.write_tfvars(resolved, str(tfvars_path))
             logger.info(f"[{self.name}] Generated tfvars: {tfvars_path}")
         except Exception as e:
+            if tfvars_path and tfvars_path.exists():
+                tfvars_path.unlink()
             return ActionResult(
                 success=False,
                 message=f"ConfigResolver failed: {e}",
@@ -77,6 +93,8 @@ class TofuApplyAction:
         logger.info(f"[{self.name}] Running tofu init...")
         rc, out, err = run_command(['tofu', 'init'], cwd=tofu_dir, timeout=self.timeout_init, env=env)
         if rc != 0:
+            if tfvars_path and tfvars_path.exists():
+                tfvars_path.unlink()
             return ActionResult(
                 success=False,
                 message=f"tofu init failed: {err}",
@@ -87,6 +105,12 @@ class TofuApplyAction:
         logger.info(f"[{self.name}] Running tofu apply (state: {state_file})...")
         cmd = ['tofu', 'apply', '-auto-approve', f'-state={state_file}', f'-var-file={tfvars_path}']
         rc, out, err = run_command(cmd, cwd=tofu_dir, timeout=self.timeout_apply, env=env)
+
+        # Clean up temp tfvars file
+        if tfvars_path and tfvars_path.exists():
+            tfvars_path.unlink()
+            logger.debug(f"[{self.name}] Cleaned up temp tfvars: {tfvars_path}")
+
         if rc != 0:
             return ActionResult(
                 success=False,
@@ -130,13 +154,16 @@ class TofuDestroyAction:
         # Use context env_name if provided (CLI override), otherwise use action default
         env_name = context.get('env_name', self.env_name)
 
-        # Resolve config to tfvars
+        # Resolve config to tfvars (use unique temp file to avoid permission issues)
+        tfvars_path = None
         try:
             resolver = ConfigResolver()
             resolved = resolver.resolve_env(env=env_name, node=config.name)
-            tfvars_path = Path(f'/tmp/{env_name}-{config.name}.tfvars.json')
+            tfvars_path = create_temp_tfvars(env_name, config.name)
             resolver.write_tfvars(resolved, str(tfvars_path))
         except Exception as e:
+            if tfvars_path and tfvars_path.exists():
+                tfvars_path.unlink()
             return ActionResult(
                 success=False,
                 message=f"ConfigResolver failed: {e}",
@@ -146,6 +173,8 @@ class TofuDestroyAction:
         # Always use generic env
         tofu_dir = get_sibling_dir('tofu') / 'envs' / 'generic'
         if not tofu_dir.exists():
+            if tfvars_path and tfvars_path.exists():
+                tfvars_path.unlink()
             return ActionResult(
                 success=False,
                 message=f"Tofu directory not found: {tofu_dir}",
@@ -159,6 +188,8 @@ class TofuDestroyAction:
         data_dir = state_dir / 'data'
         state_file = state_dir / 'terraform.tfstate'
         if not state_file.exists():
+            if tfvars_path and tfvars_path.exists():
+                tfvars_path.unlink()
             return ActionResult(
                 success=False,
                 message=f"No state found for {env_name}-{config.name} at {state_file}",
@@ -169,6 +200,12 @@ class TofuDestroyAction:
         logger.info(f"[{self.name}] Running tofu destroy (state: {state_file})...")
         cmd = ['tofu', 'destroy', '-auto-approve', f'-state={state_file}', f'-var-file={tfvars_path}']
         rc, out, err = run_command(cmd, cwd=tofu_dir, timeout=self.timeout, env=env)
+
+        # Clean up temp tfvars file
+        if tfvars_path and tfvars_path.exists():
+            tfvars_path.unlink()
+            logger.debug(f"[{self.name}] Cleaned up temp tfvars: {tfvars_path}")
+
         if rc != 0:
             return ActionResult(
                 success=False,
@@ -224,21 +261,27 @@ class TofuApplyRemoteAction:
         data_dir = f'{state_dir}/data'
         state_file = f'{state_dir}/terraform.tfstate'
         remote_script = f'''
+# Use unique temp file with PID to avoid permission issues
+TFVARS="/tmp/tfvars-{self.env_name}-{self.node_name}-$$.json"
 cd /opt/homestak/iac-driver/src
 python3 -c "
 from config_resolver import ConfigResolver
+import sys
 r = ConfigResolver('/opt/homestak/site-config')
 config = r.resolve_env('{self.env_name}', '{self.node_name}')
-r.write_tfvars(config, '/tmp/{self.env_name}.tfvars.json')
+r.write_tfvars(config, sys.argv[1])
 print('Generated tfvars for {self.env_name}')
-"
+" "$TFVARS"
 
 cd /opt/homestak/tofu/envs/generic
 export TF_DATA_DIR="{data_dir}"
 mkdir -p "$TF_DATA_DIR"
 mkdir -p "{state_dir}"
 tofu init
-tofu apply -auto-approve -state={state_file} -var-file=/tmp/{self.env_name}.tfvars.json
+tofu apply -auto-approve -state={state_file} -var-file="$TFVARS"
+TOFU_RC=$?
+rm -f "$TFVARS"
+exit $TOFU_RC
 '''
 
         logger.info(f"[{self.name}] Running ConfigResolver + tofu on {host}...")
@@ -295,17 +338,23 @@ class TofuDestroyRemoteAction:
         data_dir = f'{state_dir}/data'
         state_file = f'{state_dir}/terraform.tfstate'
         remote_script = f'''
+# Use unique temp file with PID to avoid permission issues
+TFVARS="/tmp/tfvars-{self.env_name}-{self.node_name}-$$.json"
 cd /opt/homestak/iac-driver/src
 python3 -c "
 from config_resolver import ConfigResolver
+import sys
 r = ConfigResolver('/opt/homestak/site-config')
 config = r.resolve_env('{self.env_name}', '{self.node_name}')
-r.write_tfvars(config, '/tmp/{self.env_name}.tfvars.json')
-"
+r.write_tfvars(config, sys.argv[1])
+" "$TFVARS"
 
 cd /opt/homestak/tofu/envs/generic
 export TF_DATA_DIR="{data_dir}"
-tofu destroy -auto-approve -state={state_file} -var-file=/tmp/{self.env_name}.tfvars.json
+tofu destroy -auto-approve -state={state_file} -var-file="$TFVARS"
+TOFU_RC=$?
+rm -f "$TFVARS"
+exit $TOFU_RC
 '''
 
         logger.info(f"[{self.name}] Running tofu destroy on {host}...")

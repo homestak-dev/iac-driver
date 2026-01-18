@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Use unique temp files for tfvars to avoid permission issues
+  - Add `create_temp_tfvars()` helper using Python tempfile module
+  - Clean up temp files after tofu commands complete
+  - Remote actions use PID-based unique filenames
+
 ## v0.28 - 2026-01-18
 
 ### Features
