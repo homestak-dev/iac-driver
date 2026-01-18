@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.30 - 2026-01-18
 
 ### Fixed
 - Use unique temp files for tfvars to avoid permission issues
