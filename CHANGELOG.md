@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.28 - 2026-01-18
+
+### Features
+
+- Add VM discovery actions for pattern-based cleanup (#41)
+  - `DiscoverVMsAction`: Query PVE API and filter by name pattern + vmid range
+  - `DestroyDiscoveredVMsAction`: Stop and destroy all discovered VMs
+  - `DestroyRemoteVMAction`: Best-effort cleanup on remote PVE (handles missing host gracefully)
+  - Destructor no longer requires context file with VM IDs
+
+- Update NestedPVEConstructor to use granular playbooks (#49)
+  - `setup_network`: Configure vmbr0 bridge via nested-pve-network.yml
+  - `setup_ssh`: Copy SSH keys via nested-pve-ssh.yml
+  - `setup_repos`: Sync repos and configure PVE via nested-pve-repos.yml
+  - Better phase-level visibility and easier debugging
+
+- Update NestedPVEDestructor to use discovery-based cleanup (#41)
+  - Discovers VMs matching `nested-pve*` pattern in vmid range 99800-99999
+  - Works without context file - just specify `--host`
+  - Gracefully skips inner PVE cleanup when not reachable
+
+### Fixed
+
+- Fix DownloadGitHubReleaseAction to resolve 'latest' tag via GitHub API
+  - GitHub download URLs require actual tag names, not 'latest'
+  - New `_resolve_latest_tag()` method queries API for real tag name
+  - Enables `packer_release: latest` in site-config to work correctly
+
 ## v0.26 - 2026-01-17
 
 - Release alignment with homestak v0.26
