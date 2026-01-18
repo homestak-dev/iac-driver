@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Expand pytest coverage (#98)
+  - Add tests/test_config.py for config discovery (get_site_config_dir, list_hosts, load_host_config)
+  - Add tests/test_common.py for utilities (run_command, run_ssh, wait_for_ping, wait_for_ssh)
+
+### Changed
+- Make vmid_range configurable in NestedPVEDestructor (#101)
+  - Add `vmid_range` class attribute (default: 99800-99999)
+  - Can be overridden via subclass or at runtime
+
 ## v0.30 - 2026-01-18
 
 ### Fixed

@@ -137,12 +137,19 @@ class NestedPVEDestructor:
     The discovery phase runs first to find VMs matching 'nested-pve*'.
     If inner_ip is in context, test VM cleanup is attempted.
     Finally, discovered VMs are destroyed.
+
+    Class attributes:
+        vmid_range: Tuple of (min, max) VM IDs for discovery. Override in subclass
+                    or pass to constructor for different ranges.
     """
 
     name = 'nested-pve-destructor'
     description = 'Discover and destroy nested PVE VMs (works with or without context)'
     expected_runtime = 120  # ~2 min
     requires_confirmation = True  # Destructive scenario
+
+    # Configurable VM ID range for discovery (can be overridden)
+    vmid_range = (99800, 99999)  # Includes nested-pve vmid_base (99800)
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for cleanup."""
@@ -152,7 +159,7 @@ class NestedPVEDestructor:
                 name='discover-nested-vms',
                 pve_host_attr='ssh_host',
                 name_pattern='nested-pve*',
-                vmid_range=(99800, 99999),  # Includes nested-pve vmid_base (99800)
+                vmid_range=self.vmid_range,
             ), 'Discover nested PVE VMs'),
 
             # Phase 2: Cleanup test VM on inner PVE (skips if inner_ip not in context)
