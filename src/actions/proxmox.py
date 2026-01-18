@@ -1,8 +1,11 @@
 """Proxmox VE actions."""
 
+import fnmatch
+import json
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Optional
 
 from common import ActionResult, run_ssh, start_vm, wait_for_guest_agent
 from config import HostConfig
@@ -310,4 +313,163 @@ class WaitForGuestAgentRemoteAction:
             message=f"VM {vm_id} has IP: {leaf_ip}",
             duration=time.time() - start,
             context_updates={self.ip_context_key: leaf_ip}
+        )
+
+
+@dataclass
+class DiscoverVMsAction:
+    """Discover VMs matching a pattern via PVE API.
+
+    Queries the PVE cluster resources API and filters by name pattern
+    and optional vmid range. Populates context['discovered_vms'] with
+    matching VMs for downstream actions.
+    """
+    name: str
+    pve_host_attr: str = 'ssh_host'
+    name_pattern: str = 'nested-pve*'
+    vmid_range: Optional[tuple[int, int]] = (99900, 99999)
+
+    def run(self, config: HostConfig, context: dict) -> ActionResult:
+        """Query PVE API and filter by pattern/range."""
+        start = time.time()
+
+        pve_host = context.get(self.pve_host_attr) or getattr(config, self.pve_host_attr, None)
+        ssh_user = config.ssh_user
+
+        if not pve_host:
+            return ActionResult(
+                success=False,
+                message=f"Missing config: {self.pve_host_attr}",
+                duration=time.time() - start
+            )
+
+        logger.info(f"[{self.name}] Discovering VMs matching '{self.name_pattern}' on {pve_host}...")
+
+        # Query PVE cluster resources
+        cmd = "pvesh get /cluster/resources --type vm --output-format json"
+        rc, out, err = run_ssh(pve_host, cmd, user=ssh_user, timeout=30)
+
+        if rc != 0:
+            return ActionResult(
+                success=False,
+                message=f"Failed to query PVE API: {err}",
+                duration=time.time() - start
+            )
+
+        try:
+            vms = json.loads(out)
+        except json.JSONDecodeError as e:
+            return ActionResult(
+                success=False,
+                message=f"Failed to parse PVE API response: {e}",
+                duration=time.time() - start
+            )
+
+        discovered = []
+        for vm in vms:
+            vm_name = vm.get('name', '')
+            vm_id = vm.get('vmid')
+
+            # Filter by name pattern (fnmatch supports wildcards)
+            if not fnmatch.fnmatch(vm_name, self.name_pattern):
+                continue
+
+            # Filter by vmid range (if specified)
+            if self.vmid_range:
+                if not (self.vmid_range[0] <= vm_id <= self.vmid_range[1]):
+                    continue
+
+            discovered.append({
+                'vmid': vm_id,
+                'name': vm_name,
+                'status': vm.get('status', 'unknown'),
+                'node': vm.get('node', ''),
+            })
+            logger.info(f"[{self.name}] Found VM: {vm_name} (vmid={vm_id}, status={vm.get('status')})")
+
+        return ActionResult(
+            success=True,
+            message=f"Discovered {len(discovered)} VMs matching '{self.name_pattern}'",
+            duration=time.time() - start,
+            context_updates={'discovered_vms': discovered}
+        )
+
+
+@dataclass
+class DestroyDiscoveredVMsAction:
+    """Destroy all VMs in context['discovered_vms'].
+
+    Stops running VMs and then destroys them. Useful for cleanup
+    operations where VMs were discovered by pattern matching.
+    """
+    name: str
+    pve_host_attr: str = 'ssh_host'
+    context_key: str = 'discovered_vms'
+    force_stop: bool = True
+    stop_timeout: int = 30
+
+    def run(self, config: HostConfig, context: dict) -> ActionResult:
+        """Stop and destroy each discovered VM."""
+        start = time.time()
+
+        vms = context.get(self.context_key, [])
+        if not vms:
+            return ActionResult(
+                success=True,
+                message="No VMs to destroy",
+                duration=time.time() - start
+            )
+
+        pve_host = context.get(self.pve_host_attr) or getattr(config, self.pve_host_attr, None)
+        ssh_user = config.ssh_user
+
+        if not pve_host:
+            return ActionResult(
+                success=False,
+                message=f"Missing config: {self.pve_host_attr}",
+                duration=time.time() - start
+            )
+
+        destroyed = []
+        for vm in vms:
+            vm_id = vm['vmid']
+            vm_name = vm.get('name', str(vm_id))
+            vm_status = vm.get('status', 'unknown')
+
+            logger.info(f"[{self.name}] Destroying VM {vm_id} ({vm_name})...")
+
+            # Stop if running
+            if vm_status == 'running' and self.force_stop:
+                logger.info(f"[{self.name}] Stopping VM {vm_id}...")
+                rc, _, err = run_ssh(
+                    pve_host,
+                    f"qm stop {vm_id} --timeout {self.stop_timeout}",
+                    user=ssh_user,
+                    timeout=self.stop_timeout + 30
+                )
+                if rc != 0:
+                    logger.warning(f"[{self.name}] Failed to stop VM {vm_id}: {err}")
+                    # Continue anyway - destroy might still work
+
+            # Destroy the VM
+            rc, _, err = run_ssh(
+                pve_host,
+                f"qm destroy {vm_id} --purge",
+                user=ssh_user,
+                timeout=60
+            )
+            if rc != 0:
+                return ActionResult(
+                    success=False,
+                    message=f"Failed to destroy VM {vm_id}: {err}",
+                    duration=time.time() - start
+                )
+
+            destroyed.append(vm_name)
+            logger.info(f"[{self.name}] Destroyed VM {vm_id} ({vm_name})")
+
+        return ActionResult(
+            success=True,
+            message=f"Destroyed {len(destroyed)} VMs: {', '.join(destroyed)}",
+            duration=time.time() - start
         )

@@ -63,18 +63,41 @@ class NestedPVEConstructor:
                 pve_hostname='nested-pve',
             ), 'Ensure PVE installed'),
 
-            # Phase 5: Setup nested PVE environment
-            ('setup_nested', AnsiblePlaybookAction(
-                name='configure-inner-pve',
-                playbook='playbooks/nested-pve-setup.yml',
+            # Phase 5: Setup network bridge (vmbr0)
+            ('setup_network', AnsiblePlaybookAction(
+                name='configure-network',
+                playbook='playbooks/nested-pve-network.yml',
                 inventory='inventory/remote-dev.yml',
                 extra_vars={
                     'ansible_user': 'root',
-                    'homestak_src_dir': str(get_base_dir().parent),
                 },
                 host_key='inner_ip',
                 wait_for_ssh_before=True,
-            ), 'Configure inner PVE'),
+            ), 'Configure vmbr0 bridge'),
+
+            # Phase 6: Copy SSH keys for nested VM access
+            ('setup_ssh', AnsiblePlaybookAction(
+                name='copy-ssh-keys',
+                playbook='playbooks/nested-pve-ssh.yml',
+                inventory='inventory/remote-dev.yml',
+                extra_vars={
+                    'ansible_user': 'root',
+                },
+                host_key='inner_ip',
+            ), 'Copy SSH keys'),
+
+            # Phase 7: Sync repos and configure PVE
+            ('setup_repos', AnsiblePlaybookAction(
+                name='sync-repos-config',
+                playbook='playbooks/nested-pve-repos.yml',
+                inventory='inventory/remote-dev.yml',
+                extra_vars={
+                    'ansible_user': 'root',
+                    'bootstrap_use_local': True,
+                    'homestak_src_dir': str(get_base_dir().parent),
+                },
+                host_key='inner_ip',
+            ), 'Sync repos and configure PVE'),
 
             # Phase 6: Download packer image from release
             ('download_image', DownloadGitHubReleaseAction(
@@ -162,17 +185,38 @@ class NestedPVERoundtrip:
                 pve_hostname='nested-pve',
             ), 'Ensure PVE installed'),
 
-            ('setup_nested', AnsiblePlaybookAction(
-                name='configure-inner-pve',
-                playbook='playbooks/nested-pve-setup.yml',
+            ('setup_network', AnsiblePlaybookAction(
+                name='configure-network',
+                playbook='playbooks/nested-pve-network.yml',
                 inventory='inventory/remote-dev.yml',
                 extra_vars={
                     'ansible_user': 'root',
-                    'homestak_src_dir': str(get_base_dir().parent),
                 },
                 host_key='inner_ip',
                 wait_for_ssh_before=True,
-            ), 'Setup nested PVE environment'),
+            ), 'Configure vmbr0 bridge'),
+
+            ('setup_ssh', AnsiblePlaybookAction(
+                name='copy-ssh-keys',
+                playbook='playbooks/nested-pve-ssh.yml',
+                inventory='inventory/remote-dev.yml',
+                extra_vars={
+                    'ansible_user': 'root',
+                },
+                host_key='inner_ip',
+            ), 'Copy SSH keys'),
+
+            ('setup_repos', AnsiblePlaybookAction(
+                name='sync-repos-config',
+                playbook='playbooks/nested-pve-repos.yml',
+                inventory='inventory/remote-dev.yml',
+                extra_vars={
+                    'ansible_user': 'root',
+                    'bootstrap_use_local': True,
+                    'homestak_src_dir': str(get_base_dir().parent),
+                },
+                host_key='inner_ip',
+            ), 'Sync repos and configure PVE'),
 
             ('download_image', DownloadGitHubReleaseAction(
                 name='download-packer-image',

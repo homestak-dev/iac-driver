@@ -7,7 +7,8 @@ import time
 import logging
 from dataclasses import dataclass
 
-from actions import TofuDestroyAction, TofuDestroyRemoteAction
+from actions import TofuDestroyAction
+from actions.proxmox import DiscoverVMsAction, DestroyDiscoveredVMsAction
 from common import ActionResult, run_ssh
 from config import HostConfig
 from scenarios import register_scenario
@@ -127,34 +128,43 @@ class DestroyRemoteVMAction:
 
 @register_scenario
 class NestedPVEDestructor:
-    """Cleanup nested PVE environment."""
+    """Cleanup nested PVE environment.
+
+    Supports two modes:
+    1. Context-based: Uses context file with VM IDs and IPs
+    2. Discovery-based: Discovers VMs by name pattern (no context needed)
+
+    The discovery phase runs first to find VMs matching 'nested-pve*'.
+    If inner_ip is in context, test VM cleanup is attempted.
+    Finally, discovered VMs are destroyed.
+    """
 
     name = 'nested-pve-destructor'
-    description = 'Cleanup test VM (if reachable), stop and destroy inner PVE VM'
+    description = 'Discover and destroy nested PVE VMs (works with or without context)'
     expected_runtime = 120  # ~2 min
     requires_confirmation = True  # Destructive scenario
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for cleanup."""
         return [
-            # Phase 1: Cleanup test VM on inner PVE (if reachable)
-            ('cleanup_remote', TofuDestroyRemoteAction(
+            # Phase 1: Discover VMs matching nested-pve pattern
+            ('discover', DiscoverVMsAction(
+                name='discover-nested-vms',
+                pve_host_attr='ssh_host',
+                name_pattern='nested-pve*',
+                vmid_range=(99800, 99999),  # Includes nested-pve vmid_base (99800)
+            ), 'Discover nested PVE VMs'),
+
+            # Phase 2: Cleanup test VM on inner PVE (skips if inner_ip not in context)
+            ('cleanup_inner', DestroyRemoteVMAction(
                 name='cleanup-remote-vm',
-                env_name='test',
-                node_name='nested-pve',
-                host_key='inner_ip',
+                inner_ip_key='inner_ip',
             ), 'Cleanup test VM on inner PVE'),
 
-            # Phase 2: Stop inner PVE VM (if running)
-            ('stop_inner', StopVMAction(
-                name='stop-inner-pve',
-                vm_id_attr='nested-pve_vm_id',
+            # Phase 3: Destroy discovered VMs
+            ('destroy', DestroyDiscoveredVMsAction(
+                name='destroy-nested-vms',
                 pve_host_attr='ssh_host',
-            ), 'Stop inner PVE VM'),
-
-            # Phase 3: Destroy inner PVE via tofu
-            ('destroy_inner', TofuDestroyAction(
-                name='destroy-inner-pve',
-                env_name='nested-pve',
-            ), 'Destroy inner PVE VM'),
+                context_key='discovered_vms',
+            ), 'Destroy discovered VMs'),
         ]

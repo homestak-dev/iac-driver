@@ -149,6 +149,20 @@ class DownloadGitHubReleaseAction:
     rename_ext: Optional[str] = '.img'  # Proxmox convention
     timeout: int = 300
 
+    def _resolve_latest_tag(self, repo: str, host: str) -> Optional[str]:
+        """Resolve 'latest' to actual tag name via GitHub API.
+
+        GitHub download URLs require the actual tag name, not 'latest'.
+        This queries the API to get the real tag for the latest release.
+        """
+        api_url = f'https://api.github.com/repos/{repo}/releases/latest'
+        # Use curl with jq to extract tag_name
+        cmd = f"curl -fsSL '{api_url}' | jq -r '.tag_name'"
+        rc, out, err = run_ssh(host, cmd, timeout=30)
+        if rc == 0 and out.strip():
+            return out.strip()
+        return None
+
     def run(self, config: HostConfig, context: dict) -> ActionResult:
         """Download release asset."""
         start = time.time()
@@ -163,6 +177,19 @@ class DownloadGitHubReleaseAction:
 
         repo = config.packer_release_repo
         tag = config.packer_release
+
+        # Resolve 'latest' to actual tag name (GitHub URLs require real tag)
+        if tag == 'latest':
+            resolved_tag = self._resolve_latest_tag(repo, host)
+            if resolved_tag:
+                logger.info(f"[{self.name}] Resolved 'latest' to tag {resolved_tag}")
+                tag = resolved_tag
+            else:
+                return ActionResult(
+                    success=False,
+                    message=f"Failed to resolve 'latest' release tag for {repo}",
+                    duration=time.time() - start
+                )
 
         url = f'https://github.com/{repo}/releases/download/{tag}/{self.asset_name}'
         dest = f"{self.dest_dir}/{self.asset_name}"
