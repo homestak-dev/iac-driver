@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## v0.32 - 2026-01-19
+
+### Added
+- Add `--version` to run.sh/cli.py using git-derived version pattern (#102)
+- Add `--help` to helper scripts (setup-tools.sh, wait-for-guest-agent.sh) (#102)
+
+### Fixed
+- Fix GitHub org in setup-tools.sh (`john-derose` → `homestak-dev`) (#102)
+- Add site-config to repos cloned by setup-tools.sh (#102)
+
 ## v0.31 - 2026-01-19
 
 ### Added
