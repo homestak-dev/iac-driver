@@ -30,7 +30,7 @@ install-dev:
 
 test:
 	@echo "Running unit tests..."
-	cd tests && python -m pytest -v
+	python3 -m pytest tests/ -v
 
 lint:
 	@echo "Running pre-commit hooks..."
