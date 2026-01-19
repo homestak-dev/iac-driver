@@ -1,20 +1,57 @@
 #!/bin/bash
 # Setup or update tool repositories
-# Usage: setup-tools.sh [base_dir]
+# Usage: setup-tools.sh [options] [base_dir]
 #
-# Clones ansible, tofu, and packer repos if they don't exist,
+# Clones ansible, tofu, packer, and site-config repos if they don't exist,
 # or pulls latest changes if they do.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GITHUB_ORG="homestak-dev"
+
+show_help() {
+    cat << 'EOF'
+setup-tools.sh - Setup or update tool repositories
+
+Usage:
+  setup-tools.sh [options] [base_dir]
+
+Options:
+  --help, -h    Show this help message
+
+Arguments:
+  base_dir      Base directory for repos (default: parent of iac-driver)
+
+Description:
+  Clones ansible, tofu, packer, and site-config repos as siblings to iac-driver.
+  If repos already exist, pulls latest changes instead.
+
+Repositories:
+  - ansible        Playbooks and roles
+  - tofu           VM provisioning
+  - packer         Cloud image building
+  - site-config    Configuration and secrets
+
+Examples:
+  ./setup-tools.sh                    # Use default base directory
+  ./setup-tools.sh /opt/homestak      # Specify custom base directory
+EOF
+    exit 0
+}
+
+# Parse arguments
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    show_help
+fi
+
 BASE_DIR="${1:-$(dirname "$(dirname "$SCRIPT_DIR")")}"
-GITHUB_USER="john-derose"
 
 declare -A REPOS=(
-  [ansible]="https://github.com/$GITHUB_USER/ansible.git"
-  [tofu]="https://github.com/$GITHUB_USER/tofu.git"
-  [packer]="https://github.com/$GITHUB_USER/packer.git"
+  [ansible]="https://github.com/$GITHUB_ORG/ansible.git"
+  [tofu]="https://github.com/$GITHUB_ORG/tofu.git"
+  [packer]="https://github.com/$GITHUB_ORG/packer.git"
+  [site-config]="https://github.com/$GITHUB_ORG/site-config.git"
 )
 
 echo "Setting up tool repositories in: $BASE_DIR"
