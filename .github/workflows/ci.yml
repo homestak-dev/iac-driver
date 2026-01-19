@@ -23,7 +23,7 @@ jobs:
 
       - name: Run tests
         run: |
-          python -m pytest tests/ -v
+          python -m pytest tests/ -v -m "not requires_infrastructure"
 
   lint:
     runs-on: ubuntu-latest
