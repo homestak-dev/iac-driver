@@ -19,7 +19,7 @@ jobs:
 
       - name: Install test dependencies
         run: |
-          pip install pytest pytest-mock pyyaml
+          pip install pytest pytest-mock pyyaml requests
 
       - name: Run tests
         run: |
