@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.31 - 2026-01-19
+
 ### Added
 - Expand pytest coverage (#98)
   - Add tests/test_config.py for config discovery (get_site_config_dir, list_hosts, load_host_config)
