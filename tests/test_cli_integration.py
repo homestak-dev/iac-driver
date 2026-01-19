@@ -4,6 +4,9 @@
 These tests verify the CLI properly handles:
 1. requires_root check for --local mode
 2. requires_host_config for auto-detect host
+
+Some tests require site-config with configured hosts and are marked
+with @pytest.mark.requires_infrastructure - these are skipped in CI.
 """
 
 import subprocess
@@ -15,6 +18,9 @@ import pytest
 
 # Path to run.sh
 RUN_SH = Path(__file__).parent.parent / 'run.sh'
+
+# Marker for tests that require site-config/infrastructure
+requires_infrastructure = pytest.mark.requires_infrastructure
 
 
 class TestRequiresRoot:
@@ -62,6 +68,7 @@ class TestRequiresRoot:
 class TestAutoDetectHost:
     """Test CLI auto-detect host from hostname."""
 
+    @requires_infrastructure
     def test_packer_build_local_auto_detects_host(self):
         """packer-build --local should auto-detect host from hostname."""
         # Get current hostname
@@ -133,6 +140,7 @@ class TestTimeoutFlag:
         assert result.returncode == 0
         assert '--timeout' in result.stdout or '-t' in result.stdout
 
+    @requires_infrastructure
     def test_timeout_shown_in_log(self):
         """Timeout should be shown in log when scenario starts."""
         # Use a scenario that doesn't require host config and will fail quickly
@@ -160,6 +168,7 @@ class TestVmIdFlag:
         assert result.returncode == 0
         assert '--vm-id' in result.stdout
 
+    @requires_infrastructure
     def test_vm_id_invalid_format_no_equals(self):
         """--vm-id without = should fail with clear error."""
         result = subprocess.run(
@@ -172,6 +181,7 @@ class TestVmIdFlag:
         assert "Invalid --vm-id format" in combined
         assert "Expected NAME=VMID" in combined
 
+    @requires_infrastructure
     def test_vm_id_invalid_format_non_numeric(self):
         """--vm-id with non-numeric ID should fail with clear error."""
         result = subprocess.run(
@@ -184,6 +194,7 @@ class TestVmIdFlag:
         assert "Invalid --vm-id format" in combined
         assert "VMID must be an integer" in combined
 
+    @requires_infrastructure
     def test_vm_id_empty_name_rejected(self):
         """--vm-id with empty name should fail with clear error."""
         result = subprocess.run(
@@ -196,6 +207,7 @@ class TestVmIdFlag:
         assert "Invalid --vm-id format" in combined
         assert "VM name cannot be empty" in combined
 
+    @requires_infrastructure
     def test_vm_id_valid_format_accepted(self):
         """Valid --vm-id should be accepted (though scenario may fail for other reasons)."""
         # We can't fully test without a running PVE, but we can verify parsing works

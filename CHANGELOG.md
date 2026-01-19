@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+- Add pytest job to CI workflow (#106)
+  - Tests run on push/PR to master
+  - 165 tests validated
+
+### Fixed
+- Fix Makefile test target to run from correct directory (#106)
+
 ## v0.32 - 2026-01-19
 
 ### Added
