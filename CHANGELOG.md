@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.33 - 2026-01-19
+
+### Theme: Unit Testing
+
 ### Added
 - Add pytest job to CI workflow (#106)
   - Tests run on push/PR to master
