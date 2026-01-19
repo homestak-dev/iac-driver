@@ -1,6 +1,6 @@
 #!/bin/bash
 # Wait for QEMU guest agent to report an IP address
-# Usage: wait-for-guest-agent.sh <vmid> [interface] [timeout_seconds]
+# Usage: wait-for-guest-agent.sh [options] <vmid> [interface] [timeout_seconds]
 #
 # Examples:
 #   ./wait-for-guest-agent.sh 99913              # Wait for eth0 IP, 120s timeout
@@ -8,6 +8,45 @@
 #   ./wait-for-guest-agent.sh 99913 eth0 60      # 60 second timeout
 
 set -euo pipefail
+
+show_help() {
+    cat << 'EOF'
+wait-for-guest-agent.sh - Wait for QEMU guest agent to report an IP address
+
+Usage:
+  wait-for-guest-agent.sh [options] <vmid> [interface] [timeout_seconds]
+
+Options:
+  --help, -h    Show this help message
+
+Arguments:
+  vmid          VM ID to query (required)
+  interface     Network interface to check (default: eth0)
+  timeout       Timeout in seconds (default: 120)
+
+Description:
+  Polls the QEMU guest agent on the specified VM until it reports an IPv4
+  address for the given interface, or until timeout is reached.
+
+  On success, prints the IP address to stdout and exits 0.
+  On timeout, prints error to stderr and exits 1.
+
+Examples:
+  ./wait-for-guest-agent.sh 99913              # Wait for eth0 IP, 120s timeout
+  ./wait-for-guest-agent.sh 99913 vmbr0        # Wait for vmbr0 IP
+  ./wait-for-guest-agent.sh 99913 eth0 60      # 60 second timeout
+
+Dependencies:
+  - qm (Proxmox VE command)
+  - jq (JSON processor)
+EOF
+    exit 0
+}
+
+# Parse arguments
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    show_help
+fi
 
 VMID="${1:?Usage: $0 <vmid> [interface] [timeout_seconds]}"
 IFACE="${2:-eth0}"

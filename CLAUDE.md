@@ -570,6 +570,7 @@ The orchestrator runs scenarios composed of reusable actions:
 **CLI Options:**
 | Option | Description |
 |--------|-------------|
+| `--version` | Show CLI version |
 | `--scenario`, `-S` | Scenario to run (required) |
 | `--host`, `-H` | Target PVE host (required for most scenarios) |
 | `--env`, `-E` | Environment to deploy (overrides scenario default) |
@@ -676,7 +677,9 @@ Both JSON and markdown reports are generated for each run.
 | Script | Purpose |
 |--------|---------|
 | `scripts/wait-for-guest-agent.sh` | Poll for VM IP (used by orchestrator) |
-| `scripts/setup-tools.sh` | Clone/update tool repos |
+| `scripts/setup-tools.sh` | Clone/update tool repos (ansible, tofu, packer, site-config) |
+
+All helper scripts support `--help` for usage information.
 
 ### Tofu Environments
 

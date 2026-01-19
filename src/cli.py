@@ -6,12 +6,26 @@ import json
 import logging
 import os
 import socket
+import subprocess
 import sys
 from pathlib import Path
 
 from config import list_hosts, list_envs, load_host_config, get_base_dir
 from scenarios import Orchestrator, get_scenario, list_scenarios
 from validation import validate_readiness, run_preflight_checks, format_preflight_results
+
+
+def get_version():
+    """Get version from git tags (do not use hardcoded VERSION constant)."""
+    try:
+        result = subprocess.run(
+            ['git', 'describe', '--tags', '--abbrev=0'],
+            capture_output=True, text=True,
+            cwd=Path(__file__).parent
+        )
+        return result.stdout.strip() if result.returncode == 0 else 'dev'
+    except Exception:
+        return 'dev'
 
 # Configure logging
 logging.basicConfig(
@@ -67,6 +81,11 @@ def main():
 
     parser = argparse.ArgumentParser(
         description='Infrastructure-as-Code Driver - Orchestrates provisioning and testing workflows'
+    )
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f'iac-driver {get_version()}'
     )
     parser.add_argument(
         '--scenario', '-S',
