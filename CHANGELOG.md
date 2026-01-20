@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Theme: Foundation for Recursion
+
+### Added
+- Add HTTP server helper for dev workflows (iac-driver#110)
+  - `scripts/serve-repos.sh` creates bare repos with `_working` branch containing uncommitted changes
+  - Bearer token authentication via custom Python HTTP handler
+  - OS-assigned ports by default with `--json` output for programmatic use
+  - Automatic cleanup on exit (trap EXIT)
+
+- Add `--serve-repos` flag to run.sh for HTTP server lifecycle management (iac-driver#110)
+  - `--serve-repos` starts serve-repos.sh before scenario, stops on exit
+  - `--serve-port` for explicit port (default: OS-assigned)
+  - `--serve-timeout` for auto-shutdown
+  - `--serve-ref` for ref selection (default: `_working`)
+  - Exports `HOMESTAK_SOURCE`, `HOMESTAK_TOKEN`, `HOMESTAK_REF` for scenarios
+
 ## v0.36 - 2026-01-20
 
 ### Theme: Host Provisioning Workflow
