@@ -288,7 +288,6 @@ def list_hosts() -> list[str]:
     Combines hosts from multiple sources (deduplicated):
     1. nodes/*.yaml - PVE nodes (have API access)
     2. hosts/*.yaml - Physical machines (SSH access only)
-    3. hosts/*.tfvars - Legacy format
     """
     try:
         site_config = get_site_config_dir()
@@ -306,8 +305,6 @@ def list_hosts() -> list[str]:
     hosts_dir = site_config / 'hosts'
     if hosts_dir.exists():
         hosts.update(f.stem for f in hosts_dir.glob('*.yaml') if f.is_file())
-        # Legacy: hosts/*.tfvars
-        hosts.update(f.stem for f in hosts_dir.glob('*.tfvars') if f.is_file())
 
     return sorted(hosts)
 
@@ -318,7 +315,6 @@ def load_host_config(host: str) -> HostConfig:
     Resolution order:
     1. nodes/{host}.yaml - PVE node with API access
     2. hosts/{host}.yaml - Physical machine with SSH access (pre-PVE)
-    3. hosts/{host}.tfvars - Legacy format
 
     When loaded from hosts/*.yaml, the returned config has is_host_only=True
     and PVE-specific fields (api_endpoint, api_token) are empty.
@@ -334,11 +330,6 @@ def load_host_config(host: str) -> HostConfig:
     host_file = site_config / 'hosts' / f'{host}.yaml'
     if host_file.exists():
         return HostConfig(name=host, config_file=host_file)
-
-    # 3. Fallback to legacy format: hosts/*.tfvars
-    tfvars_file = site_config / 'hosts' / f'{host}.tfvars'
-    if tfvars_file.exists():
-        return HostConfig(name=host, config_file=tfvars_file)
 
     # Build helpful error message
     available = list_hosts()

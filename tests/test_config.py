@@ -137,12 +137,12 @@ class TestListHosts:
             hosts = list_hosts()
             assert hosts == ['father', 'mother']
 
-    def test_lists_legacy_tfvars(self, tmp_path):
-        """Should fall back to hosts/*.tfvars if no nodes/ dir."""
+    def test_lists_hosts_yaml(self, tmp_path):
+        """Should list hosts from hosts/*.yaml (pre-PVE physical machines)."""
         hosts_dir = tmp_path / 'hosts'
         hosts_dir.mkdir()
-        (hosts_dir / 'host1.tfvars').write_text('key = "value"')
-        (hosts_dir / 'host2.tfvars').write_text('key = "value"')
+        (hosts_dir / 'host1.yaml').write_text('ip: 10.0.12.1')
+        (hosts_dir / 'host2.yaml').write_text('ip: 10.0.12.2')
 
         with patch('config.get_site_config_dir', return_value=tmp_path):
             hosts = list_hosts()
@@ -202,19 +202,21 @@ api_endpoint: https://10.0.12.100:8006
             assert config.name == 'test'
             assert config.api_endpoint == 'https://10.0.12.100:8006'
 
-    def test_loads_legacy_tfvars(self, tmp_path):
-        """Should fall back to hosts/*.tfvars."""
+    def test_loads_host_yaml(self, tmp_path):
+        """Should load from hosts/*.yaml (pre-PVE physical machines)."""
         hosts_dir = tmp_path / 'hosts'
         hosts_dir.mkdir()
-        (hosts_dir / 'legacy.tfvars').write_text("""
-proxmox_api_endpoint = "https://10.0.12.100:8006"
-proxmox_node_name = "legacy"
+        (hosts_dir / 'daughter.yaml').write_text("""
+ip: 10.0.12.100
+access:
+  ssh_user: root
 """)
 
         with patch('config.get_site_config_dir', return_value=tmp_path):
-            config = load_host_config('legacy')
-            assert config.name == 'legacy'
-            assert config.api_endpoint == 'https://10.0.12.100:8006'
+            config = load_host_config('daughter')
+            assert config.name == 'daughter'
+            assert config.ssh_host == '10.0.12.100'
+            assert config.is_host_only is True
 
     def test_unknown_host_raises(self, tmp_path):
         """Should raise ValueError for unknown host."""
