@@ -400,6 +400,28 @@ Environments use SDN VXLAN with a router VM as gateway:
 | `tofu/envs/*/locals.tf` | Per-environment cluster definitions |
 | `packer/templates/*.pkr.hcl` | Debian image build definitions |
 
+## Host Resolution (v0.36+)
+
+The `--host` flag resolves configuration from site-config with fallback:
+
+| Priority | Path | Use Case |
+|----------|------|----------|
+| 1 | `nodes/{host}.yaml` | PVE node with API access |
+| 2 | `hosts/{host}.yaml` | Physical machine, SSH-only (pre-PVE) |
+
+**Pre-PVE Host Provisioning:**
+
+When provisioning a fresh Debian host that doesn't have PVE yet:
+
+1. Create `hosts/{hostname}.yaml` (or run `make host-config` on the target)
+2. Run `./run.sh --scenario pve-setup --host {hostname}`
+3. After PVE install, `nodes/{hostname}.yaml` is auto-generated
+4. Host is now usable for `vm-constructor` and other PVE scenarios
+
+**HostConfig.is_host_only:**
+
+When loaded from `hosts/*.yaml`, the `HostConfig` object has `is_host_only=True` and PVE-specific fields (`api_endpoint`, `api_token`) are empty. Scenarios can check this flag to handle pre-PVE hosts differently.
+
 ## Node Configuration
 
 PVE node configuration is stored in `site-config/nodes/*.yaml`:
@@ -658,7 +680,7 @@ The `latest` tag is maintained by the packer release process (see packer#5).
 | `packer-build-publish` | ~7m | 2 | Build and publish to PVE storage |
 | `packer-sync` | ~30s | 1 | Sync local packer to remote |
 | `packer-sync-build-fetch` | ~6m | 3 | Sync, build, fetch (dev workflow) |
-| `pve-setup` | ~3m | 2 | Install PVE (if needed) and configure host |
+| `pve-setup` | ~3m | 3 | Install PVE (if needed), configure host, generate node config |
 | `user-setup` | ~30s | 1 | Create homestak user |
 | `vm-constructor` | ~1.5m | 5 | Ensure image, provision VM, verify SSH |
 | `vm-destructor` | ~30s | 1 | Destroy VM |
