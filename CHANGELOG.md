@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.36 - 2026-01-20
+
 ### Theme: Host Provisioning Workflow
 
 ### Added
