@@ -206,16 +206,16 @@ api_endpoint: https://10.0.12.100:8006
         """Should load from hosts/*.yaml (pre-PVE physical machines)."""
         hosts_dir = tmp_path / 'hosts'
         hosts_dir.mkdir()
-        (hosts_dir / 'daughter.yaml').write_text("""
-ip: 10.0.12.100
+        (hosts_dir / 'testhost.yaml').write_text("""
+ip: 192.0.2.1
 access:
   ssh_user: root
 """)
 
         with patch('config.get_site_config_dir', return_value=tmp_path):
-            config = load_host_config('daughter')
-            assert config.name == 'daughter'
-            assert config.ssh_host == '10.0.12.100'
+            config = load_host_config('testhost')
+            assert config.name == 'testhost'
+            assert config.ssh_host == '192.0.2.1'
             assert config.is_host_only is True
 
     def test_unknown_host_raises(self, tmp_path):
