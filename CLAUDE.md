@@ -408,7 +408,6 @@ The `--host` flag resolves configuration from site-config with fallback:
 |----------|------|----------|
 | 1 | `nodes/{host}.yaml` | PVE node with API access |
 | 2 | `hosts/{host}.yaml` | Physical machine, SSH-only (pre-PVE) |
-| 3 | `hosts/{host}.tfvars` | Legacy format |
 
 **Pre-PVE Host Provisioning:**
 
