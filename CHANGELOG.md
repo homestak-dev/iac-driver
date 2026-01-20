@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Theme: Host Provisioning Workflow
+
+### Added
+- Host resolution fallback for pre-PVE hosts (#66)
+  - `--host X` now checks `nodes/X.yaml` first, falls back to `hosts/X.yaml`
+  - Enables provisioning fresh Debian hosts before PVE is installed
+  - `list_hosts()` returns combined list from both directories (deduplicated)
+  - `HostConfig.is_host_only` flag indicates SSH-only config (no PVE API)
+  - Improved error message with instructions for creating host config
+
+- Add `generate_node_config` phase to pve-setup scenario (#66)
+  - Automatically generates `nodes/{hostname}.yaml` after PVE install
+  - Local mode: runs `make node-config FORCE=1` in site-config
+  - Remote mode: generates on target, copies back via scp
+  - Host becomes usable for vm-constructor immediately after pve-setup
+
+### Documentation
+- Add "Host Resolution (v0.36+)" section to CLAUDE.md
+- Update pve-setup scenario description (now 3 phases)
+
 ## v0.33 - 2026-01-19
 
 ### Theme: Unit Testing

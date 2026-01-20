@@ -3,10 +3,15 @@
 Configuration is loaded from site-config YAML files:
 - site.yaml: Site-wide defaults
 - secrets.yaml: All sensitive values (decrypted)
-- nodes/*.yaml: PVE instance configuration
+- nodes/*.yaml: PVE instance configuration (post-PVE install)
+- hosts/*.yaml: Physical machine configuration (pre-PVE, SSH access only)
 - envs/*.yaml: Environment configuration (for tofu)
 
-The merge order is: site → node, with secrets resolved by key reference.
+Resolution order for --host:
+1. nodes/{host}.yaml - PVE node with API access (existing behavior)
+2. hosts/{host}.yaml - SSH-only access for pre-PVE hosts (fallback)
+
+The merge order is: site → node/host, with secrets resolved by key reference.
 """
 
 import os
@@ -30,8 +35,12 @@ class ConfigError(Exception):
 class HostConfig:
     """Configuration for a target host/node.
 
-    Note: 'host' terminology maintained for backward compatibility.
-    Internally this represents a PVE node from nodes/*.yaml.
+    Supports two config sources:
+    - nodes/*.yaml: PVE node with API access (has api_endpoint, api_token)
+    - hosts/*.yaml: Physical machine with SSH access only (pre-PVE install)
+
+    When loaded from hosts/*.yaml, is_host_only=True and PVE-specific
+    fields (api_endpoint, api_token) will be empty.
     """
     name: str
     config_file: Path
@@ -49,6 +58,9 @@ class HostConfig:
     packer_release: str = 'latest'
     packer_image: str = 'debian-12-custom.qcow2'
 
+    # Track config source type
+    is_host_only: bool = False  # True when loaded from hosts/*.yaml (no PVE)
+
     # Keep tfvars_file as alias for backward compatibility
     @property
     def tfvars_file(self) -> Path:
@@ -63,7 +75,11 @@ class HostConfig:
         # Read config from file if it exists
         if self.config_file.exists():
             if self.config_file.suffix == '.yaml':
-                self._load_from_yaml()
+                # Check if this is a hosts/ or nodes/ config
+                if self.config_file.parent.name == 'hosts':
+                    self._load_from_host_yaml()
+                else:
+                    self._load_from_yaml()
             else:
                 self._load_from_tfvars()
 
@@ -114,6 +130,52 @@ class HostConfig:
         # Packer release: site.yaml > default
         if packer_release := site_defaults.get('packer_release'):
             self.packer_release = packer_release
+
+    def _load_from_host_yaml(self):
+        """Load configuration from hosts/*.yaml (SSH-only, pre-PVE).
+
+        Hosts files contain physical machine info for SSH access before
+        PVE is installed. No api_endpoint or api_token available.
+        """
+        if yaml is None:
+            raise ConfigError("PyYAML not installed. Run: apt install python3-yaml")
+
+        self.is_host_only = True
+        site_config_dir = self.config_file.parent.parent
+
+        # Load site defaults
+        site_file = site_config_dir / 'site.yaml'
+        site_defaults = {}
+        if site_file.exists():
+            site_defaults = _parse_yaml(site_file).get('defaults', {})
+
+        # Load host config
+        host_config = _parse_yaml(self.config_file)
+
+        # Extract SSH host IP from network config or explicit ip field
+        if not self.ssh_host:
+            # Try explicit ip field first
+            if ip := host_config.get('ip'):
+                self.ssh_host = ip
+            # Fall back to vmbr0 address (strip CIDR notation)
+            elif network := host_config.get('network', {}).get('interfaces', {}).get('vmbr0', {}):
+                if address := network.get('address'):
+                    # Strip CIDR suffix (e.g., "10.0.12.61/24" -> "10.0.12.61")
+                    self.ssh_host = address.split('/')[0]
+
+        # SSH user from access section or site defaults
+        if access := host_config.get('access', {}):
+            if ssh_user := access.get('ssh_user'):
+                self.ssh_user = ssh_user
+        elif ssh_user := site_defaults.get('ssh_user'):
+            self.ssh_user = ssh_user
+
+        # Packer release: site.yaml > default
+        if packer_release := site_defaults.get('packer_release'):
+            self.packer_release = packer_release
+
+        # No api_endpoint or api_token for host-only configs
+        # These remain empty strings (defaults)
 
     def _load_from_tfvars(self):
         """Load configuration from legacy tfvars file."""
@@ -223,50 +285,74 @@ def list_envs() -> list[str]:
 def list_hosts() -> list[str]:
     """List available hosts/nodes from site-config.
 
-    Checks nodes/*.yaml first (new format), falls back to hosts/*.tfvars (legacy).
+    Combines hosts from multiple sources (deduplicated):
+    1. nodes/*.yaml - PVE nodes (have API access)
+    2. hosts/*.yaml - Physical machines (SSH access only)
+    3. hosts/*.tfvars - Legacy format
     """
     try:
         site_config = get_site_config_dir()
     except ConfigError:
         return []
 
-    # Try new format first: nodes/*.yaml
+    hosts = set()
+
+    # nodes/*.yaml - PVE nodes
     nodes_dir = site_config / 'nodes'
     if nodes_dir.exists():
-        nodes = [f.stem for f in nodes_dir.glob('*.yaml') if f.is_file()]
-        if nodes:
-            return sorted(nodes)
+        hosts.update(f.stem for f in nodes_dir.glob('*.yaml') if f.is_file())
 
-    # Fallback to legacy format: hosts/*.tfvars
+    # hosts/*.yaml - Physical machines (pre-PVE)
     hosts_dir = site_config / 'hosts'
     if hosts_dir.exists():
-        return sorted([
-            f.stem for f in hosts_dir.glob('*.tfvars')
-            if f.is_file()
-        ])
+        hosts.update(f.stem for f in hosts_dir.glob('*.yaml') if f.is_file())
+        # Legacy: hosts/*.tfvars
+        hosts.update(f.stem for f in hosts_dir.glob('*.tfvars') if f.is_file())
 
-    return []
+    return sorted(hosts)
 
 
 def load_host_config(host: str) -> HostConfig:
     """Load configuration for a named host/node.
 
-    Checks nodes/{host}.yaml first (new format), falls back to hosts/{host}.tfvars.
+    Resolution order:
+    1. nodes/{host}.yaml - PVE node with API access
+    2. hosts/{host}.yaml - Physical machine with SSH access (pre-PVE)
+    3. hosts/{host}.tfvars - Legacy format
+
+    When loaded from hosts/*.yaml, the returned config has is_host_only=True
+    and PVE-specific fields (api_endpoint, api_token) are empty.
     """
     site_config = get_site_config_dir()
 
-    # Try new format first: nodes/*.yaml
-    yaml_file = site_config / 'nodes' / f'{host}.yaml'
-    if yaml_file.exists():
-        return HostConfig(name=host, config_file=yaml_file)
+    # 1. Try nodes/*.yaml (PVE node with API access)
+    node_file = site_config / 'nodes' / f'{host}.yaml'
+    if node_file.exists():
+        return HostConfig(name=host, config_file=node_file)
 
-    # Fallback to legacy format: hosts/*.tfvars
+    # 2. Try hosts/*.yaml (SSH-only, pre-PVE)
+    host_file = site_config / 'hosts' / f'{host}.yaml'
+    if host_file.exists():
+        return HostConfig(name=host, config_file=host_file)
+
+    # 3. Fallback to legacy format: hosts/*.tfvars
     tfvars_file = site_config / 'hosts' / f'{host}.tfvars'
     if tfvars_file.exists():
         return HostConfig(name=host, config_file=tfvars_file)
 
+    # Build helpful error message
     available = list_hosts()
-    raise ValueError(f"Unknown host: {host}. Available: {available}")
+    node_path = site_config / 'nodes' / f'{host}.yaml'
+    host_path = site_config / 'hosts' / f'{host}.yaml'
+
+    raise ValueError(
+        f"Host '{host}' not found.\n"
+        f"  - No node config: {node_path} (PVE not installed?)\n"
+        f"  - No host config: {host_path} (physical machine)\n\n"
+        f"Available hosts: {', '.join(available) if available else 'none configured'}\n\n"
+        f"To provision a new host, create {host_path}:\n"
+        f"  ssh root@<ip> \"cd /usr/local/etc/homestak && make host-config\""
+    )
 
 
 def load_secrets() -> dict:
