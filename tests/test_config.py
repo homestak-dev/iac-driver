@@ -221,7 +221,7 @@ proxmox_node_name = "legacy"
         with patch('config.get_site_config_dir', return_value=tmp_path):
             with pytest.raises(ValueError) as exc_info:
                 load_host_config('nonexistent')
-            assert 'Unknown host' in str(exc_info.value)
+            assert "Host 'nonexistent' not found" in str(exc_info.value)
 
 
 class TestHostConfig:
