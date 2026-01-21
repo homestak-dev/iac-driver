@@ -614,6 +614,41 @@ The orchestrator runs scenarios composed of reusable actions:
 | `--dry-run` | Preview scenario phases without executing actions |
 | `--preflight` | Run preflight checks only (no scenario execution) |
 | `--skip-preflight` | Skip preflight checks before scenario execution |
+| `--json-output` | Output structured JSON to stdout (logs to stderr) |
+
+**JSON Output (v0.38+):**
+
+The `--json-output` flag emits structured JSON for programmatic consumption:
+
+```bash
+./run.sh --scenario vm-roundtrip --host father --json-output 2>/dev/null | jq .
+```
+
+Output schema:
+```json
+{
+  "scenario": "vm-roundtrip",
+  "success": true,
+  "duration_seconds": 45.2,
+  "phases": [
+    {"name": "ensure_image", "status": "passed", "duration": 0.2},
+    {"name": "provision", "status": "passed", "duration": 6.8}
+  ],
+  "context": {
+    "vm_ip": "10.0.12.155",
+    "vm_id": 99900
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `scenario` | Scenario name |
+| `success` | Boolean result |
+| `duration_seconds` | Total runtime |
+| `phases[]` | Phase results (name, status, duration) |
+| `context` | Collected values (IPs, IDs, etc.) |
+| `error` | Error message (on failure only) |
 
 **Preflight Checks:**
 
