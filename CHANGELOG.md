@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.38 - 2026-01-21
+
 ### Added
 - Add `--json-output` flag for structured scenario results (#109)
   - JSON output to stdout, logs to stderr
