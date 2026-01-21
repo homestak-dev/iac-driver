@@ -193,8 +193,26 @@ def main():
         action='store_true',
         help='Skip preflight checks before scenario execution'
     )
+    parser.add_argument(
+        '--json-output',
+        action='store_true',
+        help='Output structured JSON to stdout (logs go to stderr)'
+    )
 
     args = parser.parse_args()
+
+    # Configure logging for --json-output mode
+    if args.json_output:
+        # Remove existing handlers and redirect to stderr
+        root_logger = logging.getLogger()
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
+        stderr_handler = logging.StreamHandler(sys.stderr)
+        stderr_handler.setFormatter(logging.Formatter(
+            '%(asctime)s [%(levelname)s] %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        ))
+        root_logger.addHandler(stderr_handler)
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
@@ -398,6 +416,11 @@ def main():
             return 1
 
     success = orchestrator.run()
+
+    # Output JSON if requested
+    if args.json_output:
+        report_data = orchestrator.report.to_dict(orchestrator.context)
+        print(json.dumps(report_data, indent=2))
 
     # Save context to file if specified
     if args.context_file:

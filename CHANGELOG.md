@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+- Add `--json-output` flag for structured scenario results (#109)
+  - JSON output to stdout, logs to stderr
+  - Includes scenario name, success status, duration, phase results
+  - Context values (vm_ip, vm_id, etc.) included for parent consumption
+  - Error details included on failure
+
 ## v0.37 - 2026-01-20
 
 ### Theme: Foundation for Recursion

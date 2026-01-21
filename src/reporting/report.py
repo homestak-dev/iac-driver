@@ -149,3 +149,52 @@ class TestReport:
         timestamp = self.started_at.strftime('%Y%m%d-%H%M%S') if self.started_at else 'unknown'
         status = 'passed' if self.success else 'failed'
         return self.report_dir / f"{timestamp}.{status}.{ext}"
+
+    def to_dict(self, context: Optional[dict] = None) -> dict:
+        """Return report as dictionary for JSON output.
+
+        Args:
+            context: Optional context dict to include in output.
+                     Only JSON-serializable values are included.
+        """
+        duration = (self.finished_at - self.started_at).total_seconds() if self.finished_at and self.started_at else 0
+
+        result = {
+            'scenario': self.scenario,
+            'success': self.success,
+            'duration_seconds': round(duration, 1),
+            'phases': [
+                {
+                    'name': p.name,
+                    'status': p.status,
+                    'duration': round(p.duration, 1),
+                }
+                for p in self.phases
+            ]
+        }
+
+        # Include error message on failure
+        if not self.success:
+            for p in self.phases:
+                if p.status == 'failed' and p.message:
+                    result['error'] = p.message
+                    break
+
+        # Include context if provided
+        if context:
+            # Filter to JSON-serializable values
+            serializable_context = {}
+            for key, value in context.items():
+                # Skip internal/private keys
+                if key.startswith('_'):
+                    continue
+                try:
+                    json.dumps(value)
+                    serializable_context[key] = value
+                except (TypeError, ValueError):
+                    # Skip non-serializable values
+                    pass
+            if serializable_context:
+                result['context'] = serializable_context
+
+        return result
