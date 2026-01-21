@@ -115,11 +115,21 @@ class ConfigResolver:
         ssh_keys_dict = self.secrets.get("ssh_keys", {})
         ssh_keys_list = list(ssh_keys_dict.values())
 
+        # Determine SSH host for file uploads
+        # If api_endpoint is localhost, use 127.0.0.1 for SSH
+        # Otherwise use explicit ip from node config
+        api_endpoint = node_config.get("api_endpoint", "")
+        if "localhost" in api_endpoint or "127.0.0.1" in api_endpoint:
+            ssh_host = "127.0.0.1"
+        else:
+            ssh_host = node_config.get("ip", "")
+
         return {
             "node": node_config.get("node", node),
-            "api_endpoint": node_config.get("api_endpoint", ""),
+            "api_endpoint": api_endpoint,
             "api_token": api_token,
             "ssh_user": defaults.get("ssh_user", "root"),
+            "ssh_host": ssh_host,  # For proxmox provider SSH file uploads
             "datastore": node_config["datastore"],  # Required from node config (v0.13+)
             "root_password": passwords.get("vm_root", ""),
             "ssh_keys": ssh_keys_list,

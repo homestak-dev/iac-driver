@@ -2,6 +2,59 @@
 
 ## Unreleased
 
+### Added
+- Add `RecursiveScenarioAction` for SSH-streamed scenario execution (#104)
+  - PTY allocation for real-time output streaming
+  - JSON result parsing from `--json-output` scenarios
+  - Context key extraction for parent scenario consumption
+  - Configurable timeout and SSH user
+
+- Add manifest-driven recursive scenarios (#114)
+  - `manifest.py` with `Manifest`, `ManifestLevel`, `ManifestSettings` dataclasses
+  - `ManifestLoader` for YAML file loading from site-config/manifests/
+  - Schema versioning (v1 = linear levels array)
+  - Depth limiting via `--depth` flag
+  - JSON serialization for recursive calls via `--manifest-json`
+
+- Add recursive-pve scenarios for N-level nested PVE (#114)
+  - `recursive-pve-constructor`: Build N-level stack per manifest
+  - `recursive-pve-destructor`: Tear down stack in reverse order
+  - `recursive-pve-roundtrip`: Constructor + destructor full cycle
+  - Helper actions: `BootstrapAction`, `CopySecretsAction`, `GenerateNodeConfigAction`
+
+- Add CLI flags for manifest-driven scenarios
+  - `--manifest`, `-M`: Manifest name from site-config/manifests/
+  - `--manifest-file`: Path to manifest file
+  - `--manifest-json`: Inline manifest JSON (for recursive calls)
+  - `--keep-on-failure`: Keep levels on failure for debugging
+  - `--depth`: Limit manifest to first N levels
+
+- Add raw file serving to serve-repos.sh for fully offline bootstrap (#119)
+  - `serve_raw_file()` extracts files from bare repos via `git show`
+  - BootstrapAction fetches `{source_url}/bootstrap.git/install.sh` when HOMESTAK_SOURCE set
+  - Enables recursive scenarios without GitHub connectivity
+
+### Fixed
+- Fix `BootstrapAction` to integrate with serve-repos env vars (#116)
+  - Reads `HOMESTAK_SOURCE`, `HOMESTAK_TOKEN`, `HOMESTAK_REF` from environment
+  - Builds bootstrap command with proper env var prefix for dev workflow
+  - Falls back to GitHub URL when serve-repos not configured
+
+- Fix `timeout_buffer` manifest setting not applied to recursive timeouts (#117)
+  - Add `_get_recursive_timeout()` method to `RecursivePVEBase`
+  - Subtracts `timeout_buffer` from base timeout to ensure cleanup time
+  - Applies to all `RecursiveScenarioAction` invocations
+
+- Fix `cleanup_on_failure` manifest setting not propagated (#118)
+  - Add `_get_effective_keep_on_failure()` method to `RecursivePVEBase`
+  - CLI `--keep-on-failure` takes precedence over manifest setting
+  - Manifest `cleanup_on_failure: false` maps to `keep_on_failure: true`
+  - Setting propagated to recursive constructor calls
+
+### Testing
+- Add unit tests for RecursiveScenarioAction (27 tests)
+- Add unit tests for manifest loading and validation (29 tests)
+
 ## v0.38 - 2026-01-21
 
 ### Added

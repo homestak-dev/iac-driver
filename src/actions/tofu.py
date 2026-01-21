@@ -33,6 +33,9 @@ class TofuApplyAction:
     env_name: str  # e.g., "test", "nested-pve"
     timeout_init: int = 120
     timeout_apply: int = 300
+    image_override: str = None  # Override image for all VMs (e.g., "debian-13-pve")
+    vmid_offset: int = None  # Add offset to all VM IDs
+    context_prefix: str = None  # Override context key prefix (e.g., "inner-pve" instead of VM name)
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
         """Execute tofu init + apply with resolved config."""
@@ -46,6 +49,21 @@ class TofuApplyAction:
         try:
             resolver = ConfigResolver()
             resolved = resolver.resolve_env(env=env_name, node=config.name)
+
+            # Apply image override from action parameter
+            if self.image_override:
+                for vm in resolved.get('vms', []):
+                    original = vm.get('image')
+                    vm['image'] = self.image_override
+                    logger.info(f"[{self.name}] Image override: {vm.get('name')} {original} -> {self.image_override}")
+
+            # Apply vmid offset from action parameter
+            if self.vmid_offset:
+                for vm in resolved.get('vms', []):
+                    if vm.get('vmid'):
+                        original = vm.get('vmid')
+                        vm['vmid'] = original + self.vmid_offset
+                        logger.info(f"[{self.name}] VMID offset: {vm.get('name')} {original} -> {vm['vmid']}")
 
             # Apply VM ID overrides from context
             vm_id_overrides = context.get('vm_id_overrides', {})
@@ -125,9 +143,12 @@ class TofuApplyAction:
             vm_name = vm.get('name')
             vmid = vm.get('vmid')
             if vm_name and vmid:
-                # Add as {name}_vm_id (e.g., test_vm_id, inner_vm_id)
-                context_updates[f'{vm_name}_vm_id'] = vmid
+                # Use context_prefix if specified, otherwise use VM name
+                prefix = self.context_prefix if self.context_prefix else vm_name
+                # Add as {prefix}_vm_id (e.g., inner-pve_vm_id, test_vm_id)
+                context_updates[f'{prefix}_vm_id'] = vmid
                 provisioned_vms.append({'name': vm_name, 'vmid': vmid})
+                logger.debug(f"[{self.name}] Added {prefix}_vm_id={vmid} to context")
 
         # Add list of all provisioned VMs for multi-VM scenarios
         context_updates['provisioned_vms'] = provisioned_vms

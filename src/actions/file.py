@@ -154,10 +154,11 @@ class DownloadGitHubReleaseAction:
 
         GitHub download URLs require the actual tag name, not 'latest'.
         This queries the API to get the real tag for the latest release.
+        Uses Python for JSON parsing (available on all PVE hosts) instead of jq.
         """
         api_url = f'https://api.github.com/repos/{repo}/releases/latest'
-        # Use curl with jq to extract tag_name
-        cmd = f"curl -fsSL '{api_url}' | jq -r '.tag_name'"
+        # Use curl with Python to extract tag_name (Python is always available on PVE)
+        cmd = f"curl -fsSL '{api_url}' | python3 -c \"import sys,json; print(json.load(sys.stdin).get('tag_name',''))\""
         rc, out, err = run_ssh(host, cmd, timeout=30)
         if rc == 0 and out.strip():
             return out.strip()

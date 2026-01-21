@@ -23,7 +23,8 @@ set -euo pipefail
 
 VERSION="0.37"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPOS_DIR="${REPOS_DIR:-$(dirname "$SCRIPT_DIR")}"
+# REPOS_DIR should be the parent of iac-driver (where all repos are siblings)
+REPOS_DIR="${REPOS_DIR:-$(dirname "$(dirname "$SCRIPT_DIR")")}"
 
 # Defaults
 PORT=""  # Empty = OS-assigned
@@ -32,8 +33,8 @@ TIMEOUT=""
 TOKEN=""
 ADVERTISE_URL=""
 JSON_OUTPUT=false
-KNOWN_REPOS=(bootstrap ansible iac-driver tofu packer)
-EXCLUDE_REPOS=(site-config)  # site-config excluded by default (secrets)
+KNOWN_REPOS=(bootstrap ansible iac-driver tofu packer site-config)
+EXCLUDE_REPOS=()  # site-config included for full bootstrap; secrets protected by token
 SERVE_DIR=""  # Set during execution
 SERVER_PID=""
 
@@ -231,27 +232,90 @@ create_bare_repo() {
 generate_server_script() {
     local port_value="${PORT:-0}"  # 0 means OS-assigned
 
-    cat << PYEOF > "$SERVE_DIR/server.py"
+    cat << 'PYEOF' > "$SERVE_DIR/server.py"
 #!/usr/bin/env python3
-"""HTTP server with Bearer token authentication for git dumb protocol."""
+"""HTTP server with Bearer token authentication for git dumb protocol.
+
+Serves both:
+1. Raw files from bare repos (e.g., /repo.git/install.sh)
+2. Git dumb HTTP protocol files (e.g., /repo.git/objects/...)
+"""
 import http.server
 import os
+import re
+import subprocess
 import sys
 
-TOKEN = "$TOKEN"
-PORT = $port_value
-BIND = "$BIND"
+# Embedded by shell script
+TOKEN = "REPLACE_TOKEN"
+PORT = REPLACE_PORT
+BIND = "REPLACE_BIND"
 
 
 class AuthHandler(http.server.SimpleHTTPRequestHandler):
-    """HTTP handler that validates Bearer token authentication."""
+    """HTTP handler with Bearer auth and raw file extraction from bare repos."""
 
     def do_GET(self):
         auth = self.headers.get('Authorization', '')
         if auth != f'Bearer {TOKEN}':
             self.send_error(401, "Unauthorized")
             return
+
+        # Check for raw file request: /repo.git/filename (not objects/info/refs)
+        match = re.match(r'^/([^/]+\.git)/([^/].*)$', self.path)
+        if match:
+            repo_name = match.group(1)
+            file_path = match.group(2)
+            # Skip git protocol paths
+            if not file_path.startswith(('objects/', 'info/', 'refs/', 'HEAD', 'config', 'packed-refs')):
+                return self.serve_raw_file(repo_name, file_path)
+
         super().do_GET()
+
+    def serve_raw_file(self, repo_name, file_path):
+        """Extract and serve a file from the bare git repo."""
+        repo_path = os.path.join(os.getcwd(), repo_name)
+        if not os.path.isdir(repo_path):
+            self.send_error(404, f"Repository not found: {repo_name}")
+            return
+
+        # Use git show to extract file from _working branch (or HEAD)
+        try:
+            result = subprocess.run(
+                ['git', '-C', repo_path, 'show', f'_working:{file_path}'],
+                capture_output=True,
+                timeout=5
+            )
+            if result.returncode != 0:
+                # Try HEAD as fallback
+                result = subprocess.run(
+                    ['git', '-C', repo_path, 'show', f'HEAD:{file_path}'],
+                    capture_output=True,
+                    timeout=5
+                )
+            if result.returncode != 0:
+                self.send_error(404, f"File not found: {file_path}")
+                return
+
+            content = result.stdout
+            self.send_response(200)
+            # Guess content type
+            if file_path.endswith('.sh'):
+                self.send_header('Content-Type', 'text/x-shellscript')
+            elif file_path.endswith('.py'):
+                self.send_header('Content-Type', 'text/x-python')
+            elif file_path.endswith('.yaml') or file_path.endswith('.yml'):
+                self.send_header('Content-Type', 'text/yaml')
+            else:
+                self.send_header('Content-Type', 'application/octet-stream')
+            self.send_header('Content-Length', len(content))
+            self.end_headers()
+            self.wfile.write(content)
+
+        except subprocess.TimeoutExpired:
+            self.send_error(500, "Timeout extracting file")
+        except Exception as e:
+            self.send_error(500, f"Error: {e}")
 
     def do_HEAD(self):
         auth = self.headers.get('Authorization', '')
@@ -282,6 +346,11 @@ if __name__ == '__main__':
         except KeyboardInterrupt:
             pass
 PYEOF
+
+    # Replace placeholders with actual values
+    sed -i "s/REPLACE_TOKEN/$TOKEN/g" "$SERVE_DIR/server.py"
+    sed -i "s/REPLACE_PORT/$port_value/g" "$SERVE_DIR/server.py"
+    sed -i "s/REPLACE_BIND/$BIND/g" "$SERVE_DIR/server.py"
 }
 
 # Main execution
