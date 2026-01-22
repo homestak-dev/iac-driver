@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.39 - 2026-01-22
+
 ### Added
 - Add `RecursiveScenarioAction` for SSH-streamed scenario execution (#104)
   - PTY allocation for real-time output streaming
