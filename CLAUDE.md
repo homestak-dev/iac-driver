@@ -544,6 +544,8 @@ Or run with `--dangerously-skip-permissions` flag.
 
 **OpenTofu State Version 4 Bug**: When `TF_DATA_DIR` contains a `terraform.tfstate` file, OpenTofu's legacy code path reads it and rejects valid v4 states with "does not support state version 4". **Workaround**: Store state file outside `TF_DATA_DIR` - we use a `data/` subdirectory for `TF_DATA_DIR` while keeping state at the parent level. See [opentofu/opentofu#3643](https://github.com/opentofu/opentofu/issues/3643).
 
+**Provider Lockfile Mismatch**: When provider version constraints change (e.g., Dependabot updates `providers.tf`), cached lockfiles in `.states/*/data/.terraform.lock.hcl` can have stale versions, causing `tofu init` to fail with "does not match configured version constraint". **Resolution**: Preflight checks now auto-detect and clear stale lockfiles. Manual fix: `rm -rf .states/*/data/.terraform.lock.hcl`.
+
 ## Timeout Configuration
 
 Operations use tiered timeouts based on expected duration. Scenarios can override action defaults.
@@ -750,6 +752,7 @@ Checks include:
 - Bootstrap installation (core repos present)
 - site-init completion (secrets.yaml decrypted, node config exists)
 - PVE API connectivity and token validity
+- Provider lockfile sync (auto-clears stale lockfiles in `.states/`)
 - Nested virtualization (for nested-pve-* scenarios)
 
 **Context File Usage:**

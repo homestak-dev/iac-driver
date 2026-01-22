@@ -9,6 +9,9 @@ from src.validation import (
     validate_host_reachable,
     validate_host_availability,
     validate_readiness,
+    parse_provider_version,
+    parse_lockfile_version,
+    validate_provider_lockfiles,
 )
 
 
@@ -220,3 +223,226 @@ class TestValidateReadiness:
         errors = validate_readiness(config, NoSshScenario)
         # Should not fail on missing SSH host
         assert not any("SSH host" in e for e in errors)
+
+
+class TestParseProviderVersion:
+    """Tests for parsing provider version from providers.tf."""
+
+    def test_parses_exact_version(self, tmp_path):
+        """Parses exact version constraint."""
+        providers_tf = tmp_path / "providers.tf"
+        providers_tf.write_text('''
+terraform {
+  required_providers {
+    proxmox = {
+      source  = "bpg/proxmox"
+      version = "0.93.0"
+    }
+  }
+}
+''')
+        assert parse_provider_version(providers_tf) == "0.93.0"
+
+    def test_parses_version_with_spaces(self, tmp_path):
+        """Parses version with extra spaces."""
+        providers_tf = tmp_path / "providers.tf"
+        providers_tf.write_text('version   =   "1.2.3"')
+        assert parse_provider_version(providers_tf) == "1.2.3"
+
+    def test_returns_none_for_missing_file(self, tmp_path):
+        """Returns None for missing file."""
+        providers_tf = tmp_path / "nonexistent.tf"
+        assert parse_provider_version(providers_tf) is None
+
+    def test_returns_none_for_no_version(self, tmp_path):
+        """Returns None when no version is specified."""
+        providers_tf = tmp_path / "providers.tf"
+        providers_tf.write_text('provider "proxmox" {}')
+        assert parse_provider_version(providers_tf) is None
+
+
+class TestParseLockfileVersion:
+    """Tests for parsing provider version from .terraform.lock.hcl."""
+
+    def test_parses_lockfile_version(self, tmp_path):
+        """Parses version from lockfile."""
+        lockfile = tmp_path / ".terraform.lock.hcl"
+        lockfile.write_text('''
+provider "registry.opentofu.org/bpg/proxmox" {
+  version     = "0.92.0"
+  constraints = "0.92.0"
+  hashes = [
+    "h1:abc123",
+  ]
+}
+''')
+        assert parse_lockfile_version(lockfile) == "0.92.0"
+
+    def test_parses_multiline_lockfile(self, tmp_path):
+        """Parses version from multi-provider lockfile."""
+        lockfile = tmp_path / ".terraform.lock.hcl"
+        lockfile.write_text('''
+provider "registry.opentofu.org/other/provider" {
+  version = "1.0.0"
+}
+
+provider "registry.opentofu.org/bpg/proxmox" {
+  version     = "0.93.0"
+  constraints = ">= 0.90.0, 0.93.0"
+  hashes = [
+    "h1:xyz789",
+  ]
+}
+''')
+        assert parse_lockfile_version(lockfile) == "0.93.0"
+
+    def test_returns_none_for_missing_file(self, tmp_path):
+        """Returns None for missing file."""
+        lockfile = tmp_path / "nonexistent.lock.hcl"
+        assert parse_lockfile_version(lockfile) is None
+
+    def test_returns_none_for_no_proxmox_provider(self, tmp_path):
+        """Returns None when bpg/proxmox not in lockfile."""
+        lockfile = tmp_path / ".terraform.lock.hcl"
+        lockfile.write_text('''
+provider "registry.opentofu.org/other/provider" {
+  version = "1.0.0"
+}
+''')
+        assert parse_lockfile_version(lockfile) is None
+
+
+class TestValidateProviderLockfiles:
+    """Tests for provider lockfile validation."""
+
+    def test_no_states_dir_returns_empty(self, tmp_path):
+        """No .states directory returns no errors."""
+        # Create providers.tf but no .states
+        tofu_dir = tmp_path / "tofu"
+        generic_dir = tofu_dir / "envs" / "generic"
+        generic_dir.mkdir(parents=True)
+        (generic_dir / "providers.tf").write_text('version = "0.93.0"')
+
+        states_dir = tmp_path / ".states"
+        # Don't create states_dir - test that missing dir is handled
+
+        errors, fixed = validate_provider_lockfiles(
+            _tofu_dir=tofu_dir,
+            _states_dir=states_dir
+        )
+        assert errors == []
+        assert fixed == []
+
+    def test_matching_versions_no_errors(self, tmp_path):
+        """Matching versions return no errors."""
+        # Create providers.tf
+        tofu_dir = tmp_path / "tofu"
+        generic_dir = tofu_dir / "envs" / "generic"
+        generic_dir.mkdir(parents=True)
+        (generic_dir / "providers.tf").write_text('version = "0.93.0"')
+
+        # Create state with matching lockfile
+        states_dir = tmp_path / ".states"
+        state_dir = states_dir / "test-node" / "data"
+        state_dir.mkdir(parents=True)
+        (state_dir / ".terraform.lock.hcl").write_text('''
+provider "registry.opentofu.org/bpg/proxmox" {
+  version = "0.93.0"
+}
+''')
+
+        errors, fixed = validate_provider_lockfiles(
+            _tofu_dir=tofu_dir,
+            _states_dir=states_dir
+        )
+        assert errors == []
+        assert fixed == []
+
+    def test_stale_lockfile_auto_fixed(self, tmp_path):
+        """Stale lockfile is automatically deleted when auto_fix=True."""
+        # Create providers.tf with new version
+        tofu_dir = tmp_path / "tofu"
+        generic_dir = tofu_dir / "envs" / "generic"
+        generic_dir.mkdir(parents=True)
+        (generic_dir / "providers.tf").write_text('version = "0.93.0"')
+
+        # Create state with old lockfile
+        states_dir = tmp_path / ".states"
+        state_dir = states_dir / "test-node" / "data"
+        state_dir.mkdir(parents=True)
+        lockfile = state_dir / ".terraform.lock.hcl"
+        lockfile.write_text('''
+provider "registry.opentofu.org/bpg/proxmox" {
+  version = "0.92.0"
+}
+''')
+
+        errors, fixed = validate_provider_lockfiles(
+            auto_fix=True,
+            _tofu_dir=tofu_dir,
+            _states_dir=states_dir
+        )
+        assert errors == []
+        assert len(fixed) == 1
+        assert "test-node" in fixed[0]
+        assert "0.92.0" in fixed[0]
+        assert "0.93.0" in fixed[0]
+        assert not lockfile.exists()  # Lockfile was deleted
+
+    def test_stale_lockfile_error_without_auto_fix(self, tmp_path):
+        """Stale lockfile returns error when auto_fix=False."""
+        # Create providers.tf with new version
+        tofu_dir = tmp_path / "tofu"
+        generic_dir = tofu_dir / "envs" / "generic"
+        generic_dir.mkdir(parents=True)
+        (generic_dir / "providers.tf").write_text('version = "0.93.0"')
+
+        # Create state with old lockfile
+        states_dir = tmp_path / ".states"
+        state_dir = states_dir / "test-node" / "data"
+        state_dir.mkdir(parents=True)
+        lockfile = state_dir / ".terraform.lock.hcl"
+        lockfile.write_text('''
+provider "registry.opentofu.org/bpg/proxmox" {
+  version = "0.92.0"
+}
+''')
+
+        errors, fixed = validate_provider_lockfiles(
+            auto_fix=False,
+            _tofu_dir=tofu_dir,
+            _states_dir=states_dir
+        )
+        assert len(errors) == 1
+        assert "Stale provider lockfile" in errors[0]
+        assert "0.92.0" in errors[0]
+        assert "0.93.0" in errors[0]
+        assert fixed == []
+        assert lockfile.exists()  # Lockfile was NOT deleted
+
+    def test_multiple_stale_lockfiles(self, tmp_path):
+        """Multiple stale lockfiles are all handled."""
+        # Create providers.tf
+        tofu_dir = tmp_path / "tofu"
+        generic_dir = tofu_dir / "envs" / "generic"
+        generic_dir.mkdir(parents=True)
+        (generic_dir / "providers.tf").write_text('version = "0.93.0"')
+
+        # Create multiple states with old lockfiles
+        states_dir = tmp_path / ".states"
+        for env in ["test-node1", "test-node2"]:
+            state_dir = states_dir / env / "data"
+            state_dir.mkdir(parents=True)
+            (state_dir / ".terraform.lock.hcl").write_text('''
+provider "registry.opentofu.org/bpg/proxmox" {
+  version = "0.91.0"
+}
+''')
+
+        errors, fixed = validate_provider_lockfiles(
+            auto_fix=True,
+            _tofu_dir=tofu_dir,
+            _states_dir=states_dir
+        )
+        assert errors == []
+        assert len(fixed) == 2
