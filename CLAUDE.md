@@ -58,14 +58,17 @@ All repos are siblings in a common parent directory:
 │   │   ├── common.py     # ActionResult + shared utilities
 │   │   ├── config.py          # Host configuration (auto-discovery from site-config)
 │   │   ├── config_resolver.py # ConfigResolver - resolves site-config for tofu
+│   │   ├── manifest.py        # Manifest schema for recursive scenarios
 │   │   ├── actions/      # Reusable primitive operations
 │   │   │   ├── tofu.py   # TofuApply/Destroy[Remote]Action
 │   │   │   ├── ansible.py# AnsiblePlaybookAction
 │   │   │   ├── ssh.py    # SSHCommandAction, WaitForSSHAction
 │   │   │   ├── proxmox.py# StartVMAction, WaitForGuestAgentAction
-│   │   │   └── file.py   # DownloadFileAction, RemoveImageAction
+│   │   │   ├── file.py   # DownloadFileAction, RemoveImageAction
+│   │   │   └── recursive.py   # RecursiveScenarioAction
 │   │   ├── scenarios/    # Workflow definitions
 │   │   │   ├── nested_pve.py        # nested-pve-{constructor,destructor,roundtrip}
+│   │   │   ├── recursive_pve.py     # recursive-pve-{constructor,destructor,roundtrip}
 │   │   │   ├── vm.py                # vm-{constructor,destructor,roundtrip}
 │   │   │   ├── pve_setup.py         # pve-setup (local/remote)
 │   │   │   ├── user_setup.py        # user-setup (local/remote)
@@ -78,7 +81,8 @@ All repos are siblings in a common parent directory:
 │   ├── site.yaml         # Site-wide defaults
 │   ├── secrets.yaml      # All sensitive values (SOPS encrypted)
 │   ├── nodes/            # PVE instance configuration
-│   └── envs/             # Environment configuration (for tofu)
+│   ├── envs/             # Environment configuration (for tofu)
+│   └── manifests/        # Recursive scenario manifests
 ├── ansible/              # Tool repo (sibling)
 ├── tofu/                 # Tool repo (sibling)
 └── packer/               # Tool repo (sibling)
@@ -333,6 +337,78 @@ Node configuration merges in `tofu/envs/common/locals.tf`:
 - **Hostnames**: `{cluster}{instance}` (dev1, router, kubeadm1)
 - **Cloud-init files**: `{hostname}-meta.yaml`, `{hostname}-user.yaml`
 - **Environments**: dev (permissive SSH, passwordless sudo) vs prod (strict SSH, fail2ban)
+
+## Manifest-Driven Recursive Scenarios (v0.39+)
+
+Recursive-pve scenarios use manifests to define N-level nested PVE deployments. Manifests are YAML files in `site-config/manifests/`.
+
+### Manifest Schema (v1)
+
+```yaml
+schema_version: 1
+name: n2-quick
+description: "Quick 2-level nested PVE test"
+
+levels:
+  - name: inner-pve
+    env: nested-pve        # FK to site-config/envs/
+    image: debian-13-pve   # Optional image override
+    post_scenario: pve-setup
+    post_scenario_args: ["--local"]
+
+  - name: test-vm
+    env: test
+    image: debian-12
+    post_scenario: null    # Leaf level, no post-scenario
+
+settings:
+  verify_ssh: true
+  cleanup_on_failure: true
+  timeout_buffer: 60
+```
+
+### Built-in Manifests
+
+| Manifest | Levels | Description |
+|----------|--------|-------------|
+| `n2-quick` | 2 | inner-pve → test-vm |
+| `n3-full` | 3 | inner-pve → leaf-pve → test-vm |
+
+### Usage
+
+```bash
+# Use built-in manifest
+./run.sh --scenario recursive-pve-roundtrip --host father --manifest n2-quick
+
+# Use custom manifest file
+./run.sh --scenario recursive-pve-constructor --host father --manifest-file /path/to/manifest.yaml
+
+# Limit depth for testing
+./run.sh --scenario recursive-pve-constructor --host father --manifest n3-full --depth 2
+
+# Keep levels on failure for debugging
+./run.sh --scenario recursive-pve-roundtrip --host father --manifest n2-quick --keep-on-failure
+```
+
+### RecursiveScenarioAction
+
+The `RecursiveScenarioAction` executes scenarios on remote hosts via SSH with PTY streaming:
+
+```python
+RecursiveScenarioAction(
+    name='recurse-inner',
+    scenario_name='recursive-pve-constructor',
+    host_attr='inner_ip',              # Context key for SSH target
+    scenario_args=['--manifest-json', manifest.to_json()],
+    context_keys=['leaf_ip', 'leaf_vm_id'],  # Keys to extract from result
+    timeout=1200,
+)
+```
+
+Key features:
+- Real-time output streaming via PTY allocation
+- JSON result parsing from `--json-output` scenarios
+- Context key extraction for parent scenario consumption
 
 ## Naming Conventions
 
@@ -615,6 +691,11 @@ The orchestrator runs scenarios composed of reusable actions:
 | `--preflight` | Run preflight checks only (no scenario execution) |
 | `--skip-preflight` | Skip preflight checks before scenario execution |
 | `--json-output` | Output structured JSON to stdout (logs to stderr) |
+| `--manifest`, `-M` | Manifest name from site-config/manifests/ (for recursive-pve) |
+| `--manifest-file` | Path to manifest file (for recursive-pve) |
+| `--manifest-json` | Inline manifest JSON (for recursive calls) |
+| `--keep-on-failure` | Keep levels on failure for debugging (for recursive-pve) |
+| `--depth` | Limit manifest to first N levels (for recursive-pve) |
 
 **JSON Output (v0.38+):**
 
@@ -716,6 +797,9 @@ The `latest` tag is maintained by the packer release process (see packer#5).
 | `packer-sync` | ~30s | 1 | Sync local packer to remote |
 | `packer-sync-build-fetch` | ~6m | 3 | Sync, build, fetch (dev workflow) |
 | `pve-setup` | ~3m | 3 | Install PVE (if needed), configure host, generate node config |
+| `recursive-pve-constructor` | ~6m | varies | Build N-level nested PVE stack per manifest |
+| `recursive-pve-destructor` | ~2m | varies | Destroy N-level stack in reverse order |
+| `recursive-pve-roundtrip` | ~9m | varies | Constructor + destructor full cycle |
 | `user-setup` | ~30s | 1 | Create homestak user |
 | `vm-constructor` | ~1.5m | 5 | Ensure image, provision VM, verify SSH |
 | `vm-destructor` | ~30s | 1 | Destroy VM |

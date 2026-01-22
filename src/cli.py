@@ -199,6 +199,31 @@ def main():
         help='Output structured JSON to stdout (logs go to stderr)'
     )
 
+    # Manifest arguments for recursive-pve scenarios
+    parser.add_argument(
+        '--manifest', '-M',
+        help='Manifest name from site-config/manifests/ (for recursive-pve scenarios)'
+    )
+    parser.add_argument(
+        '--manifest-file',
+        type=Path,
+        help='Path to manifest file (for recursive-pve scenarios)'
+    )
+    parser.add_argument(
+        '--manifest-json',
+        help='Inline manifest JSON (for recursive calls, not user-facing)'
+    )
+    parser.add_argument(
+        '--keep-on-failure',
+        action='store_true',
+        help='Keep levels on failure for debugging (for recursive-pve scenarios)'
+    )
+    parser.add_argument(
+        '--depth',
+        type=int,
+        help='Limit manifest to first N levels (for recursive-pve scenarios)'
+    )
+
     args = parser.parse_args()
 
     # Configure logging for --json-output mode
@@ -310,6 +335,26 @@ def main():
     if args.packer_release:
         config.packer_release = args.packer_release
         logger.info(f"Using packer release override: {args.packer_release}")
+
+    # Load manifest for recursive-pve scenarios
+    if args.scenario and 'recursive-pve' in args.scenario:
+        from manifest import load_manifest, ConfigError as ManifestConfigError
+        try:
+            manifest = load_manifest(
+                name=args.manifest,
+                file_path=str(args.manifest_file) if args.manifest_file else None,
+                json_str=args.manifest_json,
+                depth=args.depth
+            )
+            # Set manifest on scenario
+            scenario.manifest = manifest
+            # Set keep_on_failure flag
+            if hasattr(scenario, 'keep_on_failure'):
+                scenario.keep_on_failure = args.keep_on_failure
+            logger.info(f"Loaded manifest: {manifest.name} (depth={manifest.depth})")
+        except ManifestConfigError as e:
+            print(f"Error loading manifest: {e}")
+            return 1
 
     # Pre-flight validation (skip for --skip-preflight, --dry-run)
     if not args.skip_preflight and not args.dry_run:

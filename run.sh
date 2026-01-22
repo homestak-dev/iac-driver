@@ -113,7 +113,12 @@ stop_serve_repos() {
 if [[ "$SERVE_REPOS" == true ]]; then
     start_serve_repos || exit 1
     trap stop_serve_repos EXIT INT TERM
+    # Don't use exec - we need bash process to stay alive for trap handler
+    python3 "$SCRIPT_DIR/src/cli.py" "${CLI_ARGS[@]}"
+    exit_code=$?
+    stop_serve_repos
+    exit $exit_code
+else
+    # No serve-repos, safe to exec
+    exec python3 "$SCRIPT_DIR/src/cli.py" "${CLI_ARGS[@]}"
 fi
-
-# Pass remaining arguments to Python CLI
-exec python3 "$SCRIPT_DIR/src/cli.py" "${CLI_ARGS[@]}"

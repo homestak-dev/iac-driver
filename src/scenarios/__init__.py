@@ -191,3 +191,4 @@ from scenarios import pve_setup  # noqa: E402, F401
 from scenarios import user_setup  # noqa: E402, F401
 from scenarios import bootstrap  # noqa: E402, F401
 from scenarios import packer_build  # noqa: E402, F401
+from scenarios import recursive_pve  # noqa: E402, F401

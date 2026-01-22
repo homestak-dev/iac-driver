@@ -12,6 +12,7 @@ from actions.proxmox import (
     WaitForGuestAgentRemoteAction,
 )
 from actions.file import RemoveImageAction, DownloadFileAction, DownloadGitHubReleaseAction
+from actions.recursive import RecursiveScenarioAction
 
 __all__ = [
     'TofuApplyAction',
@@ -34,4 +35,5 @@ __all__ = [
     'RemoveImageAction',
     'DownloadFileAction',
     'DownloadGitHubReleaseAction',
+    'RecursiveScenarioAction',
 ]
