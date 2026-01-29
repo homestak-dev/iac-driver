@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.40 - 2026-01-29
+
 ### Added
 - Add provider lockfile validation to preflight checks (#122)
   - Detects when cached lockfiles in `.states/*/data/` have stale provider versions
