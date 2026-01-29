@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+- Add provider lockfile validation to preflight checks (#122)
+  - Detects when cached lockfiles in `.states/*/data/` have stale provider versions
+  - Auto-fixes by deleting stale lockfiles (regenerated on next `tofu init`)
+  - Prevents "does not match configured version constraint" errors after Dependabot updates
+  - New functions: `parse_provider_version()`, `parse_lockfile_version()`, `validate_provider_lockfiles()`
+
 ## v0.39 - 2026-01-22
 
 ### Added

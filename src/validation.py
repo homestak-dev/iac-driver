@@ -359,6 +359,172 @@ def validate_nested_virt() -> list[str]:
 
 
 # -----------------------------------------------------------------------------
+# Provider Lockfile Validation
+# -----------------------------------------------------------------------------
+
+def parse_provider_version(providers_tf: Path) -> str:
+    """Extract provider version constraint from providers.tf.
+
+    Parses HCL to find the bpg/proxmox provider version constraint:
+        required_providers {
+            proxmox = {
+                version = "0.93.0"
+            }
+        }
+
+    Args:
+        providers_tf: Path to providers.tf file
+
+    Returns:
+        Version string (e.g., "0.93.0") or None if not found
+    """
+    import re
+
+    if not providers_tf.exists():
+        return None
+
+    try:
+        content = providers_tf.read_text()
+    except Exception as e:
+        logger.warning(f"Cannot read providers.tf: {e}")
+        return None
+
+    # Match: version = "X.Y.Z" (with optional spaces)
+    # This handles the common case of exact version pinning
+    match = re.search(r'version\s*=\s*"([^"]+)"', content)
+    if match:
+        return match.group(1)
+
+    return None
+
+
+def parse_lockfile_version(lockfile: Path) -> str:
+    """Extract provider version from .terraform.lock.hcl.
+
+    Parses HCL to find the bpg/proxmox provider version:
+        provider "registry.opentofu.org/bpg/proxmox" {
+            version = "0.93.0"
+            ...
+        }
+
+    Args:
+        lockfile: Path to .terraform.lock.hcl file
+
+    Returns:
+        Version string (e.g., "0.93.0") or None if not found
+    """
+    import re
+
+    if not lockfile.exists():
+        return None
+
+    try:
+        content = lockfile.read_text()
+    except Exception as e:
+        logger.warning(f"Cannot read lockfile {lockfile}: {e}")
+        return None
+
+    # Look for bpg/proxmox provider block and extract version
+    # Pattern: provider "...bpg/proxmox" { ... version = "X.Y.Z" ... }
+    pattern = r'provider\s+"[^"]*bpg/proxmox"[^}]*version\s*=\s*"([^"]+)"'
+    match = re.search(pattern, content, re.DOTALL)
+    if match:
+        return match.group(1)
+
+    return None
+
+
+def validate_provider_lockfiles(auto_fix: bool = True,
+                                 verbose: bool = False,
+                                 _tofu_dir: Path = None,
+                                 _states_dir: Path = None) -> tuple[list[str], list[str]]:
+    """Validate provider lockfiles are in sync with version constraints.
+
+    Compares the version in tofu/envs/generic/providers.tf with cached
+    lockfiles in iac-driver/.states/*/data/.terraform.lock.hcl.
+
+    When a mismatch is found:
+    - auto_fix=True: Delete stale lockfile (will regenerate on next tofu init)
+    - auto_fix=False: Return error message with fix instructions
+
+    Args:
+        auto_fix: If True, automatically clear stale lockfiles
+        verbose: If True, log detailed information
+        _tofu_dir: Override tofu directory (for testing)
+        _states_dir: Override states directory (for testing)
+
+    Returns:
+        Tuple of (errors, fixed) where:
+        - errors: List of error messages (empty if all valid or fixed)
+        - fixed: List of fixed lockfile descriptions (for reporting)
+    """
+    from config import get_sibling_dir, get_base_dir
+
+    errors = []
+    fixed = []
+
+    # Get required version from providers.tf
+    tofu_dir = _tofu_dir if _tofu_dir else get_sibling_dir('tofu')
+    providers_tf = tofu_dir / 'envs' / 'generic' / 'providers.tf'
+    required_version = parse_provider_version(providers_tf)
+
+    if not required_version:
+        if verbose:
+            logger.info("Could not determine required provider version from providers.tf")
+        return errors, fixed
+
+    if verbose:
+        logger.info(f"Required provider version: bpg/proxmox {required_version}")
+
+    # Find all cached lockfiles in .states/
+    states_dir = _states_dir if _states_dir else get_base_dir() / '.states'
+    if not states_dir.exists():
+        return errors, fixed  # No state dirs yet, nothing to validate
+
+    stale_lockfiles = []
+    for state_dir in states_dir.iterdir():
+        if not state_dir.is_dir():
+            continue
+
+        lockfile = state_dir / 'data' / '.terraform.lock.hcl'
+        if not lockfile.exists():
+            continue
+
+        locked_version = parse_lockfile_version(lockfile)
+        if not locked_version:
+            continue
+
+        if locked_version != required_version:
+            stale_lockfiles.append({
+                'path': lockfile,
+                'env': state_dir.name,
+                'locked': locked_version,
+                'required': required_version,
+            })
+
+    # Handle stale lockfiles
+    for item in stale_lockfiles:
+        if auto_fix:
+            try:
+                item['path'].unlink()
+                msg = f"{item['env']} ({item['locked']} -> {item['required']})"
+                fixed.append(msg)
+                logger.info(f"Cleared stale lockfile: {msg}")
+            except Exception as e:
+                errors.append(
+                    f"Cannot clear stale lockfile {item['path']}: {e}"
+                )
+        else:
+            errors.append(
+                f"Stale provider lockfile in {item['env']}\n"
+                f"  Locked: {item['locked']}, Required: {item['required']}\n"
+                f"  Fix: rm {item['path']}"
+            )
+
+    return errors, fixed
+
+
+# -----------------------------------------------------------------------------
 # Combined Validation
 # -----------------------------------------------------------------------------
 
@@ -408,6 +574,10 @@ def validate_readiness(config, scenario_class, timeout: float = 10.0,
     if requires_nested_virt:
         errors.extend(validate_nested_virt())
 
+    # Provider lockfile validation (auto-fix stale lockfiles)
+    lockfile_errors, _ = validate_provider_lockfiles(auto_fix=True)
+    errors.extend(lockfile_errors)
+
     return errors
 
 
@@ -436,6 +606,7 @@ def run_preflight_checks(local_mode: bool = True,
         'bootstrap': {'passed': [], 'failed': []},
         'site_config': {'passed': [], 'failed': []},
         'pve': {'passed': [], 'failed': []},
+        'tofu': {'passed': [], 'failed': []},
         'hardware': {'passed': [], 'failed': []},
     }
 
@@ -496,6 +667,40 @@ def run_preflight_checks(local_mode: bool = True,
         except Exception as e:
             results['pve']['failed'].append(f"Cannot validate PVE: {e}")
 
+    # Tofu provider lockfile checks
+    try:
+        from config import get_sibling_dir, get_base_dir
+
+        lockfile_errors, lockfile_fixed = validate_provider_lockfiles(
+            auto_fix=True, verbose=verbose
+        )
+
+        if lockfile_errors:
+            results['tofu']['failed'].extend(lockfile_errors)
+        else:
+            # Get current version for display
+            providers_tf = get_sibling_dir('tofu') / 'envs' / 'generic' / 'providers.tf'
+            version = parse_provider_version(providers_tf)
+            if version:
+                results['tofu']['passed'].append(f"Provider version: bpg/proxmox {version}")
+
+            # Report state directories status
+            states_dir = get_base_dir() / '.states'
+            if states_dir.exists():
+                state_count = len([d for d in states_dir.iterdir() if d.is_dir()])
+                if state_count > 0:
+                    if lockfile_fixed:
+                        results['tofu']['passed'].append(
+                            f"Lockfiles in sync ({state_count} state dirs, "
+                            f"{len(lockfile_fixed)} cleared)"
+                        )
+                    else:
+                        results['tofu']['passed'].append(
+                            f"Lockfiles in sync ({state_count} state dirs)"
+                        )
+    except Exception as e:
+        results['tofu']['failed'].append(f"Cannot validate tofu: {e}")
+
     # Hardware checks
     if check_nested_virt:
         nested_errors = validate_nested_virt()
@@ -544,6 +749,7 @@ def format_preflight_results(hostname: str, results: dict) -> str:
         'bootstrap': 'Bootstrap',
         'site_config': 'Site configuration',
         'pve': 'PVE connectivity',
+        'tofu': 'Tofu providers',
         'hardware': 'Hardware',
     }
 
