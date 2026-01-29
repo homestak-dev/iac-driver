@@ -141,7 +141,11 @@ class DownloadFileAction:
 
 @dataclass
 class DownloadGitHubReleaseAction:
-    """Download an asset from a GitHub release."""
+    """Download an asset from a GitHub release.
+
+    Handles both single files and split files (e.g., large files split into
+    .partaa, .partab, etc. due to GitHub's 2GB file size limit).
+    """
     name: str
     asset_name: str  # e.g., "debian-12-custom.qcow2"
     dest_dir: str = '/var/lib/vz/template/iso'
@@ -163,6 +167,69 @@ class DownloadGitHubReleaseAction:
         if rc == 0 and out.strip():
             return out.strip()
         return None
+
+    def _get_split_parts(self, repo: str, tag: str, host: str) -> list[str]:
+        """Query GitHub API for split file parts matching asset_name.part*.
+
+        Returns sorted list of part filenames (e.g., ['file.partaa', 'file.partab']).
+        """
+        api_url = f'https://api.github.com/repos/{repo}/releases/tags/{tag}'
+        # Extract asset names matching our pattern
+        pattern = self.asset_name + '.part'
+        cmd = f"""curl -fsSL '{api_url}' | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+assets = data.get('assets', [])
+parts = [a['name'] for a in assets if a['name'].startswith('{pattern}')]
+parts.sort()
+print('\\n'.join(parts))
+"
+"""
+        rc, out, err = run_ssh(host, cmd, timeout=30)
+        if rc == 0 and out.strip():
+            return [p for p in out.strip().split('\n') if p]
+        return []
+
+    def _download_and_reassemble(self, repo: str, tag: str, parts: list[str],
+                                  host: str, start: float) -> ActionResult:
+        """Download split parts and reassemble into single file."""
+        dest = f"{self.dest_dir}/{self.asset_name}"
+
+        # Download each part
+        for i, part in enumerate(parts):
+            url = f'https://github.com/{repo}/releases/download/{tag}/{part}'
+            part_dest = f"{self.dest_dir}/{part}"
+            logger.info(f"[{self.name}] Downloading part {i+1}/{len(parts)}: {part}...")
+            dl_cmd = f'curl -fSL -o {part_dest} {url}'
+            rc, _, err = run_ssh(host, dl_cmd, timeout=self.timeout)
+            if rc != 0:
+                # Clean up any downloaded parts on failure
+                cleanup_cmd = f"rm -f {self.dest_dir}/{self.asset_name}.part*"
+                run_ssh(host, cleanup_cmd, timeout=30)
+                return ActionResult(
+                    success=False,
+                    message=f"Failed to download part {part}: {err}",
+                    duration=time.time() - start
+                )
+
+        # Reassemble parts (cat in sorted order)
+        logger.info(f"[{self.name}] Reassembling {len(parts)} parts into {self.asset_name}...")
+        # Use shell glob which sorts alphabetically (partaa, partab, etc.)
+        reassemble_cmd = f"cat {self.dest_dir}/{self.asset_name}.part* > {dest}"
+        rc, _, err = run_ssh(host, reassemble_cmd, timeout=120)
+        if rc != 0:
+            return ActionResult(
+                success=False,
+                message=f"Failed to reassemble parts: {err}",
+                duration=time.time() - start
+            )
+
+        # Clean up parts
+        cleanup_cmd = f"rm -f {self.dest_dir}/{self.asset_name}.part*"
+        run_ssh(host, cleanup_cmd, timeout=30)
+        logger.info(f"[{self.name}] Cleaned up {len(parts)} part files")
+
+        return ActionResult(success=True, message="", duration=0)  # Caller handles final result
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
         """Download release asset."""
@@ -205,16 +272,28 @@ class DownloadGitHubReleaseAction:
                 duration=time.time() - start
             )
 
-        # Download file
+        # Try direct download first
         logger.info(f"[{self.name}] Downloading {self.asset_name} from {repo} release {tag}...")
         dl_cmd = f'curl -fSL -o {dest} {url}'
         rc, _, err = run_ssh(host, dl_cmd, timeout=self.timeout)
+
         if rc != 0:
-            return ActionResult(
-                success=False,
-                message=f"Failed to download from {url}: {err}",
-                duration=time.time() - start
-            )
+            # Check if file is split into parts
+            logger.info(f"[{self.name}] Direct download failed, checking for split parts...")
+            parts = self._get_split_parts(repo, tag, host)
+
+            if parts:
+                logger.info(f"[{self.name}] Found {len(parts)} split parts, downloading...")
+                result = self._download_and_reassemble(repo, tag, parts, host, start)
+                if not result.success:
+                    return result
+                # Continue to rename/verify below
+            else:
+                return ActionResult(
+                    success=False,
+                    message=f"Failed to download from {url} (no split parts found): {err}",
+                    duration=time.time() - start
+                )
 
         final_filename = self.asset_name
 

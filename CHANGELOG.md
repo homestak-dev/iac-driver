@@ -9,6 +9,12 @@
   - Prevents "does not match configured version constraint" errors after Dependabot updates
   - New functions: `parse_provider_version()`, `parse_lockfile_version()`, `validate_provider_lockfiles()`
 
+- Add split file handling to `DownloadGitHubReleaseAction` (#123)
+  - Automatically detects and downloads split parts (`.partaa`, `.partab`, etc.)
+  - Reassembles parts into single file after download
+  - Cleans up part files after successful reassembly
+  - Enables downloading large images (>2GB) from GitHub releases
+
 ## v0.39 - 2026-01-22
 
 ### Added
