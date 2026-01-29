@@ -787,6 +787,8 @@ The packer release tag for image downloads is resolved in this order (first matc
 
 The `latest` tag is maintained by the packer release process (see packer#5).
 
+**Split File Handling:** Large images (>2GB) are split into parts on GitHub releases (e.g., `debian-13-pve.qcow2.partaa`, `.partab`). `DownloadGitHubReleaseAction` automatically detects split files, downloads all parts, reassembles them, and cleans up.
+
 **Available Scenarios:**
 | Scenario | Runtime | Phases | Description |
 |----------|---------|--------|-------------|
