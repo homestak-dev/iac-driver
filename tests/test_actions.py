@@ -24,7 +24,7 @@ from config import HostConfig
 class MockHostConfig:
     """Minimal host config for testing."""
     name: str = 'test-host'
-    ssh_host: str = '10.0.12.100'
+    ssh_host: str = '192.0.2.1'  # TEST-NET-1 (RFC 5737)
     ssh_user: str = 'root'
     config_file: Path = Path('/tmp/test.yaml')
 
@@ -38,7 +38,7 @@ class TestSSHCommandAction:
 
         action = SSHCommandAction(name='test', command='echo hello', host_key='inner_ip')
         config = MockHostConfig()
-        context = {'inner_ip': '10.0.12.100'}
+        context = {'inner_ip': '192.0.2.1'}
 
         with patch('actions.ssh.run_ssh', return_value=(0, 'hello\n', '')):
             result = action.run(config, context)
@@ -52,7 +52,7 @@ class TestSSHCommandAction:
 
         action = SSHCommandAction(name='test', command='false', host_key='inner_ip')
         config = MockHostConfig()
-        context = {'inner_ip': '10.0.12.100'}
+        context = {'inner_ip': '192.0.2.1'}
 
         with patch('actions.ssh.run_ssh', return_value=(1, '', 'command failed')):
             result = action.run(config, context)
@@ -83,7 +83,7 @@ class TestWaitForSSHAction:
 
         action = WaitForSSHAction(name='test', host_key='inner_ip', timeout=5)
         config = MockHostConfig()
-        context = {'inner_ip': '10.0.12.100'}
+        context = {'inner_ip': '192.0.2.1'}
 
         with patch('actions.ssh.wait_for_ping', return_value=True), \
              patch('actions.ssh.run_ssh', return_value=(0, 'ready', '')):
@@ -116,7 +116,7 @@ class TestStartVMAction:
         action = StartVMAction(name='test', vm_id_attr='inner_vm_id', pve_host_attr='ssh_host')
         config = MagicMock()
         config.inner_vm_id = 99913
-        config.ssh_host = '10.0.12.100'
+        config.ssh_host = '192.0.2.1'
         config.ssh_user = 'root'
         context = {}
 
@@ -133,7 +133,7 @@ class TestStartVMAction:
         action = StartVMAction(name='test', vm_id_attr='inner_vm_id', pve_host_attr='ssh_host')
         config = MagicMock()
         config.inner_vm_id = 99913
-        config.ssh_host = '10.0.12.100'
+        config.ssh_host = '192.0.2.1'
         config.ssh_user = 'root'
         context = {}
 
@@ -149,7 +149,7 @@ class TestStartVMAction:
 
         action = StartVMAction(name='test', vm_id_attr='missing_id')
         config = MagicMock()
-        config.ssh_host = '10.0.12.100'
+        config.ssh_host = '192.0.2.1'
         config.ssh_user = 'root'
         # Simulate getattr returning None for missing attribute
         config.missing_id = None
@@ -275,7 +275,7 @@ class TestDownloadGitHubReleaseAction:
         config = MagicMock()
         config.packer_release_repo = 'homestak-dev/packer'
         config.packer_release = 'v0.20'
-        context = {'inner_ip': '10.0.12.100'}
+        context = {'inner_ip': '192.0.2.1'}
 
         with patch('actions.file.run_ssh') as mock_ssh:
             # mkdir success, download success, mv rename, verify success
@@ -323,7 +323,7 @@ class TestDownloadGitHubReleaseAction:
         config = MagicMock()
         config.packer_release_repo = 'homestak-dev/packer'
         config.packer_release = 'v0.20'
-        context = {'inner_ip': '10.0.12.100'}
+        context = {'inner_ip': '192.0.2.1'}
 
         with patch('actions.file.run_ssh') as mock_ssh:
             mock_ssh.side_effect = [
@@ -356,7 +356,7 @@ class TestDownloadGitHubReleaseAction:
         config = MagicMock()
         config.packer_release_repo = 'homestak-dev/packer'
         config.packer_release = 'v0.20'
-        context = {'inner_ip': '10.0.12.100'}
+        context = {'inner_ip': '192.0.2.1'}
 
         with patch('actions.file.run_ssh') as mock_ssh:
             mock_ssh.side_effect = [
@@ -386,7 +386,7 @@ class TestDownloadGitHubReleaseAction:
         config = MagicMock()
         config.packer_release_repo = 'homestak-dev/packer'
         config.packer_release = 'v0.20'
-        context = {'inner_ip': '10.0.12.100'}
+        context = {'inner_ip': '192.0.2.1'}
 
         with patch('actions.file.run_ssh') as mock_ssh:
             mock_ssh.side_effect = [
@@ -412,7 +412,7 @@ class TestDownloadGitHubReleaseAction:
         config = MagicMock()
         config.packer_release_repo = 'homestak-dev/packer'
         config.packer_release = 'latest'
-        context = {'inner_ip': '10.0.12.100'}
+        context = {'inner_ip': '192.0.2.1'}
 
         with patch('actions.file.run_ssh') as mock_ssh:
             mock_ssh.side_effect = [
@@ -440,7 +440,7 @@ class TestDownloadGitHubReleaseAction:
         config = MagicMock()
         config.packer_release_repo = 'homestak-dev/packer'
         config.packer_release = 'v0.20'
-        context = {'inner_ip': '10.0.12.100'}
+        context = {'inner_ip': '192.0.2.1'}
 
         with patch('actions.file.run_ssh') as mock_ssh:
             mock_ssh.side_effect = [
@@ -467,7 +467,7 @@ class TestDownloadGitHubReleaseAction:
         with patch('actions.file.run_ssh') as mock_ssh:
             # API returns parts in arbitrary order
             mock_ssh.return_value = (0, 'large-file.qcow2.partab\nlarge-file.qcow2.partaa\n', '')
-            parts = action._get_split_parts('repo/name', 'v1.0', '10.0.12.100')
+            parts = action._get_split_parts('repo/name', 'v1.0', '192.0.2.1')
 
         # Should be sorted alphabetically
         assert parts == ['large-file.qcow2.partab', 'large-file.qcow2.partaa']
@@ -490,6 +490,6 @@ class TestActionResult:
         result = ActionResult(
             success=True,
             message='done',
-            context_updates={'vm_ip': '10.0.12.100'}
+            context_updates={'vm_ip': '192.0.2.1'}
         )
-        assert result.context_updates == {'vm_ip': '10.0.12.100'}
+        assert result.context_updates == {'vm_ip': '192.0.2.1'}
