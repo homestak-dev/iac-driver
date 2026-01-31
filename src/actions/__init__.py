@@ -1,11 +1,19 @@
 """Reusable infrastructure actions."""
 
-from actions.tofu import TofuApplyAction, TofuDestroyAction, TofuApplyRemoteAction, TofuDestroyRemoteAction
+from actions.tofu import (
+    TofuApplyAction,
+    TofuApplyInlineAction,
+    TofuDestroyAction,
+    TofuDestroyInlineAction,
+    TofuApplyRemoteAction,
+    TofuDestroyRemoteAction,
+)
 from actions.ansible import AnsiblePlaybookAction, AnsibleLocalPlaybookAction, EnsurePVEAction
 from actions.ssh import SSHCommandAction, WaitForSSHAction, SyncReposToVMAction, VerifySSHChainAction
 from actions.proxmox import (
     StartVMAction,
     WaitForGuestAgentAction,
+    LookupVMIPAction,
     StartProvisionedVMsAction,
     WaitForProvisionedVMsAction,
     StartVMRemoteAction,
@@ -16,7 +24,9 @@ from actions.recursive import RecursiveScenarioAction
 
 __all__ = [
     'TofuApplyAction',
+    'TofuApplyInlineAction',
     'TofuDestroyAction',
+    'TofuDestroyInlineAction',
     'TofuApplyRemoteAction',
     'TofuDestroyRemoteAction',
     'AnsiblePlaybookAction',
@@ -28,6 +38,7 @@ __all__ = [
     'VerifySSHChainAction',
     'StartVMAction',
     'WaitForGuestAgentAction',
+    'LookupVMIPAction',
     'StartProvisionedVMsAction',
     'WaitForProvisionedVMsAction',
     'StartVMRemoteAction',

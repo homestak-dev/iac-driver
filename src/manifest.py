@@ -33,27 +33,68 @@ SUPPORTED_SCHEMA_VERSIONS = {1}
 class ManifestLevel:
     """A single level in the recursion manifest.
 
+    Supports three modes:
+    1. Preset mode (simplest): name + vm_preset + vmid + image
+       - vm_preset references vms/presets/*.yaml for resources (cores/memory/disk)
+       - image specifies the base image
+    2. Template mode: name + template + vmid
+       - template references vms/*.yaml for resources
+    3. Env mode (legacy): name + env
+       - env references envs/*.yaml which contains VM definitions
+
     Attributes:
-        name: Level identifier (used in context keys, e.g., 'inner-pve')
-        env: FK to site-config/envs/*.yaml
-        image: Optional image override (FK to packer image)
-        vmid_offset: Optional offset from env's vmid_base
+        name: VM hostname (inline modes) or level identifier (env mode)
+        vm_preset: FK to site-config/vms/presets/*.yaml (vm_preset mode)
+        template: FK to site-config/vms/*.yaml (template mode)
+        vmid: Explicit VM ID (inline modes)
+        env: FK to site-config/envs/*.yaml (env mode, optional)
+        image: Image name (required for vm_preset mode, optional override for others)
+        vmid_offset: Offset from env's vmid_base (env mode only, deprecated)
         post_scenario: Optional scenario to run after bootstrap
         post_scenario_args: Arguments for post_scenario
     """
     name: str
-    env: str
+    vm_preset: Optional[str] = None
+    template: Optional[str] = None
+    vmid: Optional[int] = None
+    env: Optional[str] = None
     image: Optional[str] = None
     vmid_offset: int = 0
     post_scenario: Optional[str] = None
     post_scenario_args: list[str] = field(default_factory=list)
+
+    @property
+    def is_inline(self) -> bool:
+        """True if using inline mode (vm_preset or template specified, no env)."""
+        return (self.vm_preset is not None or self.template is not None) and self.env is None
+
+    @property
+    def is_vm_preset_mode(self) -> bool:
+        """True if using vm_preset mode (vm_preset specified, no template)."""
+        return self.vm_preset is not None and self.template is None and self.env is None
+
+    @property
+    def vm_name(self) -> str:
+        """Get the VM hostname for this level.
+
+        In inline mode, this is the level name.
+        In env mode, this must be resolved from the env file.
+        """
+        if self.is_inline:
+            return self.name
+        # In env mode, caller must resolve from env file
+        # Return name as fallback (may not match actual VM name)
+        return self.name
 
     @classmethod
     def from_dict(cls, data: dict) -> 'ManifestLevel':
         """Create ManifestLevel from dictionary."""
         return cls(
             name=data['name'],
-            env=data['env'],
+            vm_preset=data.get('vm_preset'),
+            template=data.get('template'),
+            vmid=data.get('vmid'),
+            env=data.get('env'),
             image=data.get('image'),
             vmid_offset=data.get('vmid_offset', 0),
             post_scenario=data.get('post_scenario'),
@@ -148,21 +189,33 @@ class Manifest:
 
     def to_dict(self) -> dict:
         """Convert manifest to dictionary (for JSON serialization)."""
+        levels_data = []
+        for level in self.levels:
+            level_dict = {
+                'name': level.name,
+                'post_scenario': level.post_scenario,
+                'post_scenario_args': level.post_scenario_args
+            }
+            # Include mode-specific fields
+            if level.vm_preset is not None:
+                level_dict['vm_preset'] = level.vm_preset
+            if level.template is not None:
+                level_dict['template'] = level.template
+            if level.vmid is not None:
+                level_dict['vmid'] = level.vmid
+            if level.env is not None:
+                level_dict['env'] = level.env
+            if level.image is not None:
+                level_dict['image'] = level.image
+            if level.vmid_offset != 0:
+                level_dict['vmid_offset'] = level.vmid_offset
+            levels_data.append(level_dict)
+
         return {
             'schema_version': self.schema_version,
             'name': self.name,
             'description': self.description,
-            'levels': [
-                {
-                    'name': level.name,
-                    'env': level.env,
-                    'image': level.image,
-                    'vmid_offset': level.vmid_offset,
-                    'post_scenario': level.post_scenario,
-                    'post_scenario_args': level.post_scenario_args
-                }
-                for level in self.levels
-            ],
+            'levels': levels_data,
             'settings': {
                 'verify_ssh': self.settings.verify_ssh,
                 'cleanup_on_failure': self.settings.cleanup_on_failure,
@@ -209,8 +262,14 @@ class Manifest:
         for i, level_data in enumerate(data['levels']):
             if 'name' not in level_data:
                 raise ConfigError(f"Level {i} missing required field: name")
-            if 'env' not in level_data:
-                raise ConfigError(f"Level {i} ({level_data.get('name', 'unnamed')}) missing required field: env")
+            # Require one of: vm_preset, template (inline modes) or env (legacy mode)
+            has_vm_preset = 'vm_preset' in level_data
+            has_template = 'template' in level_data
+            has_env = 'env' in level_data
+            if not has_vm_preset and not has_template and not has_env:
+                raise ConfigError(
+                    f"Level {i} ({level_data.get('name', 'unnamed')}) requires 'vm_preset', 'template', or 'env'"
+                )
             levels.append(ManifestLevel.from_dict(level_data))
 
         return cls(

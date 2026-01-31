@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Added
+- Add `CopySSHPrivateKeyAction` for recursive PVE scenarios (#133)
+  - Copies outer host's SSH private key to inner host
+  - Enables inner-pve to SSH to its nested VMs
+  - Keys copied to both root and homestak users
+  - Required for n3-full (3-level nesting) to work
+
+- Add serve-repos propagation to `RecursiveScenarioAction` (#134)
+  - Passes HOMESTAK_SOURCE, HOMESTAK_TOKEN, HOMESTAK_REF to inner hosts
+  - Enables nested bootstrap operations to use serve-repos instead of GitHub
+  - Required for testing uncommitted code at level 2+ in recursive scenarios
+
+### Fixed
+- Fix SSH authentication for automation_user in recursive scenarios (#133)
+  - All SSH actions now use `config.automation_user` (homestak) for VM connections
+  - `config.ssh_user` (root) reserved for PVE host connections
+  - Fixes "Permission denied (publickey)" errors in nested deployments
+
+- Fix API token injection in n3-full recursive scenarios (#130)
+  - `CreateApiTokenAction` now uses level name as token key (was hardcoded to 'nested-pve')
+  - Token injection now adds new entries if key doesn't exist (was replace-only)
+  - Fixes test-vm provisioning failure at level 3
+
 ## v0.40 - 2026-01-29
 
 ### Added

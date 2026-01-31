@@ -5,6 +5,7 @@ Enables running scenarios on remote bootstrapped hosts via SSH with real-time st
 
 import json
 import logging
+import os
 import re
 import select
 import shlex
@@ -130,14 +131,51 @@ class RecursiveScenarioAction:
 
         All arguments are shell-quoted to handle JSON and other special characters
         that may be passed via scenario_args.
+
+        If serve-repos environment variables are set (HOMESTAK_SOURCE, HOMESTAK_TOKEN,
+        HOMESTAK_REF), they are propagated to the remote command so that inner hosts
+        can download from the same serve-repos server instead of GitHub.
         """
+        # Build env var prefix if serve-repos is active
+        env_prefix = self._build_serve_repos_prefix()
+
         cmd_parts = [
             'homestak', 'scenario', self.scenario_name,
             '--json-output'
         ]
         cmd_parts.extend(self.scenario_args)
         # Quote each part to handle special characters (especially JSON with spaces)
-        return ' '.join(shlex.quote(p) for p in cmd_parts)
+        homestak_cmd = ' '.join(shlex.quote(p) for p in cmd_parts)
+
+        if env_prefix:
+            return f'{env_prefix} {homestak_cmd}'
+        return homestak_cmd
+
+    def _build_serve_repos_prefix(self) -> str:
+        """Build environment variable prefix for serve-repos propagation.
+
+        When running with --serve-repos (or _working ref), the outer host has
+        HOMESTAK_SOURCE, HOMESTAK_TOKEN, and HOMESTAK_REF set. This method
+        builds a prefix to pass these to the remote command so that nested
+        bootstrap operations use serve-repos instead of GitHub.
+
+        Returns:
+            Shell-safe env var assignments (e.g., 'HOMESTAK_SOURCE="http://..." ...')
+            or empty string if serve-repos is not active.
+        """
+        serve_repos_vars = ['HOMESTAK_SOURCE', 'HOMESTAK_TOKEN', 'HOMESTAK_REF']
+        env_parts = []
+
+        for var in serve_repos_vars:
+            value = os.environ.get(var)
+            if value:
+                # Shell-quote the value to handle special characters
+                env_parts.append(f'{var}={shlex.quote(value)}')
+
+        if env_parts:
+            logger.debug(f"[{self.name}] Propagating serve-repos env vars: {', '.join(serve_repos_vars)}")
+
+        return ' '.join(env_parts)
 
     def _build_ssh_command(self, host: str, remote_cmd: str) -> list[str]:
         """Build SSH command with appropriate options."""

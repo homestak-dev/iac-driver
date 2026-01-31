@@ -36,7 +36,8 @@ class SSHCommandAction:
         jump_host = context.get(self.jump_host_key) if self.jump_host_key else None
 
         logger.info(f"[{self.name}] Running command on {host}...")
-        rc, out, err = run_ssh(host, self.command, timeout=self.timeout, jump_host=jump_host)
+        # Use automation_user for SSH to VMs (created via cloud-init)
+        rc, out, err = run_ssh(host, self.command, user=config.automation_user, timeout=self.timeout, jump_host=jump_host)
 
         if rc != 0:
             return ActionResult(
@@ -89,7 +90,8 @@ class WaitForSSHAction:
 
         deadline = time.time() + self.timeout
         while time.time() < deadline:
-            rc, out, _ = run_ssh(host, 'echo ready', timeout=5, jump_host=jump_host)
+            # Use automation_user for SSH to VMs (created via cloud-init)
+            rc, out, _ = run_ssh(host, 'echo ready', user=config.automation_user, timeout=5, jump_host=jump_host)
             if rc == 0 and 'ready' in out:
                 logger.info(f"[{self.name}] SSH available on {host}")
                 return ActionResult(
@@ -138,20 +140,22 @@ class SyncReposToVMAction:
 
         # Run sync on the intermediate host to target VM
         # Use tar pipe as fallback since rsync may not be installed on target
+        # Use automation_user for VM connections, then sudo for write operations
+        user = config.automation_user
         sync_cmd = f'''
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
-# Create target directory
-ssh $SSH_OPTS root@{target} "mkdir -p /opt/homestak"
+# Create target directory with sudo
+ssh $SSH_OPTS {user}@{target} "sudo mkdir -p /opt/homestak && sudo chown {user}:{user} /opt/homestak"
 
 # Try rsync first, fall back to tar pipe if rsync not available
-if ssh $SSH_OPTS root@{target} "which rsync" >/dev/null 2>&1; then
+if ssh $SSH_OPTS {user}@{target} "which rsync" >/dev/null 2>&1; then
     rsync -avz --exclude=.git --exclude=__pycache__ --exclude=reports --exclude=.states \
-        -e "ssh $SSH_OPTS" /opt/homestak/ root@{target}:/opt/homestak/
+        -e "ssh $SSH_OPTS" /opt/homestak/ {user}@{target}:/opt/homestak/
 else
     # Fallback: use tar pipe (works without rsync on target)
     cd /opt/homestak && tar --exclude=.git --exclude=__pycache__ --exclude=reports --exclude=.states -czf - . | \
-        ssh $SSH_OPTS root@{target} "cd /opt/homestak && tar -xzf -"
+        ssh $SSH_OPTS {user}@{target} "cd /opt/homestak && tar -xzf -"
 fi
 '''
         logger.info(f"[{self.name}] Syncing repos from {intermediate} to {target}...")
@@ -195,10 +199,12 @@ class VerifySSHChainAction:
             )
 
         # Wait for SSH on target via jump host
+        # Use automation_user for SSH to VMs (created via cloud-init)
+        user = config.automation_user
         logger.info(f"[{self.name}] Waiting for SSH on {target} via {jump}...")
         deadline = time.time() + self.timeout
         while time.time() < deadline:
-            rc, out, err = run_ssh(target, 'echo ready', jump_host=jump, timeout=5)
+            rc, out, err = run_ssh(target, 'echo ready', user=user, jump_host=jump, timeout=5)
             if rc == 0 and 'ready' in out:
                 break
             logger.debug(f"SSH not ready on {target}, retrying...")
@@ -212,7 +218,7 @@ class VerifySSHChainAction:
 
         # Verify chain with hostname command
         logger.info(f"[{self.name}] Verifying SSH chain: outer -> {jump} -> {target}")
-        rc, out, err = run_ssh(target, 'hostname && uname -a', jump_host=jump, timeout=30)
+        rc, out, err = run_ssh(target, 'hostname && uname -a', user=user, jump_host=jump, timeout=30)
 
         if rc != 0:
             return ActionResult(

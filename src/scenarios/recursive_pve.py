@@ -22,12 +22,15 @@ from typing import Optional
 
 from actions import (
     TofuApplyAction,
+    TofuApplyInlineAction,
     TofuDestroyAction,
+    TofuDestroyInlineAction,
     StartVMAction,
     WaitForGuestAgentAction,
     WaitForSSHAction,
     RecursiveScenarioAction,
     DownloadGitHubReleaseAction,
+    LookupVMIPAction,
 )
 from common import ActionResult, run_ssh
 from config import HostConfig
@@ -66,14 +69,14 @@ class CreateApiTokenAction:
     """Create API token on inner PVE and inject into secrets.yaml.
 
     This action:
-    1. Regenerates PVE SSL certificates (IPv6 workaround)
-    2. Restarts pveproxy
-    3. Creates tofu API token via pveum
-    4. Injects token into secrets.yaml
+    1. Gets the target hostname (used as token key in secrets.yaml)
+    2. Regenerates PVE SSL certificates (IPv6 workaround)
+    3. Restarts pveproxy
+    4. Creates tofu API token via pveum
+    5. Injects token into secrets.yaml using hostname as key
     """
     name: str
     host_attr: str = 'vm_ip'
-    token_name: str = 'nested-pve'  # Token key in secrets.yaml
     timeout: int = 120
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
@@ -90,28 +93,40 @@ class CreateApiTokenAction:
 
         logger.info(f"[{self.name}] Creating API token on {host}...")
 
+        # Step 0: Get the hostname - this becomes the token key in secrets.yaml
+        # The node config uses hostname as api_token key, so we must match it
+        rc, hostname_out, err = run_ssh(host, 'hostname', user=config.automation_user, timeout=10)
+        if rc != 0:
+            return ActionResult(
+                success=False,
+                message=f"Failed to get hostname: {err or hostname_out}",
+                duration=time.time() - start
+            )
+        token_name = hostname_out.strip()
+        logger.debug(f"[{self.name}] Using token key: {token_name}")
+
         # Step 1: Regenerate PVE SSL certificates and restart pveproxy
         # This fixes IPv6-related SSL issues on fresh installs
         ssl_cmd = '''
-sysctl -w net.ipv6.conf.all.disable_ipv6=1
-sysctl -w net.ipv6.conf.default.disable_ipv6=1
-pvecm updatecerts --force 2>/dev/null || true
-sysctl -w net.ipv6.conf.all.disable_ipv6=0
-sysctl -w net.ipv6.conf.default.disable_ipv6=0
-systemctl restart pveproxy
+sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
+sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
+sudo pvecm updatecerts --force 2>/dev/null || true
+sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0
+sudo sysctl -w net.ipv6.conf.default.disable_ipv6=0
+sudo systemctl restart pveproxy
 sleep 2
 '''
-        rc, out, err = run_ssh(host, ssl_cmd, user='root', timeout=60)
+        rc, out, err = run_ssh(host, ssl_cmd, user=config.automation_user, timeout=60)
         if rc != 0:
             logger.warning(f"[{self.name}] SSL cert regen warning: {err or out}")
             # Continue anyway - this might fail on some systems
 
         # Step 2: Delete any existing token and create new one
         token_cmd = '''
-pveum user token remove root@pam tofu 2>/dev/null || true
-pveum user token add root@pam tofu --privsep 0 --output-format json
+sudo pveum user token remove root@pam tofu 2>/dev/null || true
+sudo pveum user token add root@pam tofu --privsep 0 --output-format json
 '''
-        rc, out, err = run_ssh(host, token_cmd, user='root', timeout=30)
+        rc, out, err = run_ssh(host, token_cmd, user=config.automation_user, timeout=30)
         if rc != 0:
             return ActionResult(
                 success=False,
@@ -132,11 +147,20 @@ pveum user token add root@pam tofu --privsep 0 --output-format json
             )
 
         # Step 4: Inject token into secrets.yaml on the inner host
-        # Use sed to update the nested-pve line under api_tokens
+        # First try to update existing line, if not found add a new one
+        # Use the token_name we retrieved from hostname
+        secrets_file = '/usr/local/etc/homestak/secrets.yaml'
         inject_cmd = f'''
-sed -i 's|^\\(\\s*\\){self.token_name}:.*$|\\1{self.token_name}: {full_token}|' /usr/local/etc/homestak/secrets.yaml
+# Check if token key exists in secrets.yaml
+if grep -q "^\\s*{token_name}:" {secrets_file}; then
+    # Update existing line
+    sudo sed -i 's|^\\(\\s*\\){token_name}:.*$|\\1{token_name}: {full_token}|' {secrets_file}
+else
+    # Add new line after api_tokens:
+    sudo sed -i '/^api_tokens:/a\\    {token_name}: {full_token}' {secrets_file}
+fi
 '''
-        rc, out, err = run_ssh(host, inject_cmd, user='root', timeout=30)
+        rc, out, err = run_ssh(host, inject_cmd, user=config.automation_user, timeout=30)
         if rc != 0:
             return ActionResult(
                 success=False,
@@ -182,32 +206,46 @@ class BootstrapAction:
                 duration=time.time() - start
             )
 
+        # Wait for apt lock to be available (cloud-init may be running)
+        logger.info(f"[{self.name}] Waiting for apt lock on {host}...")
+        apt_wait_cmd = (
+            "while sudo fuser /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend "
+            "/var/cache/apt/archives/lock >/dev/null 2>&1; do sleep 5; done && echo 'apt ready'"
+        )
+        rc, out, err = run_ssh(host, apt_wait_cmd, user=config.automation_user, timeout=120)
+        if rc != 0:
+            logger.warning(f"[{self.name}] apt wait check failed (may be ok): {err or out}")
+        else:
+            logger.debug(f"[{self.name}] apt lock available")
+
         # Check for serve-repos env vars (dev workflow)
         env_source = os.environ.get('HOMESTAK_SOURCE')
         env_token = os.environ.get('HOMESTAK_TOKEN')
         env_ref = os.environ.get('HOMESTAK_REF', '_working')
 
         # Build bootstrap command
+        # Note: bootstrap needs sudo for apt/git operations, so we use 'sudo bash'
         if env_source:
             # Dev workflow: use HTTP server from --serve-repos
             # Pass env vars to bash (not curl) so install.sh uses local (uncommitted) code
-            # The env vars must be set for bash, which receives curl's output
+            # Use 'sudo env VAR=value bash' because 'VAR=value sudo bash' doesn't work -
+            # sudo resets the environment by default for security
             env_prefix = f'HOMESTAK_SOURCE={env_source}'
             if env_token:
                 env_prefix += f' HOMESTAK_TOKEN={env_token}'
             env_prefix += f' HOMESTAK_REF={env_ref}'
             # Include Bearer token in curl header (serve-repos requires auth)
             auth_header = f'-H "Authorization: Bearer {env_token}"' if env_token else ''
-            # IMPORTANT: env_prefix goes before 'bash', not 'curl', so the vars are in bash's environment
-            bootstrap_cmd = f'curl -fsSL {auth_header} {env_source}/bootstrap.git/install.sh | {env_prefix} bash'
+            # Use 'sudo env' to pass vars through sudo's environment reset
+            bootstrap_cmd = f'curl -fsSL {auth_header} {env_source}/bootstrap.git/install.sh | sudo env {env_prefix} bash'
             logger.info(f"[{self.name}] Using serve-repos source: {env_source} (ref={env_ref})")
         elif self.source_url:
             # Explicit source_url parameter (legacy)
-            bootstrap_cmd = f'curl -fsSL {self.source_url}/install.sh | bash'
+            bootstrap_cmd = f'curl -fsSL {self.source_url}/install.sh | sudo bash'
         else:
             # Production: use GitHub
             bootstrap_url = 'https://raw.githubusercontent.com/homestak-dev/bootstrap'
-            bootstrap_cmd = f'curl -fsSL {bootstrap_url}/{self.ref}/install.sh | bash'
+            bootstrap_cmd = f'curl -fsSL {bootstrap_url}/{self.ref}/install.sh | sudo bash'
 
         logger.info(f"[{self.name}] Bootstrapping {host}...")
 
@@ -215,7 +253,7 @@ class BootstrapAction:
         rc, out, err = run_ssh(
             host,
             bootstrap_cmd,
-            user='root',
+            user=config.automation_user,
             timeout=self.timeout
         )
 
@@ -270,12 +308,14 @@ class CopySecretsAction:
         logger.info(f"[{self.name}] Copying secrets to {host}...")
 
         import subprocess
+        # Use automation_user for VM connections
+        user = config.automation_user
         cmd = [
             'scp',
             '-o', 'StrictHostKeyChecking=no',
             '-o', 'UserKnownHostsFile=/dev/null',
             str(secrets_path),
-            f'root@{host}:/usr/local/etc/homestak/secrets.yaml'
+            f'{user}@{host}:/tmp/secrets.yaml'
         ]
 
         try:
@@ -290,6 +330,16 @@ class CopySecretsAction:
                 return ActionResult(
                     success=False,
                     message=f"Failed to copy secrets: {result.stderr}",
+                    duration=time.time() - start
+                )
+
+            # Move from temp location to final location with sudo
+            move_cmd = 'sudo mv /tmp/secrets.yaml /usr/local/etc/homestak/secrets.yaml'
+            rc, out, err = run_ssh(host, move_cmd, user=config.automation_user, timeout=30)
+            if rc != 0:
+                return ActionResult(
+                    success=False,
+                    message=f"Failed to install secrets: {err or out}",
                     duration=time.time() - start
                 )
 
@@ -351,17 +401,17 @@ class InjectSSHKeyAction:
 
         # Inject key into secrets.yaml using sed
         # First check if outer_host already exists
-        check_cmd = f"grep -q '^\\s*{self.key_name}:' /usr/local/etc/homestak/secrets.yaml"
-        rc, _, _ = run_ssh(host, check_cmd, user='root', timeout=30)
+        check_cmd = f"sudo grep -q '^\\s*{self.key_name}:' /usr/local/etc/homestak/secrets.yaml"
+        rc, _, _ = run_ssh(host, check_cmd, user=config.automation_user, timeout=30)
 
         if rc == 0:
             # Key exists, update it
-            inject_cmd = f"sed -i 's|^\\(\\s*\\){self.key_name}:.*$|\\1{self.key_name}: {escaped_key}|' /usr/local/etc/homestak/secrets.yaml"
+            inject_cmd = f"sudo sed -i 's|^\\(\\s*\\){self.key_name}:.*$|\\1{self.key_name}: {escaped_key}|' /usr/local/etc/homestak/secrets.yaml"
         else:
             # Key doesn't exist, add it after ssh_keys:
-            inject_cmd = f"sed -i '/^ssh_keys:/a\\    {self.key_name}: {escaped_key}' /usr/local/etc/homestak/secrets.yaml"
+            inject_cmd = f"sudo sed -i '/^ssh_keys:/a\\    {self.key_name}: {escaped_key}' /usr/local/etc/homestak/secrets.yaml"
 
-        rc, out, err = run_ssh(host, inject_cmd, user='root', timeout=self.timeout)
+        rc, out, err = run_ssh(host, inject_cmd, user=config.automation_user, timeout=self.timeout)
         if rc != 0:
             return ActionResult(
                 success=False,
@@ -370,8 +420,8 @@ class InjectSSHKeyAction:
             )
 
         # Verify the key was injected
-        verify_cmd = f"grep -q '{self.key_name}:' /usr/local/etc/homestak/secrets.yaml"
-        rc, _, _ = run_ssh(host, verify_cmd, user='root', timeout=30)
+        verify_cmd = f"sudo grep -q '{self.key_name}:' /usr/local/etc/homestak/secrets.yaml"
+        rc, _, _ = run_ssh(host, verify_cmd, user=config.automation_user, timeout=30)
         if rc != 0:
             return ActionResult(
                 success=False,
@@ -383,6 +433,98 @@ class InjectSSHKeyAction:
         return ActionResult(
             success=True,
             message=f"SSH key ({self.key_name}) injected on {host}",
+            duration=time.time() - start
+        )
+
+
+@dataclass
+class CopySSHPrivateKeyAction:
+    """Copy outer host's SSH private key to inner host.
+
+    This enables inner-pve to SSH to its nested VMs. The private key is
+    copied to both root and homestak users so that:
+    - root: ansible connections work
+    - homestak: iac-driver automation_user connections work
+    """
+    name: str
+    host_attr: str = 'vm_ip'
+    timeout: int = 60
+
+    def run(self, config: HostConfig, context: dict) -> ActionResult:
+        """Copy SSH private key to target host."""
+        start = time.time()
+
+        host = context.get(self.host_attr)
+        if not host:
+            return ActionResult(
+                success=False,
+                message=f"No {self.host_attr} in context",
+                duration=time.time() - start
+            )
+
+        # Read local SSH private key
+        from pathlib import Path
+        privkey_path = Path.home() / '.ssh' / 'id_rsa'
+        pubkey_path = Path.home() / '.ssh' / 'id_rsa.pub'
+        if not privkey_path.exists():
+            privkey_path = Path.home() / '.ssh' / 'id_ed25519'
+            pubkey_path = Path.home() / '.ssh' / 'id_ed25519.pub'
+        if not privkey_path.exists():
+            return ActionResult(
+                success=False,
+                message="No SSH private key found (~/.ssh/id_rsa or id_ed25519)",
+                duration=time.time() - start
+            )
+
+        privkey = privkey_path.read_text()
+        pubkey = pubkey_path.read_text().strip() if pubkey_path.exists() else ''
+
+        logger.info(f"[{self.name}] Copying SSH private key to {host}...")
+
+        # Copy private key to both root and homestak users
+        # Using base64 encoding to avoid shell escaping issues with the key content
+        import base64
+        privkey_b64 = base64.b64encode(privkey.encode()).decode()
+        pubkey_b64 = base64.b64encode(pubkey.encode()).decode() if pubkey else ''
+
+        copy_script = f'''
+set -e
+PRIVKEY=$(echo '{privkey_b64}' | base64 -d)
+PUBKEY=$(echo '{pubkey_b64}' | base64 -d)
+
+# Copy to root
+sudo mkdir -p /root/.ssh
+sudo chmod 700 /root/.ssh
+echo "$PRIVKEY" | sudo tee /root/.ssh/id_rsa > /dev/null
+sudo chmod 600 /root/.ssh/id_rsa
+[ -n "$PUBKEY" ] && echo "$PUBKEY" | sudo tee /root/.ssh/id_rsa.pub > /dev/null
+[ -f /root/.ssh/id_rsa.pub ] && sudo chmod 644 /root/.ssh/id_rsa.pub
+
+# Copy to homestak
+sudo mkdir -p /home/homestak/.ssh
+sudo chmod 700 /home/homestak/.ssh
+sudo chown homestak:homestak /home/homestak/.ssh
+echo "$PRIVKEY" | sudo tee /home/homestak/.ssh/id_rsa > /dev/null
+sudo chmod 600 /home/homestak/.ssh/id_rsa
+sudo chown homestak:homestak /home/homestak/.ssh/id_rsa
+[ -n "$PUBKEY" ] && echo "$PUBKEY" | sudo tee /home/homestak/.ssh/id_rsa.pub > /dev/null
+[ -f /home/homestak/.ssh/id_rsa.pub ] && sudo chmod 644 /home/homestak/.ssh/id_rsa.pub && sudo chown homestak:homestak /home/homestak/.ssh/id_rsa.pub
+
+echo "SSH key copied to root and homestak"
+'''
+
+        rc, out, err = run_ssh(host, copy_script, user=config.automation_user, timeout=self.timeout)
+        if rc != 0:
+            return ActionResult(
+                success=False,
+                message=f"Failed to copy SSH key: {err or out}",
+                duration=time.time() - start
+            )
+
+        logger.info(f"[{self.name}] SSH private key copied to {host}")
+        return ActionResult(
+            success=True,
+            message=f"SSH private key copied to {host}",
             duration=time.time() - start
         )
 
@@ -458,9 +600,9 @@ print(f"Injected {{key_name}}")
 '''
         import base64
         encoded = base64.b64encode(python_script.encode()).decode()
-        inject_script = f"echo '{encoded}' | base64 -d | python3 - {self.key_name}"
+        inject_script = f"echo '{encoded}' | base64 -d | sudo python3 - {self.key_name}"
 
-        rc, out, err = run_ssh(host, inject_script, user='root', timeout=self.timeout)
+        rc, out, err = run_ssh(host, inject_script, user=config.automation_user, timeout=self.timeout)
         if rc != 0:
             return ActionResult(
                 success=False,
@@ -503,7 +645,7 @@ class ConfigureNetworkBridgeAction:
 
         # Check if vmbr0 already exists
         check_cmd = "ip link show vmbr0 2>/dev/null && ip addr show vmbr0 | grep -q 'inet '"
-        rc, out, err = run_ssh(host, check_cmd, user='root', timeout=30)
+        rc, out, err = run_ssh(host, check_cmd, user=config.automation_user, timeout=30)
         if rc == 0:
             logger.info(f"[{self.name}] vmbr0 already exists on {host}")
             return ActionResult(
@@ -514,6 +656,7 @@ class ConfigureNetworkBridgeAction:
 
         # Script to create vmbr0 bridge from eth0 with DHCP
         # This preserves the current IP during transition
+        # Uses sudo for privileged operations
         bridge_script = '''
 set -e
 
@@ -522,10 +665,10 @@ IFACE=$(ip -o route get 8.8.8.8 2>/dev/null | grep -oP 'dev \\K\\S+' || echo eth
 echo "Detected interface: $IFACE"
 
 # Backup interfaces
-cp /etc/network/interfaces /etc/network/interfaces.backup.$(date +%s) 2>/dev/null || true
+sudo cp /etc/network/interfaces /etc/network/interfaces.backup.$(date +%s) 2>/dev/null || true
 
 # Create bridge config with DHCP
-cat > /etc/network/interfaces << 'IFACE_EOF'
+sudo tee /etc/network/interfaces > /dev/null << 'IFACE_EOF'
 auto lo
 iface lo inet loopback
 
@@ -540,7 +683,7 @@ IFACE_EOF
 
 # Apply network configuration
 # Use systemctl to restart networking
-systemctl restart networking 2>/dev/null || ifdown eth0; ifup vmbr0
+sudo systemctl restart networking 2>/dev/null || (sudo ifdown eth0; sudo ifup vmbr0)
 
 # Wait for bridge to get IP
 for i in $(seq 1 30); do
@@ -556,7 +699,7 @@ echo "Warning: vmbr0 did not get IP within 30s"
 exit 0
 '''
 
-        rc, out, err = run_ssh(host, bridge_script, user='root', timeout=self.timeout)
+        rc, out, err = run_ssh(host, bridge_script, user=config.automation_user, timeout=self.timeout)
         if rc != 0:
             return ActionResult(
                 success=False,
@@ -598,8 +741,8 @@ class GenerateNodeConfigAction:
         logger.info(f"[{self.name}] Generating node config on {host}...")
 
         # Use FORCE=1 in case node config was copied from outer host
-        cmd = 'cd /usr/local/etc/homestak && make node-config FORCE=1'
-        rc, out, err = run_ssh(host, cmd, user='root', timeout=self.timeout)
+        cmd = 'cd /usr/local/etc/homestak && sudo make node-config FORCE=1'
+        rc, out, err = run_ssh(host, cmd, user=config.automation_user, timeout=self.timeout)
 
         if rc != 0:
             return ActionResult(
@@ -676,15 +819,27 @@ class RecursivePVEBase:
         vm_id_key = f'{level.name}_vm_id'
 
         # Phase 1: Provision VM using tofu
-        phases.append((
-            f'provision_{level.name}',
-            TofuApplyAction(
+        # Use inline action for inline mode, env-based action for legacy mode
+        if level.is_inline:
+            provision_action = TofuApplyInlineAction(
+                name=f'provision-{level.name}',
+                vm_name=level.name,
+                vmid=level.vmid,
+                template=level.template,
+                vm_preset=level.vm_preset,
+                image=level.image,
+            )
+        else:
+            provision_action = TofuApplyAction(
                 name=f'provision-{level.name}',
                 env_name=level.env,
                 image_override=level.image,
                 vmid_offset=level.vmid_offset,
                 context_prefix=level.name,  # Use level name for context keys
-            ),
+            )
+        phases.append((
+            f'provision_{level.name}',
+            provision_action,
             f'Provision {level.name}'
         ))
 
@@ -756,6 +911,17 @@ class RecursivePVEBase:
                 f'Inject SSH key on {level.name}'
             ))
 
+            # Phase 6c: Copy SSH private key for outbound SSH from inner host
+            # This enables inner-pve to SSH to VMs it provisions
+            phases.append((
+                f'privkey_{level.name}',
+                CopySSHPrivateKeyAction(
+                    name=f'privkey-{level.name}',
+                    host_attr=host_key,
+                ),
+                f'Copy SSH private key to {level.name}'
+            ))
+
             # Phase 7: Run post_scenario (e.g., pve-setup) - installs PVE
             if level.post_scenario:
                 phases.append((
@@ -791,6 +957,7 @@ class RecursivePVEBase:
             ))
 
             # Phase 9: Create API token and inject into secrets.yaml
+            # Token key is derived from hostname on the target (retrieved dynamically)
             phases.append((
                 f'apitoken_{level.name}',
                 CreateApiTokenAction(
@@ -831,9 +998,10 @@ class RecursivePVEBase:
 
             # Phase 11: Recurse to next level
             # Build args for recursive call
-            # Use current level's env as the host (assumes single-VM env where VM name = env name)
+            # Use level.name as the host (in inline mode, level.name = VM hostname = node name)
             # Skip preflight on recursive calls - API may not be fully ready after pve-setup
-            recurse_args = ['--host', level.env, '--manifest-json', remaining_manifest.to_json(), '--skip-preflight']
+            host_for_recurse = level.name if level.is_inline else level.env
+            recurse_args = ['--host', host_for_recurse, '--manifest-json', remaining_manifest.to_json(), '--skip-preflight']
             # Propagate keep_on_failure setting
             if self._get_effective_keep_on_failure():
                 recurse_args.append('--keep-on-failure')
@@ -906,11 +1074,25 @@ class RecursivePVEDestructor(RecursivePVEBase):
             host_key = f'{level.name}_ip'
             remaining = self.manifest.get_remaining_manifest()
 
+            # Look up the VM's IP from the guest agent
+            # This is needed because the destructor runs as a new scenario
+            # and doesn't have context from the constructor
+            phases.append((
+                f'lookup_ip_{level.name}',
+                LookupVMIPAction(
+                    name=f'lookup-ip-{level.name}',
+                    vmid=level.vmid,
+                    ip_context_key=host_key,
+                ),
+                f'Look up {level.name} IP'
+            ))
+
             # Build args for recursive call
-            # Use current level's env as the host (assumes single-VM env where VM name = env name)
+            # Use level.name as host in inline mode, level.env in legacy mode
             # Skip preflight on recursive calls - we're already inside a running scenario
+            host_for_recurse = level.name if level.is_inline else level.env
             recurse_args = [
-                '--host', level.env,
+                '--host', host_for_recurse,
                 '--manifest-json', remaining.to_json(),
                 '--yes',  # Already confirmed at outer level
                 '--skip-preflight'
@@ -931,12 +1113,24 @@ class RecursivePVEDestructor(RecursivePVEBase):
 
         # Then destroy this level (outermost for this invocation)
         level = self.manifest.get_current_level()
-        phases.append((
-            f'destroy_{level.name}',
-            TofuDestroyAction(
+        # Use inline action for inline mode, env-based action for legacy mode
+        if level.is_inline:
+            destroy_action = TofuDestroyInlineAction(
+                name=f'destroy-{level.name}',
+                vm_name=level.name,
+                vmid=level.vmid,
+                template=level.template,
+                vm_preset=level.vm_preset,
+                image=level.image,
+            )
+        else:
+            destroy_action = TofuDestroyAction(
                 name=f'destroy-{level.name}',
                 env_name=level.env,
-            ),
+            )
+        phases.append((
+            f'destroy_{level.name}',
+            destroy_action,
             f'Destroy {level.name}'
         ))
 
