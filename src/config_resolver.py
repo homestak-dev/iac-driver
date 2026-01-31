@@ -248,14 +248,14 @@ class ConfigResolver:
         direct_vm_preset_name = vm_instance.get("vm_preset")  # Direct vm_preset from manifest
 
         if template_name:
-            # Template mode: vm_preset (from template) → template → instance
+            # Template mode: preset (from template) → template → instance
             template = self.templates.get(template_name, {}).copy()
-            vm_preset_name = template.get("vm_preset")
-            base = self.vm_presets.get(vm_preset_name, {}).copy() if vm_preset_name else {}
+            preset_name = template.get("preset")  # Templates use 'preset' key
+            base = self.vm_presets.get(preset_name, {}).copy() if preset_name else {}
 
-            # Layer 2: Template (merge on top of vm_preset)
+            # Layer 2: Template (merge on top of preset)
             for key, value in template.items():
-                if key != "vm_preset":  # Don't include vm_preset key in final output
+                if key != "preset":  # Don't include preset key in final output
                     base[key] = value
         elif direct_vm_preset_name:
             # Preset mode: vm_preset → instance (no template)
@@ -416,3 +416,7 @@ class ConfigResolver:
     def list_vm_presets(self) -> list[str]:
         """List available vm_preset names."""
         return sorted(self.vm_presets.keys())
+
+    def list_presets(self) -> list[str]:
+        """List available preset names (alias for list_vm_presets)."""
+        return self.list_vm_presets()

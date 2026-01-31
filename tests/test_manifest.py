@@ -194,8 +194,8 @@ class TestManifest:
         with pytest.raises(ConfigError, match='Level 0 missing required field: name'):
             Manifest.from_dict(data)
 
-    def test_level_missing_env(self):
-        """Should raise error when level missing env."""
+    def test_level_missing_env_and_vm_preset(self):
+        """Should raise error when level missing env, template, and vm_preset."""
         from manifest import Manifest
 
         data = {
@@ -203,7 +203,7 @@ class TestManifest:
             'levels': [{'name': 'level1'}]
         }
 
-        with pytest.raises(ConfigError, match='missing required field: env'):
+        with pytest.raises(ConfigError, match="requires 'vm_preset', 'template', or 'env'"):
             Manifest.from_dict(data)
 
 
