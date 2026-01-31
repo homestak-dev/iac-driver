@@ -3,6 +3,16 @@
 ## Unreleased
 
 ### Added
+- Add vm_preset mode to manifest schema (#135)
+  - Levels can now use `vm_preset` + `vmid` + `image` instead of `env` FK
+  - Decouples manifests from envs/ - simpler configuration
+  - ConfigResolver resolves vm_preset directly from vms/presets/
+
+- Add `LookupVMIPAction` for destructor IP resolution
+  - Queries PVE guest agent for VM IP when context doesn't have it
+  - Enables destructor to find inner host without context file
+  - Falls back gracefully when VM is stopped or unreachable
+
 - Add `CopySSHPrivateKeyAction` for recursive PVE scenarios (#133)
   - Copies outer host's SSH private key to inner host
   - Enables inner-pve to SSH to its nested VMs
@@ -14,6 +24,10 @@
   - Enables nested bootstrap operations to use serve-repos instead of GitHub
   - Required for testing uncommitted code at level 2+ in recursive scenarios
 
+- Add n3-full validation to release process (#130)
+  - 3-level nested PVE now validated before releases
+  - Proves recursive architecture scales beyond N=2
+
 ### Fixed
 - Fix SSH authentication for automation_user in recursive scenarios (#133)
   - All SSH actions now use `config.automation_user` (homestak) for VM connections
@@ -24,6 +38,10 @@
   - `CreateApiTokenAction` now uses level name as token key (was hardcoded to 'nested-pve')
   - Token injection now adds new entries if key doesn't exist (was replace-only)
   - Fixes test-vm provisioning failure at level 3
+
+- Fix sudo env var passing in SSH commands
+  - Use `sudo env VAR=value command` instead of `VAR=value sudo command`
+  - Ensures environment variables reach the command on remote hosts
 
 ## v0.40 - 2026-01-29
 

@@ -344,20 +344,27 @@ Recursive-pve scenarios use manifests to define N-level nested PVE deployments. 
 
 ### Manifest Schema (v1)
 
+Levels support two modes:
+- **env mode**: `env` FK references site-config/envs/ (traditional)
+- **vm_preset mode**: `vm_preset` + `vmid` + `image` (simpler, no envs/ dependency)
+
 ```yaml
 schema_version: 1
 name: n2-quick
 description: "Quick 2-level nested PVE test"
 
 levels:
-  - name: inner-pve
-    env: nested-pve        # FK to site-config/envs/
-    image: debian-13-pve   # Optional image override
+  # vm_preset mode (v0.41+) - preferred for manifests
+  - name: nested-pve
+    vm_preset: large       # FK to site-config/vms/presets/
+    vmid: 99011            # Explicit VM ID
+    image: debian-13-pve   # Required in vm_preset mode
     post_scenario: pve-setup
-    post_scenario_args: ["--local"]
+    post_scenario_args: ["--local", "--skip-preflight"]
 
-  - name: test-vm
-    env: test
+  - name: test
+    vm_preset: medium
+    vmid: 99021
     image: debian-12
     post_scenario: null    # Leaf level, no post-scenario
 
@@ -371,8 +378,9 @@ settings:
 
 | Manifest | Levels | Description |
 |----------|--------|-------------|
-| `n2-quick` | 2 | inner-pve → test-vm |
-| `n3-full` | 3 | inner-pve → leaf-pve → test-vm |
+| `n1-basic` | 1 | test-vm only (single-level) |
+| `n2-quick` | 2 | nested-pve → test |
+| `n3-full` | 3 | root-pve → leaf-pve → test |
 
 ### Usage
 
