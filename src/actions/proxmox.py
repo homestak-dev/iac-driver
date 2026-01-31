@@ -95,6 +95,48 @@ class WaitForGuestAgentAction:
 
 
 @dataclass
+class LookupVMIPAction:
+    """Look up a running VM's IP from the guest agent.
+
+    Used by destructor to find VM IPs when context is not available
+    (e.g., when destructor runs as a new scenario).
+    """
+    name: str
+    vmid: int  # Explicit VM ID from manifest
+    ip_context_key: str  # Context key to store IP
+    pve_host: str = 'localhost'  # PVE host to query (default: local)
+    timeout: int = 30  # Quick timeout since VM should already be running
+
+    def run(self, config: HostConfig, context: dict) -> ActionResult:
+        """Query guest agent for VM IP."""
+        start = time.time()
+        ssh_user = config.ssh_user
+
+        logger.info(f"[{self.name}] Looking up IP for VM {self.vmid}...")
+        ip = wait_for_guest_agent(
+            self.vmid,
+            self.pve_host,
+            timeout=self.timeout,
+            user=ssh_user
+        )
+
+        if not ip:
+            return ActionResult(
+                success=False,
+                message=f"Could not get IP for VM {self.vmid}",
+                duration=time.time() - start
+            )
+
+        logger.info(f"[{self.name}] VM {self.vmid} has IP: {ip}")
+        return ActionResult(
+            success=True,
+            message=f"VM {self.vmid} IP: {ip}",
+            duration=time.time() - start,
+            context_updates={self.ip_context_key: ip}
+        )
+
+
+@dataclass
 class StartProvisionedVMsAction:
     """Start all VMs from provisioned_vms context (for multi-VM environments)."""
     name: str
