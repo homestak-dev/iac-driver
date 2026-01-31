@@ -1,11 +1,11 @@
 """Config resolution for site-config YAML files.
 
 Resolves site-config entities (site, secrets, nodes, envs, vms, postures) into
-flat configurations suitable for tofu and ansible. All template and preset
+flat configurations suitable for tofu and ansible. All template and vm_preset
 inheritance is resolved here, so consumers receive fully-computed values.
 
 Resolution order (tofu):
-1. vms/presets/{preset}.yaml (if template uses preset:)
+1. vms/presets/{vm_preset}.yaml (if template uses vm_preset:)
 2. vms/{template}.yaml (template definition)
 3. envs/{env}.yaml instance overrides (name, ip, vmid)
 
@@ -48,7 +48,7 @@ class ConfigResolver:
 
         self.site = self._load_yaml("site.yaml")
         self.secrets = _load_secrets(self.path) or {}
-        self.presets = self._load_dir("vms/presets")
+        self.vm_presets = self._load_dir("vms/presets")
         self.templates = self._load_dir("vms")
         self.postures = self._load_dir("postures")
 
@@ -128,7 +128,10 @@ class ConfigResolver:
             "node": node_config.get("node", node),
             "api_endpoint": api_endpoint,
             "api_token": api_token,
-            "ssh_user": defaults.get("ssh_user", "root"),
+            # ssh_user: For provider SSH to PVE host (default: root)
+            "ssh_user": node_config.get("ssh_user", defaults.get("ssh_user", "root")),
+            # automation_user: For cloud-init VM user creation (default: homestak)
+            "automation_user": defaults.get("automation_user", "homestak"),
             "ssh_host": ssh_host,  # For proxmox provider SSH file uploads
             "datastore": node_config["datastore"],  # Required from node config (v0.13+)
             "root_password": passwords.get("vm_root", ""),
@@ -136,13 +139,105 @@ class ConfigResolver:
             "vms": vms,
         }
 
-    def _resolve_vm(self, vm_instance: dict, default_vmid: Optional[int], defaults: dict) -> dict:
-        """Resolve VM instance with template/preset inheritance.
+    def resolve_inline_vm(
+        self,
+        node: str,
+        vm_name: str,
+        vmid: int,
+        template: Optional[str] = None,
+        vm_preset: Optional[str] = None,
+        image: Optional[str] = None
+    ) -> dict:
+        """Resolve inline VM definition (no env file needed).
 
-        Merge order: preset → template → instance overrides
+        For manifest-driven scenarios where VM is defined inline in the manifest
+        rather than via an env file. Returns same format as resolve_env().
+
+        Supports two modes:
+        1. Template mode: template references vms/{template}.yaml
+        2. Preset mode: vm_preset references vms/presets/{vm_preset}.yaml (requires image)
 
         Args:
-            vm_instance: VM instance from envs/{env}.yaml vms[] list
+            node: Target PVE node name (matches nodes/{node}.yaml)
+            vm_name: VM hostname
+            vmid: Explicit VM ID
+            template: Template name (matches vms/{template}.yaml)
+            vm_preset: Preset name (matches vms/presets/{vm_preset}.yaml)
+            image: Image name (required for vm_preset mode, optional override for template)
+
+        Returns:
+            Dict with all resolved config ready for tfvars.json
+        """
+        if not template and not vm_preset:
+            raise ConfigError("resolve_inline_vm requires either template or vm_preset")
+
+        node_config = self._load_yaml(f"nodes/{node}.yaml")
+
+        if not node_config:
+            raise ConfigError(f"Node config not found: nodes/{node}.yaml")
+
+        if 'datastore' not in node_config:
+            raise ConfigError(
+                f"Node '{node}' missing required 'datastore' in nodes/{node}.yaml. "
+                f"Run 'make node-config FORCE=1' in site-config to regenerate."
+            )
+
+        # Resolve API token from secrets
+        api_token_key = node_config.get("api_token", node)
+        api_token = self.secrets.get("api_tokens", {}).get(api_token_key, "")
+
+        # Site defaults
+        defaults = self.site.get("defaults", {})
+
+        # Build VM instance dict for _resolve_vm
+        vm_instance = {
+            "name": vm_name,
+            "vmid": vmid,
+        }
+        if template:
+            vm_instance["template"] = template
+        if vm_preset:
+            vm_instance["vm_preset"] = vm_preset
+        if image:
+            vm_instance["image"] = image
+
+        # Resolve the single VM
+        resolved_vm = self._resolve_vm(vm_instance, vmid, defaults)
+
+        # Resolve passwords and SSH keys from secrets
+        passwords = self.secrets.get("passwords", {})
+        ssh_keys_dict = self.secrets.get("ssh_keys", {})
+        ssh_keys_list = list(ssh_keys_dict.values())
+
+        # Determine SSH host for file uploads
+        api_endpoint = node_config.get("api_endpoint", "")
+        if "localhost" in api_endpoint or "127.0.0.1" in api_endpoint:
+            ssh_host = "127.0.0.1"
+        else:
+            ssh_host = node_config.get("ip", "")
+
+        return {
+            "node": node_config.get("node", node),
+            "api_endpoint": api_endpoint,
+            "api_token": api_token,
+            "ssh_user": node_config.get("ssh_user", defaults.get("ssh_user", "root")),
+            "automation_user": defaults.get("automation_user", "homestak"),
+            "ssh_host": ssh_host,
+            "datastore": node_config["datastore"],
+            "root_password": passwords.get("vm_root", ""),
+            "ssh_keys": ssh_keys_list,
+            "vms": [resolved_vm],
+        }
+
+    def _resolve_vm(self, vm_instance: dict, default_vmid: Optional[int], defaults: dict) -> dict:
+        """Resolve VM instance with template/vm_preset inheritance.
+
+        Merge order depends on mode:
+        - Template mode: vm_preset (from template) → template → instance overrides
+        - Preset mode: vm_preset → instance overrides (no template)
+
+        Args:
+            vm_instance: VM instance from envs/{env}.yaml vms[] list or manifest
             default_vmid: Auto-computed vmid (base + index), or None for PVE auto-assign
             defaults: Site defaults from site.yaml
 
@@ -150,20 +245,30 @@ class ConfigResolver:
             Fully resolved VM configuration
         """
         template_name = vm_instance.get("template")
+        direct_vm_preset_name = vm_instance.get("vm_preset")  # Direct vm_preset from manifest
 
-        # Layer 1: Preset (if template references one)
-        template = self.templates.get(template_name, {}).copy() if template_name else {}
-        preset_name = template.get("preset")
-        base = self.presets.get(preset_name, {}).copy() if preset_name else {}
+        if template_name:
+            # Template mode: vm_preset (from template) → template → instance
+            template = self.templates.get(template_name, {}).copy()
+            vm_preset_name = template.get("vm_preset")
+            base = self.vm_presets.get(vm_preset_name, {}).copy() if vm_preset_name else {}
 
-        # Layer 2: Template (merge on top of preset)
-        for key, value in template.items():
-            if key != "preset":  # Don't include preset key in final output
-                base[key] = value
+            # Layer 2: Template (merge on top of vm_preset)
+            for key, value in template.items():
+                if key != "vm_preset":  # Don't include vm_preset key in final output
+                    base[key] = value
+        elif direct_vm_preset_name:
+            # Preset mode: vm_preset → instance (no template)
+            base = self.vm_presets.get(direct_vm_preset_name, {}).copy()
+            if not base:
+                raise ConfigError(f"Preset not found: vms/presets/{direct_vm_preset_name}.yaml")
+        else:
+            # No template or vm_preset - start with empty base
+            base = {}
 
         # Layer 3: Instance overrides
         for key, value in vm_instance.items():
-            if key != "template":  # Don't include template key in final output
+            if key not in ("template", "vm_preset"):  # Don't include meta keys in final output
                 base[key] = value
 
         # Layer 4: Default vmid if not specified
@@ -308,6 +413,6 @@ class ConfigResolver:
         """List available VM template names."""
         return sorted(self.templates.keys())
 
-    def list_presets(self) -> list[str]:
-        """List available preset names."""
-        return sorted(self.presets.keys())
+    def list_vm_presets(self) -> list[str]:
+        """List available vm_preset names."""
+        return sorted(self.vm_presets.keys())

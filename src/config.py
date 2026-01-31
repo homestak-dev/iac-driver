@@ -49,7 +49,8 @@ class HostConfig:
     ssh_host: str = ''
     inner_vm_id: int = 99800  # Match site-config/envs/nested-pve.yaml vmid_base
     test_vm_id: int = 99900   # Match site-config/envs/test.yaml vmid_base
-    ssh_user: str = 'root'
+    ssh_user: str = 'root'  # For SSH to PVE hosts (qm commands, etc.)
+    automation_user: str = 'homestak'  # For SSH to VMs (created via cloud-init)
     ssh_key: Path = field(default_factory=lambda: Path.home() / '.ssh' / 'id_rsa')
     datastore: str = 'local-zfs'
 
@@ -123,9 +124,13 @@ class HostConfig:
         self.datastore = node_config.get('datastore',
                                          site_defaults.get('datastore', 'local-zfs'))
 
-        # SSH user: node > site > default
+        # SSH user: node > site > default (for PVE host connections)
         if ssh_user := node_config.get('ssh_user', site_defaults.get('ssh_user')):
             self.ssh_user = ssh_user
+
+        # Automation user: for SSH to VMs created via cloud-init
+        if automation_user := site_defaults.get('automation_user'):
+            self.automation_user = automation_user
 
         # Packer release: site.yaml > default
         if packer_release := site_defaults.get('packer_release'):
@@ -169,6 +174,10 @@ class HostConfig:
                 self.ssh_user = ssh_user
         elif ssh_user := site_defaults.get('ssh_user'):
             self.ssh_user = ssh_user
+
+        # Automation user: for SSH to VMs created via cloud-init
+        if automation_user := site_defaults.get('automation_user'):
+            self.automation_user = automation_user
 
         # Packer release: site.yaml > default
         if packer_release := site_defaults.get('packer_release'):

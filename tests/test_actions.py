@@ -25,7 +25,8 @@ class MockHostConfig:
     """Minimal host config for testing."""
     name: str = 'test-host'
     ssh_host: str = '192.0.2.1'  # TEST-NET-1 (RFC 5737)
-    ssh_user: str = 'root'
+    ssh_user: str = 'root'  # For PVE host connections
+    automation_user: str = 'homestak'  # For VM connections
     config_file: Path = Path('/tmp/test.yaml')
 
 

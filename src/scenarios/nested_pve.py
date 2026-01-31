@@ -68,9 +68,7 @@ class NestedPVEConstructor:
                 name='configure-network',
                 playbook='playbooks/nested-pve-network.yml',
                 inventory='inventory/remote-dev.yml',
-                extra_vars={
-                    'ansible_user': 'root',
-                },
+                extra_vars={},
                 host_key='inner_ip',
                 wait_for_ssh_before=True,
             ), 'Configure vmbr0 bridge'),
@@ -80,9 +78,7 @@ class NestedPVEConstructor:
                 name='copy-ssh-keys',
                 playbook='playbooks/nested-pve-ssh.yml',
                 inventory='inventory/remote-dev.yml',
-                extra_vars={
-                    'ansible_user': 'root',
-                },
+                extra_vars={},
                 host_key='inner_ip',
             ), 'Copy SSH keys'),
 
@@ -92,7 +88,6 @@ class NestedPVEConstructor:
                 playbook='playbooks/nested-pve-repos.yml',
                 inventory='inventory/remote-dev.yml',
                 extra_vars={
-                    'ansible_user': 'root',
                     'bootstrap_use_local': True,
                     'homestak_src_dir': str(get_base_dir().parent),
                 },
@@ -189,9 +184,7 @@ class NestedPVERoundtrip:
                 name='configure-network',
                 playbook='playbooks/nested-pve-network.yml',
                 inventory='inventory/remote-dev.yml',
-                extra_vars={
-                    'ansible_user': 'root',
-                },
+                extra_vars={},
                 host_key='inner_ip',
                 wait_for_ssh_before=True,
             ), 'Configure vmbr0 bridge'),
@@ -200,9 +193,7 @@ class NestedPVERoundtrip:
                 name='copy-ssh-keys',
                 playbook='playbooks/nested-pve-ssh.yml',
                 inventory='inventory/remote-dev.yml',
-                extra_vars={
-                    'ansible_user': 'root',
-                },
+                extra_vars={},
                 host_key='inner_ip',
             ), 'Copy SSH keys'),
 
@@ -211,7 +202,6 @@ class NestedPVERoundtrip:
                 playbook='playbooks/nested-pve-repos.yml',
                 inventory='inventory/remote-dev.yml',
                 extra_vars={
-                    'ansible_user': 'root',
                     'bootstrap_use_local': True,
                     'homestak_src_dir': str(get_base_dir().parent),
                 },
