@@ -323,3 +323,186 @@ class TestListPostures:
         resolver = ConfigResolver(str(site_config_dir))
         postures = resolver.list_postures()
         assert postures == ['dev', 'prod']
+
+
+class TestSpecServerResolution:
+    """Test spec_server resolution for Create → Specify flow (v0.45+)."""
+
+    def test_resolve_env_includes_spec_server(self, site_config_dir):
+        """resolve_env should include spec_server from site.yaml defaults."""
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_env('test', 'test-node')
+
+        assert 'spec_server' in config
+        assert config['spec_server'] == 'https://controller:44443'
+
+    def test_resolve_env_spec_server_empty_if_not_set(self, tmp_path):
+        """spec_server should be empty string if not configured."""
+        # Create minimal site-config without spec_server
+        for d in ['nodes', 'envs', 'vms', 'vms/presets', 'postures', 'v2/postures']:
+            (tmp_path / d).mkdir(parents=True, exist_ok=True)
+
+        (tmp_path / 'site.yaml').write_text('defaults: {}')
+        (tmp_path / 'secrets.yaml').write_text('api_tokens: {}\npasswords: {}')
+        (tmp_path / 'nodes/test.yaml').write_text(
+            'node: test\napi_endpoint: https://localhost:8006\ndatastore: local'
+        )
+        (tmp_path / 'envs/minimal.yaml').write_text('vms: []')
+
+        resolver = ConfigResolver(str(tmp_path))
+        config = resolver.resolve_env('minimal', 'test')
+
+        assert config['spec_server'] == ''
+
+    def test_resolve_inline_vm_includes_spec_server(self, site_config_dir):
+        """resolve_inline_vm should include spec_server from site.yaml defaults."""
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_inline_vm(
+            node='test-node',
+            vm_name='inline-vm',
+            vmid=99900,
+            vm_preset='small',
+            image='debian-12-custom.img'
+        )
+
+        assert 'spec_server' in config
+        assert config['spec_server'] == 'https://controller:44443'
+
+
+class TestAuthTokenResolution:
+    """Test auth token resolution based on posture (v0.45+)."""
+
+    def test_resolve_auth_token_network_returns_empty(self, site_config_dir):
+        """network auth method should return empty token."""
+        resolver = ConfigResolver(str(site_config_dir))
+        token = resolver._resolve_auth_token('dev', 'test-vm')
+        assert token == ''
+
+    def test_resolve_auth_token_site_token_returns_shared(self, site_config_dir):
+        """site_token auth method should return shared token."""
+        resolver = ConfigResolver(str(site_config_dir))
+        token = resolver._resolve_auth_token('stage', 'test-vm')
+        assert token == 'shared-staging-token'
+
+    def test_resolve_auth_token_node_token_returns_per_vm(self, site_config_dir):
+        """node_token auth method should return per-VM token."""
+        resolver = ConfigResolver(str(site_config_dir))
+        token = resolver._resolve_auth_token('prod', 'test1')
+        assert token == 'unique-test1-token'
+
+    def test_resolve_auth_token_node_token_missing_returns_empty(self, site_config_dir):
+        """Missing node token should return empty string."""
+        resolver = ConfigResolver(str(site_config_dir))
+        token = resolver._resolve_auth_token('prod', 'unknown-vm')
+        assert token == ''
+
+    def test_resolve_auth_token_unknown_method_returns_empty(self, site_config_dir):
+        """Unknown auth method should default to empty token."""
+        # Add a posture with unknown auth method
+        (site_config_dir / 'v2/postures/custom.yaml').write_text("""
+auth:
+  method: unknown_method
+""")
+        resolver = ConfigResolver(str(site_config_dir))
+        token = resolver._resolve_auth_token('custom', 'test-vm')
+        assert token == ''
+
+    def test_resolve_auth_token_missing_v2_posture_returns_empty(self, site_config_dir):
+        """Missing v2 posture should default to network (empty token)."""
+        resolver = ConfigResolver(str(site_config_dir))
+        # 'nonexistent' posture doesn't exist
+        token = resolver._resolve_auth_token('nonexistent', 'test-vm')
+        assert token == ''
+
+    def test_resolve_env_includes_auth_token_per_vm(self, site_config_dir):
+        """Each VM in resolve_env should have auth_token based on posture."""
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_env('test', 'test-node')
+
+        # test env uses dev posture (network auth = empty token)
+        for vm in config['vms']:
+            assert 'auth_token' in vm
+            assert vm['auth_token'] == ''
+
+    def test_resolve_env_with_stage_posture(self, site_config_dir):
+        """VMs in env with stage posture should get shared token."""
+        # Create env with stage posture
+        (site_config_dir / 'envs/staging.yaml').write_text("""
+posture: stage
+vmid_base: 88800
+vms:
+  - name: stage1
+    template: debian-12
+""")
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_env('staging', 'test-node')
+
+        assert config['vms'][0]['auth_token'] == 'shared-staging-token'
+
+    def test_resolve_env_with_prod_posture(self, site_config_dir):
+        """VMs in env with prod posture should get per-VM token."""
+        # Create env with prod posture using VMs that have tokens
+        (site_config_dir / 'envs/production.yaml').write_text("""
+posture: prod
+vmid_base: 77700
+vms:
+  - name: test1
+    template: debian-12
+  - name: test2
+    template: debian-12
+  - name: unknown
+    template: debian-12
+""")
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_env('production', 'test-node')
+
+        assert config['vms'][0]['auth_token'] == 'unique-test1-token'
+        assert config['vms'][1]['auth_token'] == 'unique-test2-token'
+        assert config['vms'][2]['auth_token'] == ''  # No token for 'unknown'
+
+    def test_resolve_inline_vm_includes_auth_token(self, site_config_dir):
+        """resolve_inline_vm should include auth_token in VM."""
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_inline_vm(
+            node='test-node',
+            vm_name='inline-vm',
+            vmid=99900,
+            vm_preset='small',
+            image='debian-12-custom.img',
+            posture='stage'
+        )
+
+        assert config['vms'][0]['auth_token'] == 'shared-staging-token'
+
+    def test_resolve_inline_vm_defaults_to_dev_posture(self, site_config_dir):
+        """resolve_inline_vm should default to dev posture if not specified."""
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_inline_vm(
+            node='test-node',
+            vm_name='inline-vm',
+            vmid=99900,
+            vm_preset='small',
+            image='debian-12-custom.img'
+            # No posture specified
+        )
+
+        # dev posture = network auth = empty token
+        assert config['vms'][0]['auth_token'] == ''
+
+
+class TestV2PosturesLoading:
+    """Test v2/postures loading (v0.45+)."""
+
+    def test_v2_postures_loaded_on_init(self, site_config_dir):
+        """v2_postures should be loaded from v2/postures/ directory."""
+        resolver = ConfigResolver(str(site_config_dir))
+        assert 'dev' in resolver.v2_postures
+        assert 'stage' in resolver.v2_postures
+        assert 'prod' in resolver.v2_postures
+
+    def test_v2_postures_has_auth_method(self, site_config_dir):
+        """v2 postures should have auth.method field."""
+        resolver = ConfigResolver(str(site_config_dir))
+        assert resolver.v2_postures['dev']['auth']['method'] == 'network'
+        assert resolver.v2_postures['stage']['auth']['method'] == 'site_token'
+        assert resolver.v2_postures['prod']['auth']['method'] == 'node_token'

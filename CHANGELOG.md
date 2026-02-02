@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+- Add `spec_server` to ConfigResolver output for Create → Specify flow (#154)
+  - Reads from `site.yaml` defaults.spec_server
+  - Included in tfvars.json for tofu cloud-init injection
+- Add per-VM `auth_token` resolution based on posture (#154)
+  - Loads v2/postures for `auth.method` (network, site_token, node_token)
+  - Resolves tokens from `secrets.yaml` auth section
+  - Added to each VM in vms[] list for cloud-init injection
+- Add `posture` parameter to `resolve_inline_vm()` for manifest-driven scenarios
+
 ## v0.44 - 2026-02-02
 
 - Release alignment with homestak v0.44

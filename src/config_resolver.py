@@ -8,11 +8,17 @@ Resolution order (tofu):
 1. vms/presets/{vm_preset}.yaml (if template uses vm_preset:)
 2. vms/{template}.yaml (template definition)
 3. envs/{env}.yaml instance overrides (name, ip, vmid)
+4. v2/postures/{posture}.yaml for auth.method (v0.45+)
 
 Resolution order (ansible):
 1. site.yaml defaults (timezone, packages, pve settings)
 2. postures/{posture}.yaml (security settings from env's posture FK)
 3. Packages merged: site packages + posture packages (deduplicated)
+
+Auth token resolution (v0.45+):
+- network: empty string (trust network boundary)
+- site_token: secrets.auth.site_token (shared)
+- node_token: secrets.auth.node_tokens.{vm_name} (per-VM)
 """
 
 import json
@@ -51,6 +57,7 @@ class ConfigResolver:
         self.vm_presets = self._load_dir("vms/presets")
         self.templates = self._load_dir("vms")
         self.postures = self._load_dir("postures")
+        self.v2_postures = self._load_dir("v2/postures")
 
     def _load_yaml(self, relative_path: str) -> dict:
         """Load a YAML file from site-config directory."""
@@ -69,6 +76,41 @@ class ConfigResolver:
             if f.is_file():
                 result[f.stem] = _parse_yaml(f)
         return result
+
+    def _resolve_auth_token(self, posture_name: str, vm_name: str) -> str:
+        """Resolve auth token for a VM based on posture's auth method.
+
+        Uses v2/postures/{posture}.yaml to determine auth.method, then
+        resolves the appropriate token from secrets.yaml.
+
+        Args:
+            posture_name: Posture name (matches v2/postures/{posture}.yaml)
+            vm_name: VM name (used for node_token resolution)
+
+        Returns:
+            Auth token string, or empty string for network trust
+        """
+        # Load v2 posture for auth.method
+        v2_posture = self.v2_postures.get(posture_name, {})
+        auth_config = v2_posture.get("auth", {})
+        auth_method = auth_config.get("method", "network")
+
+        # Resolve token based on method
+        auth_secrets = self.secrets.get("auth", {})
+
+        if auth_method == "network":
+            # Trust network boundary, no token needed
+            return ""
+        elif auth_method == "site_token":
+            # Shared site-wide token
+            return auth_secrets.get("site_token", "")
+        elif auth_method == "node_token":
+            # Per-VM unique token
+            node_tokens = auth_secrets.get("node_tokens", {})
+            return node_tokens.get(vm_name, "")
+        else:
+            # Unknown method, default to no token
+            return ""
 
     def resolve_env(self, env: str, node: str) -> dict:
         """Resolve environment to flat tofu variables.
@@ -100,14 +142,23 @@ class ConfigResolver:
         # Site defaults
         defaults = self.site.get("defaults", {})
 
+        # Spec server for Create → Specify flow (v0.45+)
+        spec_server = defaults.get("spec_server", "")
+
         # vmid_base: None = let PVE auto-assign
         vmid_base = env_config.get("vmid_base")
+
+        # Get posture for auth token resolution
+        posture_name = env_config.get("posture", "dev")
 
         # Resolve VMs
         vms = []
         for idx, vm_instance in enumerate(env_config.get("vms", [])):
             default_vmid = vmid_base + idx if vmid_base is not None else None
             resolved = self._resolve_vm(vm_instance, default_vmid, defaults)
+            # Add auth token based on posture (v0.45+)
+            vm_name = resolved.get("name", "")
+            resolved["auth_token"] = self._resolve_auth_token(posture_name, vm_name)
             vms.append(resolved)
 
         # Resolve passwords and SSH keys from secrets
@@ -136,6 +187,8 @@ class ConfigResolver:
             "datastore": node_config["datastore"],  # Required from node config (v0.13+)
             "root_password": passwords.get("vm_root", ""),
             "ssh_keys": ssh_keys_list,
+            # Spec server for Create → Specify flow (v0.45+)
+            "spec_server": spec_server,
             "vms": vms,
         }
 
@@ -146,7 +199,8 @@ class ConfigResolver:
         vmid: int,
         template: Optional[str] = None,
         vm_preset: Optional[str] = None,
-        image: Optional[str] = None
+        image: Optional[str] = None,
+        posture: Optional[str] = None
     ) -> dict:
         """Resolve inline VM definition (no env file needed).
 
@@ -164,6 +218,7 @@ class ConfigResolver:
             template: Template name (matches vms/{template}.yaml)
             vm_preset: Preset name (matches vms/presets/{vm_preset}.yaml)
             image: Image name (required for vm_preset mode, optional override for template)
+            posture: Posture name for auth token resolution (default: dev)
 
         Returns:
             Dict with all resolved config ready for tfvars.json
@@ -189,6 +244,12 @@ class ConfigResolver:
         # Site defaults
         defaults = self.site.get("defaults", {})
 
+        # Spec server for Create → Specify flow (v0.45+)
+        spec_server = defaults.get("spec_server", "")
+
+        # Posture for auth token resolution (default to dev)
+        posture_name = posture or "dev"
+
         # Build VM instance dict for _resolve_vm
         vm_instance = {
             "name": vm_name,
@@ -203,6 +264,8 @@ class ConfigResolver:
 
         # Resolve the single VM
         resolved_vm = self._resolve_vm(vm_instance, vmid, defaults)
+        # Add auth token based on posture (v0.45+)
+        resolved_vm["auth_token"] = self._resolve_auth_token(posture_name, vm_name)
 
         # Resolve passwords and SSH keys from secrets
         passwords = self.secrets.get("passwords", {})
@@ -226,6 +289,8 @@ class ConfigResolver:
             "datastore": node_config["datastore"],
             "root_password": passwords.get("vm_root", ""),
             "ssh_keys": ssh_keys_list,
+            # Spec server for Create → Specify flow (v0.45+)
+            "spec_server": spec_server,
             "vms": [resolved_vm],
         }
 
