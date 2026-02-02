@@ -24,10 +24,10 @@ def site_config_dir(tmp_path):
     - postures/prod.yaml
     """
     # Create directories
-    for d in ['nodes', 'envs', 'vms', 'vms/presets', 'postures', 'hosts']:
+    for d in ['nodes', 'envs', 'vms', 'vms/presets', 'postures', 'hosts', 'v2/postures']:
         (tmp_path / d).mkdir(parents=True, exist_ok=True)
 
-    # Create site.yaml (v0.13: packages and pve settings)
+    # Create site.yaml (v0.13: packages and pve settings, v0.45: spec_server)
     (tmp_path / 'site.yaml').write_text("""
 defaults:
   timezone: America/Denver
@@ -39,9 +39,10 @@ defaults:
     - curl
     - wget
   pve_remove_subscription_nag: true
+  spec_server: "https://controller:44443"
 """)
 
-    # Create secrets.yaml
+    # Create secrets.yaml (v0.45: auth section for spec tokens)
     (tmp_path / 'secrets.yaml').write_text("""
 api_tokens:
   test-node: "user@pam!token=secret"
@@ -50,6 +51,11 @@ passwords:
 ssh_keys:
   key1: "ssh-rsa AAAA... user1"
   key2: "ssh-ed25519 AAAA... user2"
+auth:
+  site_token: "shared-staging-token"
+  node_tokens:
+    test1: "unique-test1-token"
+    test2: "unique-test2-token"
 """)
 
     # Create node config (datastore required)
@@ -79,6 +85,29 @@ ssh_password_authentication: "no"
 sudo_nopasswd: false
 fail2ban_enabled: true
 packages: []
+""")
+
+    # Create v2 postures (with auth.method for spec discovery)
+    (tmp_path / 'v2/postures/dev.yaml').write_text("""
+auth:
+  method: network
+ssh:
+  port: 22
+  permit_root_login: "yes"
+""")
+
+    (tmp_path / 'v2/postures/stage.yaml').write_text("""
+auth:
+  method: site_token
+ssh:
+  port: 22
+""")
+
+    (tmp_path / 'v2/postures/prod.yaml').write_text("""
+auth:
+  method: node_token
+ssh:
+  port: 22
 """)
 
     # Create preset

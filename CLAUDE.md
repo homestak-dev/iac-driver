@@ -125,6 +125,7 @@ resolver.list_presets()   # ['small', 'medium', 'large', ...]
 1. `vms/presets/{preset}.yaml` - Size presets (if template uses `preset:`)
 2. `vms/{template}.yaml` - Template definition
 3. `envs/{env}.yaml` - Instance overrides (name, ip, vmid)
+4. `v2/postures/{posture}.yaml` - Auth method for spec discovery (v0.45+)
 
 ### Resolution Order (Ansible)
 
@@ -143,6 +144,7 @@ resolver.list_presets()   # ['small', 'medium', 'large', ...]
     "datastore": "local-zfs",
     "root_password": "$6$...",
     "ssh_keys": ["ssh-rsa ...", ...],
+    "spec_server": "https://controller:44443",  # v0.45+
     "vms": [
         {
             "name": "test",
@@ -151,11 +153,24 @@ resolver.list_presets()   # ['small', 'medium', 'large', ...]
             "cores": 1,
             "memory": 2048,
             "disk": 20,
-            "bridge": "vmbr0"
+            "bridge": "vmbr0",
+            "auth_token": ""  # v0.45+ - based on posture
         }
     ]
 }
 ```
+
+### Auth Token Resolution (v0.45+)
+
+Per-VM `auth_token` is resolved based on the environment's posture:
+
+| Posture | Auth Method | Token Source |
+|---------|-------------|--------------|
+| dev/local | `network` | Empty (trust network boundary) |
+| stage | `site_token` | `secrets.auth.site_token` |
+| prod | `node_token` | `secrets.auth.node_tokens.{vm_name}` |
+
+The auth method is determined by `v2/postures/{posture}.yaml` (not v1 postures).
 
 ### Output Structure (Ansible)
 
