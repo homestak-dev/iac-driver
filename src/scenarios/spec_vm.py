@@ -77,8 +77,29 @@ class StartSpecServerAction:
         pve_host = config.ssh_host
         ssh_user = config.ssh_user
 
+        # Check if serve command exists (requires v0.44+)
+        version_cmd = 'homestak --version 2>/dev/null || echo "NOT_FOUND"'
+        rc, out, err = run_ssh(pve_host, version_cmd, user=ssh_user, timeout=10)
+        if 'NOT_FOUND' in out:
+            return ActionResult(
+                success=False,
+                message="homestak CLI not found on controller. Run bootstrap first.",
+                duration=time.time() - start
+            )
+
+        # Check if serve subcommand exists
+        help_cmd = 'homestak serve --help 2>&1 | head -1 || echo "COMMAND_NOT_FOUND"'
+        rc, out, err = run_ssh(pve_host, help_cmd, user=ssh_user, timeout=10)
+        if 'COMMAND_NOT_FOUND' in out or 'Unknown' in out:
+            return ActionResult(
+                success=False,
+                message="'homestak serve' command not available. Requires v0.44+. "
+                        "Update bootstrap on controller: cd /usr/local/lib/homestak/bootstrap && git pull",
+                duration=time.time() - start
+            )
+
         # Check if already running
-        check_cmd = f'pgrep -f "homestak.* serve" || true'
+        check_cmd = 'pgrep -f "homestak.* serve" || true'
         rc, out, err = run_ssh(pve_host, check_cmd, user=ssh_user, timeout=10)
         if out.strip():
             logger.info(f"[{self.name}] Spec server already running (PID: {out.strip()})")

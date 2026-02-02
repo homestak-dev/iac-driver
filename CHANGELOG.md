@@ -16,6 +16,11 @@
   - Added to each VM in vms[] list for cloud-init injection
 - Add `posture` parameter to `resolve_inline_vm()` for manifest-driven scenarios
 
+### Changed
+- Add serve command availability check to `StartSpecServerAction` (#154)
+  - Verifies `homestak serve` exists before attempting to start
+  - Provides clear error message with upgrade instructions for older installations
+
 ## v0.44 - 2026-02-02
 
 - Release alignment with homestak v0.44
