@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.45 - 2026-02-02
+
+### Theme: Create Integration
+
+Integrates Create phase with Specify mechanism for automatic spec discovery on first boot.
+
 ### Added
 - Add `spec-vm-roundtrip` scenario for Create → Specify validation (#154)
   - Verifies spec_server env vars injected via cloud-init
