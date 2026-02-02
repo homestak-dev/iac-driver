@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### Added
+- Add `spec-vm-roundtrip` scenario for Create → Specify validation (#154)
+  - Verifies spec_server env vars injected via cloud-init
+  - Tests VM connectivity to spec server
+  - Full roundtrip: provision → verify → destroy
 - Add `spec_server` to ConfigResolver output for Create → Specify flow (#154)
   - Reads from `site.yaml` defaults.spec_server
   - Included in tfvars.json for tofu cloud-init injection
