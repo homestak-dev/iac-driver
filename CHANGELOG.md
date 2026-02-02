@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### Added
+- Add `spec-vm-roundtrip` scenario for Create → Specify validation (#154)
+  - Verifies spec_server env vars injected via cloud-init
+  - Tests VM connectivity to spec server
+  - Full roundtrip: provision → verify → destroy
 - Add `spec_server` to ConfigResolver output for Create → Specify flow (#154)
   - Reads from `site.yaml` defaults.spec_server
   - Included in tfvars.json for tofu cloud-init injection
@@ -11,6 +15,11 @@
   - Resolves tokens from `secrets.yaml` auth section
   - Added to each VM in vms[] list for cloud-init injection
 - Add `posture` parameter to `resolve_inline_vm()` for manifest-driven scenarios
+
+### Changed
+- Add serve command availability check to `StartSpecServerAction` (#154)
+  - Verifies `homestak serve` exists before attempting to start
+  - Provides clear error message with upgrade instructions for older installations
 
 ## v0.44 - 2026-02-02
 
