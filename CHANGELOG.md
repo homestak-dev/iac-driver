@@ -6,7 +6,7 @@
 
 ### Theme: Create Integration
 
-Integrates Create phase with Specify mechanism for automatic spec discovery on first boot.
+Integrates create phase with config mechanism for automatic spec discovery on first boot.
 
 ### Added
 - Add `spec-vm-roundtrip` scenario for Create → Specify validation (#154)
