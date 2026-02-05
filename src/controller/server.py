@@ -1,0 +1,307 @@
+"""Main HTTPS server for the controller.
+
+Unified daemon serving both specs and repos on a single HTTPS port.
+"""
+
+import json
+import logging
+import os
+import signal
+import ssl
+import sys
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
+from typing import Optional
+from urllib.parse import urlparse
+
+from resolver.spec_resolver import SpecResolver
+from resolver.base import ResolverError
+
+from controller.tls import TLSConfig, generate_self_signed_cert
+from controller.specs import handle_spec_request, handle_specs_list
+from controller.repos import RepoManager, handle_repo_request
+
+logger = logging.getLogger(__name__)
+
+# Default configuration
+DEFAULT_PORT = 44443
+DEFAULT_BIND = "0.0.0.0"
+
+
+class ControllerHandler(BaseHTTPRequestHandler):
+    """HTTP request handler for the unified controller."""
+
+    # Class-level state (shared across requests)
+    spec_resolver: Optional[SpecResolver] = None
+    repo_manager: Optional[RepoManager] = None
+    repo_token: str = ""
+
+    def log_message(self, format: str, *args):
+        """Override to use Python logging."""
+        logger.info("%s - %s", self.address_string(), format % args)
+
+    def send_json(self, data: dict, status: int = 200):
+        """Send JSON response."""
+        body = json.dumps(data, indent=2).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_bytes(self, content: bytes, status: int, content_type: str):
+        """Send bytes response."""
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+
+    def do_GET(self):
+        """Handle GET requests."""
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/")
+
+        # Health check endpoint
+        if path == "/health":
+            self.send_json({"status": "ok"})
+            return
+
+        # Spec endpoints
+        if path.startswith("/spec/"):
+            self._handle_spec(path)
+            return
+
+        if path == "/specs":
+            self._handle_specs_list()
+            return
+
+        # Repo endpoints (/*.git/...)
+        if ".git/" in path or path.endswith(".git"):
+            self._handle_repo(path)
+            return
+
+        # Unknown endpoint
+        self.send_json({"error": {"code": "E100", "message": f"Unknown endpoint: {path}"}}, 400)
+
+    def do_HEAD(self):
+        """Handle HEAD requests (for git dumb protocol)."""
+        # Just route to GET handler for now (could optimize)
+        self.do_GET()
+
+    def _handle_spec(self, path: str):
+        """Handle /spec/{identity} request."""
+        if not self.spec_resolver:
+            self.send_json({"error": {"code": "E500", "message": "Resolver not initialized"}}, 500)
+            return
+
+        identity = path[6:]  # Remove "/spec/" prefix
+        if not identity:
+            self.send_json({"error": {"code": "E101", "message": "Missing identity"}}, 400)
+            return
+
+        auth_header = self.headers.get("Authorization", "")
+        response, status = handle_spec_request(identity, auth_header, self.spec_resolver)
+        self.send_json(response, status)
+
+    def _handle_specs_list(self):
+        """Handle /specs request."""
+        if not self.spec_resolver:
+            self.send_json({"error": {"code": "E500", "message": "Resolver not initialized"}}, 500)
+            return
+
+        response, status = handle_specs_list(self.spec_resolver)
+        self.send_json(response, status)
+
+    def _handle_repo(self, path: str):
+        """Handle /*.git/* request."""
+        if not self.repo_manager or not self.repo_manager.serve_dir:
+            self.send_json({"error": {"code": "E500", "message": "Repos not initialized"}}, 500)
+            return
+
+        auth_header = self.headers.get("Authorization", "")
+        content, status, content_type = handle_repo_request(
+            path, auth_header, self.repo_token, self.repo_manager.serve_dir
+        )
+
+        if content_type == "application/json":
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+        else:
+            self.send_bytes(content, status, content_type)
+
+
+class ControllerServer:
+    """Unified HTTPS server for specs and repos."""
+
+    def __init__(
+        self,
+        bind: str = DEFAULT_BIND,
+        port: int = DEFAULT_PORT,
+        spec_resolver: Optional[SpecResolver] = None,
+        repo_manager: Optional[RepoManager] = None,
+        repo_token: str = "",
+        tls_config: Optional[TLSConfig] = None,
+    ):
+        """Initialize controller server.
+
+        Args:
+            bind: Address to bind to
+            port: Port to listen on
+            spec_resolver: SpecResolver for spec endpoints (auto-created if None)
+            repo_manager: RepoManager for repo endpoints (optional)
+            repo_token: Token for repo authentication
+            tls_config: TLS configuration (auto-generated if None)
+        """
+        self.bind = bind
+        self.port = port
+        self.spec_resolver = spec_resolver
+        self.repo_manager = repo_manager
+        self.repo_token = repo_token
+        self.tls_config = tls_config
+        self.server: Optional[HTTPServer] = None
+
+    def start(self):
+        """Start the HTTPS server.
+
+        Raises:
+            RuntimeError: If server cannot be started
+        """
+        # Auto-create resolver if not provided
+        if self.spec_resolver is None:
+            try:
+                self.spec_resolver = SpecResolver()
+                logger.info("Using site-config at: %s", self.spec_resolver.etc_path)
+            except ResolverError as e:
+                logger.error("Failed to initialize resolver: %s", e.message)
+                raise RuntimeError(f"Resolver init failed: {e.message}") from e
+
+        # Auto-generate TLS cert if not provided
+        if self.tls_config is None:
+            try:
+                self.tls_config = generate_self_signed_cert()
+            except Exception as e:
+                logger.error("Failed to generate TLS cert: %s", e)
+                raise RuntimeError(f"TLS init failed: {e}") from e
+
+        # Prepare repos if manager provided
+        if self.repo_manager:
+            try:
+                self.repo_manager.prepare()
+            except Exception as e:
+                logger.error("Failed to prepare repos: %s", e)
+                raise RuntimeError(f"Repos init failed: {e}") from e
+
+        # Set handler class attributes
+        ControllerHandler.spec_resolver = self.spec_resolver
+        ControllerHandler.repo_manager = self.repo_manager
+        ControllerHandler.repo_token = self.repo_token
+
+        # Create HTTP server
+        self.server = HTTPServer((self.bind, self.port), ControllerHandler)
+
+        # Wrap with TLS
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(
+            certfile=str(self.tls_config.cert_path),
+            keyfile=str(self.tls_config.key_path),
+        )
+        self.server.socket = context.wrap_socket(
+            self.server.socket,
+            server_side=True,
+        )
+
+        # Log startup info
+        logger.info("Controller starting on https://%s:%d", self.bind, self.port)
+        logger.info("Certificate fingerprint: %s", self.tls_config.fingerprint)
+        if self.spec_resolver:
+            logger.info("Available specs: %s", ", ".join(self.spec_resolver.list_specs()))
+        if self.repo_manager:
+            prepared = [k for k, v in self.repo_manager.repo_status.items() if v.get("status") == "ok"]
+            logger.info("Available repos: %s", ", ".join(prepared))
+
+        # Setup signal handlers
+        self._setup_signal_handlers()
+
+    def serve_forever(self):
+        """Start serving requests."""
+        if not self.server:
+            raise RuntimeError("Server not started")
+
+        try:
+            self.server.serve_forever()
+        except KeyboardInterrupt:
+            logger.info("Shutdown requested")
+        finally:
+            self.shutdown()
+
+    def shutdown(self):
+        """Shutdown the server and cleanup."""
+        logger.info("Shutting down controller")
+
+        if self.server:
+            self.server.shutdown()
+            self.server = None
+
+        if self.repo_manager:
+            self.repo_manager.cleanup()
+
+    def _setup_signal_handlers(self):
+        """Setup signal handlers for cache management and shutdown."""
+
+        def handle_sighup(signum, frame):
+            """Handle SIGHUP by clearing caches."""
+            logger.info("Received SIGHUP, clearing caches")
+            if self.spec_resolver:
+                self.spec_resolver.clear_cache()
+            # Re-prepare repos (refreshes _working branches)
+            if self.repo_manager:
+                logger.info("Refreshing repos")
+                self.repo_manager.cleanup()
+                self.repo_manager.prepare()
+                ControllerHandler.repo_manager = self.repo_manager
+
+        def handle_sigterm(signum, frame):
+            """Handle SIGTERM for graceful shutdown."""
+            logger.info("Received SIGTERM")
+            self.shutdown()
+            sys.exit(0)
+
+        signal.signal(signal.SIGHUP, handle_sighup)
+        signal.signal(signal.SIGTERM, handle_sigterm)
+
+
+def create_server(
+    bind: str = DEFAULT_BIND,
+    port: int = DEFAULT_PORT,
+    spec_resolver: Optional[SpecResolver] = None,
+    repo_manager: Optional[RepoManager] = None,
+    repo_token: str = "",
+    tls_config: Optional[TLSConfig] = None,
+) -> ControllerServer:
+    """Create a controller server instance.
+
+    Convenience function for creating a server.
+
+    Args:
+        bind: Address to bind to
+        port: Port to listen on
+        spec_resolver: SpecResolver for spec endpoints
+        repo_manager: RepoManager for repo endpoints
+        repo_token: Token for repo authentication
+        tls_config: TLS configuration
+
+    Returns:
+        ControllerServer instance (not yet started)
+    """
+    return ControllerServer(
+        bind=bind,
+        port=port,
+        spec_resolver=spec_resolver,
+        repo_manager=repo_manager,
+        repo_token=repo_token,
+        tls_config=tls_config,
+    )

@@ -59,6 +59,17 @@ All repos are siblings in a common parent directory:
 │   │   ├── config.py          # Host configuration (auto-discovery from site-config)
 │   │   ├── config_resolver.py # ConfigResolver - resolves site-config for tofu
 │   │   ├── manifest.py        # Manifest schema for recursive scenarios
+│   │   ├── resolver/     # Configuration resolution
+│   │   │   ├── base.py        # Shared FK resolution utilities
+│   │   │   ├── spec_resolver.py # Spec loading and FK resolution
+│   │   │   └── spec_client.py   # HTTP client for spec fetching
+│   │   ├── controller/   # Unified controller daemon
+│   │   │   ├── tls.py         # TLS certificate management
+│   │   │   ├── auth.py        # Authentication middleware
+│   │   │   ├── specs.py       # Spec endpoint handler
+│   │   │   ├── repos.py       # Repo endpoint handler
+│   │   │   ├── server.py      # Unified HTTPS server
+│   │   │   └── cli.py         # serve verb CLI integration
 │   │   ├── actions/      # Reusable primitive operations
 │   │   │   ├── tofu.py   # TofuApply/Destroy[Remote]Action
 │   │   │   ├── ansible.py# AnsiblePlaybookAction
@@ -258,6 +269,86 @@ Downstream actions (StartVMAction, WaitForGuestAgentAction) check context first,
 After `WaitForProvisionedVMsAction`, context contains:
 - `{vm_name}_ip` for each VM (e.g., `deb12-test_ip`, `deb13-leaf_ip`)
 - `vm_ip` - first VM's IP (backward compatibility)
+
+## Controller Daemon
+
+The unified controller daemon serves both specs and git repos over a single HTTPS endpoint.
+
+### Starting the Controller
+
+```bash
+# Start with defaults (port 44443, auto-generated TLS cert)
+./run.sh serve
+
+# Custom port and bind address
+./run.sh serve --port 8443 --bind 127.0.0.1
+
+# With explicit TLS certificate
+./run.sh serve --cert /path/to/cert.pem --key /path/to/key.pem
+
+# With repo token for git access
+./run.sh serve --repo-token my-secret-token
+```
+
+### Endpoints
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/health` | None | Health check |
+| GET | `/specs` | None | List available specs |
+| GET | `/spec/{identity}` | Posture | Fetch resolved spec |
+| GET | `/{repo}.git/*` | Bearer | Git dumb HTTP protocol |
+| GET | `/{repo}.git/{path}` | Bearer | Raw file extraction |
+
+### Spec Authentication
+
+Spec endpoints use posture-based authentication from `v2/postures/{posture}.yaml`:
+
+| Method | Description | Token Source |
+|--------|-------------|--------------|
+| `network` | Trust network boundary | None required |
+| `site_token` | Shared site-wide token | `secrets.auth.site_token` |
+| `node_token` | Per-node unique token | `secrets.auth.node_tokens.{name}` |
+
+### Repo Authentication
+
+All repo endpoints require Bearer token authentication:
+```bash
+curl -H "Authorization: Bearer <repo-token>" \
+  https://controller:44443/bootstrap.git/install.sh
+```
+
+### TLS Certificates
+
+The controller auto-generates a self-signed certificate if none provided:
+- Certificate stored in temp directory (ephemeral)
+- SHA256 fingerprint displayed on startup for verification
+- Supports explicit cert/key paths via `--cert` and `--key` flags
+
+### Signal Handling
+
+| Signal | Action |
+|--------|--------|
+| SIGTERM/SIGINT | Graceful shutdown, cleanup temp repos |
+| SIGHUP | Clear resolver cache (reload specs without restart) |
+
+### Git Repo Serving
+
+The controller creates temporary bare repos with uncommitted changes:
+
+1. **Bare clone**: Creates `{repo}.git` from source repo
+2. **_working branch**: Contains snapshot of uncommitted changes
+3. **update-server-info**: Enables dumb HTTP protocol
+
+Clients can clone or fetch files:
+```bash
+# Clone via dumb HTTP
+git clone https://controller:44443/bootstrap.git
+
+# Fetch raw file (extracts via git show)
+curl -H "Authorization: Bearer <token>" \
+  https://controller:44443/bootstrap.git/install.sh
+```
 
 ## Common Commands
 
