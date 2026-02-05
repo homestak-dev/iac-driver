@@ -7,9 +7,10 @@ Supports both scenario-based workflows and verb-based subcommands:
 
 Verb commands (4-phase lifecycle):
 - serve: Start the unified controller daemon (specs + repos)
-- (Future) create: Create infrastructure
+- create: Create infrastructure from manifest
+- destroy: Destroy infrastructure from manifest
+- test: Create, verify, and destroy infrastructure
 - (Future) config: Configure nodes
-- (Future) destroy: Destroy infrastructure
 """
 
 import argparse
@@ -28,10 +29,11 @@ from validation import validate_readiness, run_preflight_checks, format_prefligh
 # Verb commands (subcommands for 4-phase lifecycle)
 VERB_COMMANDS = {
     "serve": "Start the unified controller daemon",
+    "create": "Create infrastructure from manifest",
+    "destroy": "Destroy infrastructure from manifest",
+    "test": "Create, verify, and destroy infrastructure from manifest",
     # Future verbs (stubs):
-    # "create": "Create infrastructure from manifest",
     # "config": "Configure nodes",
-    # "destroy": "Destroy infrastructure",
 }
 
 
@@ -49,7 +51,18 @@ def dispatch_verb(verb: str, argv: list) -> int:
         from controller.cli import main as serve_main
         return serve_main(argv)
 
-    # Future verbs would be handled here
+    if verb == "create":
+        from manifest_opr.cli import create_main
+        return create_main(argv)
+
+    if verb == "destroy":
+        from manifest_opr.cli import destroy_main
+        return destroy_main(argv)
+
+    if verb == "test":
+        from manifest_opr.cli import test_main
+        return test_main(argv)
+
     print(f"Error: Verb '{verb}' not yet implemented")
     return 1
 

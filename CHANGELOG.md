@@ -2,9 +2,34 @@
 
 ## Unreleased
 
-### Theme: Unified Controller Service
+### Theme: Manifest-Based Orchestration Phase 2
 
-Consolidates spec and repo serving into a single HTTPS daemon with shared TLS and modular auth.
+Adds manifest schema v2 (graph-based nodes) and operator engine for create/destroy/test lifecycle.
+
+### Added
+- Add manifest schema v2 with graph-based `nodes[]` + `parent` references (#143)
+  - `ManifestNode` dataclass with type, spec, preset, image, vmid, disk, parent
+  - Graph validation: cycle detection, dangling parent refs, duplicate names
+  - Topological sort converts v2 nodes to v1 levels for backward compatibility
+  - `on_error` setting (stop, rollback, continue) in `ManifestSettings`
+
+- Add operator engine package `manifest_opr/` (#144)
+  - `graph.py` - `ExecutionNode` and `ManifestGraph` with create/destroy ordering
+  - `state.py` - `NodeState` and `ExecutionState` with save/load to `.states/`
+  - `executor.py` - `NodeExecutor` walks graph executing per-node lifecycle
+  - `cli.py` - Verb CLI handlers for create/destroy/test
+
+- Add verb commands: `create`, `destroy`, `test` (#144)
+  - `./run.sh create -M <manifest> -H <host> [--dry-run] [--json-output]`
+  - `./run.sh destroy -M <manifest> -H <host> [--dry-run] [--yes]`
+  - `./run.sh test -M <manifest> -H <host> [--dry-run] [--json-output]`
+
+- Add operator unit tests (#144)
+  - `test_operator_graph.py` - Graph building, topo sort, ordering
+  - `test_operator_state.py` - State save/load, node lifecycle transitions
+  - `test_operator_executor.py` - Mocked action execution, error handling, dry-run
+
+## Unified Controller Service
 
 ### Added
 - Add unified controller daemon (`./run.sh serve`) (#148)
