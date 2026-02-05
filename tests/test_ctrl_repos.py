@@ -372,7 +372,8 @@ class TestHandleRepoRequest:
         )
 
         assert status == 200
-        assert content_type == "text/yaml"
+        # Both are valid YAML MIME types; system mimetypes DB varies
+        assert content_type in ("text/yaml", "application/yaml")
 
     def test_raw_file_not_found(self, serve_dir):
         """Nonexistent raw file returns 404."""
