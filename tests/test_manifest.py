@@ -607,7 +607,7 @@ class TestManifestV2:
             'name': 'n1-basic-v2',
             'pattern': 'flat',
             'nodes': [
-                {'name': 'test', 'type': 'vm', 'preset': 'vm-small', 'image': 'debian-12', 'vmid': 99001}
+                {'name': 'edge', 'type': 'vm', 'preset': 'vm-small', 'image': 'debian-12', 'vmid': 99001}
             ]
         }
         manifest = Manifest.from_dict(data)
@@ -617,10 +617,10 @@ class TestManifestV2:
         assert manifest.pattern == 'flat'
         assert manifest.nodes is not None
         assert len(manifest.nodes) == 1
-        assert manifest.nodes[0].name == 'test'
+        assert manifest.nodes[0].name == 'edge'
         # Should also have levels (backward compat)
         assert len(manifest.levels) == 1
-        assert manifest.levels[0].name == 'test'
+        assert manifest.levels[0].name == 'edge'
 
     def test_from_dict_tiered(self):
         """Should parse tiered (parent-child) v2 manifest."""
@@ -631,8 +631,8 @@ class TestManifestV2:
             'name': 'n2-quick-v2',
             'pattern': 'tiered',
             'nodes': [
-                {'name': 'nested-pve', 'type': 'pve', 'preset': 'vm-large', 'image': 'debian-13-pve', 'vmid': 99011},
-                {'name': 'test', 'type': 'vm', 'preset': 'vm-medium', 'image': 'debian-12', 'vmid': 99021, 'parent': 'nested-pve'}
+                {'name': 'root-pve', 'type': 'pve', 'preset': 'vm-large', 'image': 'debian-13-pve', 'vmid': 99011},
+                {'name': 'edge', 'type': 'vm', 'preset': 'vm-medium', 'image': 'debian-12', 'vmid': 99021, 'parent': 'root-pve'}
             ]
         }
         manifest = Manifest.from_dict(data)
@@ -641,8 +641,8 @@ class TestManifestV2:
         assert manifest.pattern == 'tiered'
         assert len(manifest.nodes) == 2
         # Levels should be in topo order (parent before child)
-        assert manifest.levels[0].name == 'nested-pve'
-        assert manifest.levels[1].name == 'test'
+        assert manifest.levels[0].name == 'root-pve'
+        assert manifest.levels[1].name == 'edge'
 
     def test_from_dict_three_level(self):
         """Should parse 3-level tiered manifest."""
@@ -655,7 +655,7 @@ class TestManifestV2:
             'nodes': [
                 {'name': 'root-pve', 'type': 'pve', 'preset': 'vm-large', 'image': 'debian-13-pve', 'vmid': 99011},
                 {'name': 'leaf-pve', 'type': 'pve', 'preset': 'vm-medium', 'image': 'debian-13-pve', 'vmid': 99021, 'parent': 'root-pve'},
-                {'name': 'test', 'type': 'vm', 'preset': 'vm-small', 'image': 'debian-12', 'vmid': 99031, 'parent': 'leaf-pve'}
+                {'name': 'edge', 'type': 'vm', 'preset': 'vm-small', 'image': 'debian-12', 'vmid': 99031, 'parent': 'leaf-pve'}
             ]
         }
         manifest = Manifest.from_dict(data)
@@ -664,7 +664,7 @@ class TestManifestV2:
         assert manifest.depth == 3
         assert manifest.levels[0].name == 'root-pve'
         assert manifest.levels[1].name == 'leaf-pve'
-        assert manifest.levels[2].name == 'test'
+        assert manifest.levels[2].name == 'edge'
 
     def test_pve_nodes_get_post_scenario(self):
         """PVE nodes should get pve-setup as post_scenario in converted levels."""
@@ -973,8 +973,8 @@ class TestManifestV2Serialization:
             'description': 'Test',
             'pattern': 'tiered',
             'nodes': [
-                {'name': 'nested-pve', 'type': 'pve', 'preset': 'vm-large', 'image': 'debian-13-pve', 'vmid': 99011},
-                {'name': 'test', 'type': 'vm', 'preset': 'vm-small', 'image': 'debian-12', 'vmid': 99021, 'parent': 'nested-pve'}
+                {'name': 'root-pve', 'type': 'pve', 'preset': 'vm-large', 'image': 'debian-13-pve', 'vmid': 99011},
+                {'name': 'edge', 'type': 'vm', 'preset': 'vm-small', 'image': 'debian-12', 'vmid': 99021, 'parent': 'root-pve'}
             ],
             'settings': {'on_error': 'rollback'}
         }

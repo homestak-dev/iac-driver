@@ -368,18 +368,18 @@ schema_version: 2
 name: n2-quick-v2
 pattern: tiered
 nodes:
-  - name: nested-pve
+  - name: root-pve
     type: pve
     preset: vm-large
     image: debian-13-pve
     vmid: 99011
     disk: 64
-  - name: test
+  - name: edge
     type: vm
     preset: vm-medium
     image: debian-12
     vmid: 99021
-    parent: nested-pve
+    parent: root-pve
 ```
 
 v2 manifests are backward-compatible: nodes are converted to levels via topological sort for use with existing recursive-pve scenarios.
