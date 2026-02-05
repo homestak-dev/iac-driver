@@ -2,6 +2,56 @@
 
 ## Unreleased
 
+### Theme: Unified Controller Service
+
+Consolidates spec and repo serving into a single HTTPS daemon with shared TLS and modular auth.
+
+### Added
+- Add unified controller daemon (`./run.sh serve`) (#148)
+  - Single HTTPS server on port 44443 (configurable)
+  - Serves both specs and git repos
+  - Self-signed TLS certificate auto-generation with SHA256 fingerprint display
+  - Graceful shutdown on SIGTERM/SIGINT, cache clear on SIGHUP
+
+- Add spec serving endpoints (#148)
+  - `GET /health` - Health check
+  - `GET /specs` - List available specs
+  - `GET /spec/{identity}` - Fetch resolved spec with FK resolution
+  - Posture-based authentication (network, site_token, node_token)
+
+- Add repo serving endpoints (#148)
+  - `GET /{repo}.git/*` - Git dumb HTTP protocol (objects, refs, info)
+  - `GET /{repo}.git/{path}` - Raw file extraction via `git show`
+  - Bearer token authentication for all repo endpoints
+  - `_working` branch contains uncommitted changes snapshot
+
+- Add resolver modules (#148)
+  - `resolver/base.py` - Shared FK resolution utilities
+  - `resolver/spec_resolver.py` - Migrated from bootstrap with FK resolution
+  - `resolver/spec_client.py` - HTTP client for spec fetching
+
+- Add controller modules (#148)
+  - `controller/tls.py` - TLS certificate generation and management
+  - `controller/auth.py` - Authentication middleware (spec postures + repo tokens)
+  - `controller/specs.py` - Spec endpoint handler
+  - `controller/repos.py` - Repo endpoint handler with bare repo preparation
+  - `controller/server.py` - Unified HTTPS server with routing
+  - `controller/cli.py` - CLI integration for serve verb
+
+- Add comprehensive unit tests (149 tests) (#148)
+  - test_resolver_base.py - FK resolution utilities
+  - test_spec_resolver.py - Spec loading and resolution
+  - test_ctrl_tls.py - TLS certificate management
+  - test_ctrl_auth.py - Authentication middleware
+  - test_ctrl_specs.py - Spec endpoint handler
+  - test_ctrl_repos.py - Repo endpoint handler
+  - test_ctrl_server.py - Unified server with integration tests
+
+### Changed
+- Migrate SpecResolver from bootstrap to iac-driver (#139)
+  - Now uses shared FK resolution from `resolver/base.py`
+  - Error classes moved to `resolver/base.py` for reuse
+
 ## v0.45 - 2026-02-02
 
 ### Theme: Create Integration

@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
-"""CLI entry point for iac-driver."""
+"""CLI entry point for iac-driver.
+
+Supports both scenario-based workflows and verb-based subcommands:
+- Scenarios: ./run.sh --scenario <name> --host <host>
+- Verbs: ./run.sh serve [options]
+
+Verb commands (4-phase lifecycle):
+- serve: Start the unified controller daemon (specs + repos)
+- (Future) create: Create infrastructure
+- (Future) config: Configure nodes
+- (Future) destroy: Destroy infrastructure
+"""
 
 import argparse
 import json
@@ -13,6 +24,34 @@ from pathlib import Path
 from config import list_hosts, list_envs, load_host_config, get_base_dir
 from scenarios import Orchestrator, get_scenario, list_scenarios
 from validation import validate_readiness, run_preflight_checks, format_preflight_results
+
+# Verb commands (subcommands for 4-phase lifecycle)
+VERB_COMMANDS = {
+    "serve": "Start the unified controller daemon",
+    # Future verbs (stubs):
+    # "create": "Create infrastructure from manifest",
+    # "config": "Configure nodes",
+    # "destroy": "Destroy infrastructure",
+}
+
+
+def dispatch_verb(verb: str, argv: list) -> int:
+    """Dispatch to verb-specific CLI handler.
+
+    Args:
+        verb: The verb command (e.g., "serve")
+        argv: Remaining command line arguments
+
+    Returns:
+        Exit code
+    """
+    if verb == "serve":
+        from controller.cli import main as serve_main
+        return serve_main(argv)
+
+    # Future verbs would be handled here
+    print(f"Error: Verb '{verb}' not yet implemented")
+    return 1
 
 
 def get_version():
@@ -75,6 +114,13 @@ def create_local_config():
 
 
 def main():
+    # Check for verb commands first (before argparse)
+    # Verbs are top-level subcommands like "serve", "create", "config", "destroy"
+    if len(sys.argv) > 1 and sys.argv[1] in VERB_COMMANDS:
+        verb = sys.argv[1]
+        return dispatch_verb(verb, sys.argv[2:])
+
+    # Legacy scenario-based CLI continues below
     available_hosts = list_hosts()
     available_envs = list_envs()
     available_scenarios = list_scenarios()
