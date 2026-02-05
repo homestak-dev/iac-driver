@@ -1,10 +1,10 @@
-"""Manifest loading and validation for recursive PVE scenarios.
+"""Manifest loading and validation for infrastructure orchestration.
 
-Manifests define recursion levels for multi-level nested PVE deployments.
-They reference existing site-config entities (envs, vms) via foreign keys.
+Manifests define deployment topologies for VM/PVE provisioning.
+They reference site-config entities (envs, vms, presets, specs) via foreign keys.
 
-Schema v1: Linear levels array (v0.39+)
-Schema v2: Tree structure with parent references (future, #115)
+Schema v1: Linear levels array (v0.39+) - used by recursive-pve scenarios
+Schema v2: Graph-based nodes with parent references (#143) - used by operator engine
 """
 
 import json
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_MANIFEST = 'n2-quick'
 
 # Supported schema versions
-SUPPORTED_SCHEMA_VERSIONS = {1}
+SUPPORTED_SCHEMA_VERSIONS = {1, 2}
 
 
 @dataclass
@@ -103,6 +103,73 @@ class ManifestLevel:
 
 
 @dataclass
+class ManifestNode:
+    """A node in a v2 graph-based manifest.
+
+    Nodes define VMs/CTs with parent references forming a deployment tree.
+    parent=None means the node is deployed on the target host (root node).
+
+    Attributes:
+        name: Node identifier (VM hostname and context key prefix)
+        type: Node type (vm, ct, pve)
+        spec: FK to v2/specs/{value}.yaml
+        preset: FK to v2/presets/{value}.yaml (vm- prefixed)
+        image: Cloud image name
+        vmid: Explicit VM ID
+        disk: Disk size override in GB
+        parent: FK to another node name (None = root node)
+        execution_mode: Per-node execution mode override (push/pull)
+    """
+    name: str
+    type: str
+    spec: Optional[str] = None
+    preset: Optional[str] = None
+    image: Optional[str] = None
+    vmid: Optional[int] = None
+    disk: Optional[int] = None
+    parent: Optional[str] = None
+    execution_mode: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'ManifestNode':
+        """Create ManifestNode from dictionary."""
+        execution = data.get('execution', {})
+        return cls(
+            name=data['name'],
+            type=data['type'],
+            spec=data.get('spec'),
+            preset=data.get('preset'),
+            image=data.get('image'),
+            vmid=data.get('vmid'),
+            disk=data.get('disk'),
+            parent=data.get('parent'),
+            execution_mode=execution.get('mode') if execution else None,
+        )
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for serialization."""
+        d: dict[str, Any] = {
+            'name': self.name,
+            'type': self.type,
+        }
+        if self.spec is not None:
+            d['spec'] = self.spec
+        if self.preset is not None:
+            d['preset'] = self.preset
+        if self.image is not None:
+            d['image'] = self.image
+        if self.vmid is not None:
+            d['vmid'] = self.vmid
+        if self.disk is not None:
+            d['disk'] = self.disk
+        if self.parent is not None:
+            d['parent'] = self.parent
+        if self.execution_mode is not None:
+            d['execution'] = {'mode': self.execution_mode}
+        return d
+
+
+@dataclass
 class ManifestSettings:
     """Optional settings for manifest execution.
 
@@ -110,10 +177,12 @@ class ManifestSettings:
         verify_ssh: Verify SSH at each level (default: True)
         cleanup_on_failure: Destroy levels on failure (default: True)
         timeout_buffer: Seconds to subtract per level (default: 60)
+        on_error: Error handling strategy (default: 'stop')
     """
     verify_ssh: bool = True
     cleanup_on_failure: bool = True
     timeout_buffer: int = 60
+    on_error: str = 'stop'
 
     @classmethod
     def from_dict(cls, data: Optional[dict]) -> 'ManifestSettings':
@@ -123,24 +192,28 @@ class ManifestSettings:
         return cls(
             verify_ssh=data.get('verify_ssh', True),
             cleanup_on_failure=data.get('cleanup_on_failure', True),
-            timeout_buffer=data.get('timeout_buffer', 60)
+            timeout_buffer=data.get('timeout_buffer', 60),
+            on_error=data.get('on_error', 'stop'),
         )
 
 
 @dataclass
 class Manifest:
-    """Recursion manifest for multi-level nested PVE.
+    """Infrastructure deployment manifest.
 
-    Defines the levels of recursion for recursive-pve scenarios.
-    Each level references site-config entities (envs, vms) via FK.
+    Schema v1: Defines recursion levels for recursive-pve scenarios.
+    Schema v2: Defines a graph of nodes with parent references for the operator engine.
 
     Attributes:
-        schema_version: Manifest schema version (default: 1)
+        schema_version: Manifest schema version (1 or 2)
         name: Human-readable manifest name
         description: Optional description
-        levels: Ordered list of recursion levels (first = outermost)
+        levels: Ordered list of recursion levels (v1, or converted from v2 nodes)
         settings: Optional execution settings
         source_path: Path where manifest was loaded from (for debugging)
+        pattern: Topology shape (v2 only: 'flat' or 'tiered')
+        execution_mode: Default execution mode (v2 only: 'push' or 'pull')
+        nodes: Graph-based node definitions (v2 only)
     """
     schema_version: int
     name: str
@@ -148,6 +221,9 @@ class Manifest:
     description: str = ''
     settings: ManifestSettings = field(default_factory=ManifestSettings)
     source_path: Optional[Path] = None
+    pattern: Optional[str] = None
+    execution_mode: str = 'push'
+    nodes: Optional[list[ManifestNode]] = None
 
     @property
     def depth(self) -> int:
@@ -189,9 +265,29 @@ class Manifest:
 
     def to_dict(self) -> dict:
         """Convert manifest to dictionary (for JSON serialization)."""
+        if self.schema_version == 2 and self.nodes is not None:
+            # Serialize as v2 format
+            result: dict[str, Any] = {
+                'schema_version': 2,
+                'name': self.name,
+                'description': self.description,
+                'pattern': self.pattern or 'flat',
+                'nodes': [n.to_dict() for n in self.nodes],
+                'settings': {
+                    'verify_ssh': self.settings.verify_ssh,
+                    'cleanup_on_failure': self.settings.cleanup_on_failure,
+                    'timeout_buffer': self.settings.timeout_buffer,
+                    'on_error': self.settings.on_error,
+                }
+            }
+            if self.execution_mode != 'push':
+                result['execution'] = {'default_mode': self.execution_mode}
+            return result
+
+        # v1 format
         levels_data = []
         for level in self.levels:
-            level_dict = {
+            level_dict: dict[str, Any] = {
                 'name': level.name,
                 'post_scenario': level.post_scenario,
                 'post_scenario_args': level.post_scenario_args
@@ -252,6 +348,15 @@ class Manifest:
         # Validate required fields
         if 'name' not in data:
             raise ConfigError("Manifest missing required field: name")
+
+        if schema_version == 2:
+            return cls._from_dict_v2(data, source_path)
+
+        return cls._from_dict_v1(data, source_path)
+
+    @classmethod
+    def _from_dict_v1(cls, data: dict, source_path: Optional[Path] = None) -> 'Manifest':
+        """Parse v1 manifest (linear levels array)."""
         if 'levels' not in data:
             raise ConfigError("Manifest missing required field: levels")
         if not data['levels']:
@@ -273,12 +378,49 @@ class Manifest:
             levels.append(ManifestLevel.from_dict(level_data))
 
         return cls(
-            schema_version=schema_version,
+            schema_version=1,
             name=data['name'],
             description=data.get('description', ''),
             levels=levels,
             settings=ManifestSettings.from_dict(data.get('settings')),
             source_path=source_path
+        )
+
+    @classmethod
+    def _from_dict_v2(cls, data: dict, source_path: Optional[Path] = None) -> 'Manifest':
+        """Parse v2 manifest (graph-based nodes with parent references)."""
+        if 'nodes' not in data:
+            raise ConfigError("Manifest v2 missing required field: nodes")
+        if not data['nodes']:
+            raise ConfigError("Manifest v2 must have at least one node")
+
+        # Parse nodes
+        nodes = []
+        for i, node_data in enumerate(data['nodes']):
+            if 'name' not in node_data:
+                raise ConfigError(f"Node {i} missing required field: name")
+            if 'type' not in node_data:
+                raise ConfigError(f"Node {i} ({node_data.get('name', 'unnamed')}) missing required field: type")
+            nodes.append(ManifestNode.from_dict(node_data))
+
+        # Validate graph structure
+        _validate_graph(nodes)
+
+        # Convert nodes to levels via topological sort for backward compat
+        levels = _nodes_to_levels(nodes)
+
+        execution = data.get('execution', {})
+
+        return cls(
+            schema_version=2,
+            name=data['name'],
+            description=data.get('description', ''),
+            levels=levels,
+            settings=ManifestSettings.from_dict(data.get('settings')),
+            source_path=source_path,
+            pattern=data.get('pattern', 'flat'),
+            execution_mode=execution.get('default_mode', 'push'),
+            nodes=nodes,
         )
 
     @classmethod
@@ -289,6 +431,106 @@ class Manifest:
         except json.JSONDecodeError as e:
             raise ConfigError(f"Invalid manifest JSON: {e}")
         return cls.from_dict(data)
+
+
+def _validate_graph(nodes: list[ManifestNode]) -> None:
+    """Validate the graph structure of v2 manifest nodes.
+
+    Checks for:
+    - Duplicate node names
+    - Dangling parent references
+    - Cycles in the parent graph
+
+    Raises:
+        ConfigError: If validation fails
+    """
+    # Check for duplicate names
+    names = [n.name for n in nodes]
+    seen: set[str] = set()
+    for name in names:
+        if name in seen:
+            raise ConfigError(f"Duplicate node name: '{name}'")
+        seen.add(name)
+
+    name_set = set(names)
+
+    # Check for dangling parent references
+    for node in nodes:
+        if node.parent is not None and node.parent not in name_set:
+            raise ConfigError(
+                f"Node '{node.name}' references unknown parent '{node.parent}'"
+            )
+
+    # Check for cycles using DFS
+    # Build adjacency: child -> parent
+    visited: set[str] = set()
+    in_stack: set[str] = set()
+    parent_map = {n.name: n.parent for n in nodes}
+
+    def _has_cycle(name: str) -> bool:
+        if name in in_stack:
+            return True
+        if name in visited:
+            return False
+        visited.add(name)
+        in_stack.add(name)
+        parent = parent_map.get(name)
+        if parent is not None and _has_cycle(parent):
+            return True
+        in_stack.discard(name)
+        return False
+
+    for node in nodes:
+        if _has_cycle(node.name):
+            raise ConfigError(f"Cycle detected in node graph involving '{node.name}'")
+
+
+def _nodes_to_levels(nodes: list[ManifestNode]) -> list[ManifestLevel]:
+    """Convert v2 graph nodes to v1 levels via topological sort.
+
+    Produces parent-before-child ordering suitable for construction.
+    Each ManifestNode is converted to a ManifestLevel with vm_preset mode.
+
+    For PVE-type nodes, post_scenario is set to 'pve-setup'.
+    """
+    # Build parent->children map for topo sort
+    children: dict[Optional[str], list[ManifestNode]] = {}
+    for node in nodes:
+        children.setdefault(node.parent, []).append(node)
+
+    # BFS from roots (parent=None) for stable topological order
+    ordered: list[ManifestNode] = []
+    queue = list(children.get(None, []))
+    while queue:
+        current = queue.pop(0)
+        ordered.append(current)
+        queue.extend(children.get(current.name, []))
+
+    # Convert to ManifestLevel
+    levels = []
+    for node in ordered:
+        # Map v2 preset (vm-prefixed) to v1 preset (no prefix)
+        vm_preset = node.preset
+        if vm_preset and vm_preset.startswith('vm-'):
+            vm_preset = vm_preset[3:]  # Strip 'vm-' prefix
+
+        # PVE nodes get pve-setup as post_scenario
+        post_scenario = None
+        post_scenario_args: list[str] = []
+        if node.type == 'pve':
+            post_scenario = 'pve-setup'
+            post_scenario_args = ['--local', '--skip-preflight']
+
+        levels.append(ManifestLevel(
+            name=node.name,
+            vm_preset=vm_preset,
+            vmid=node.vmid,
+            image=node.image,
+            post_scenario=post_scenario,
+            post_scenario_args=post_scenario_args,
+        ))
+
+    return levels
 
 
 class ManifestLoader:

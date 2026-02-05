@@ -58,7 +58,12 @@ All repos are siblings in a common parent directory:
 │   │   ├── common.py     # ActionResult + shared utilities
 │   │   ├── config.py          # Host configuration (auto-discovery from site-config)
 │   │   ├── config_resolver.py # ConfigResolver - resolves site-config for tofu
-│   │   ├── manifest.py        # Manifest schema for recursive scenarios
+│   │   ├── manifest.py        # Manifest schema v1 (levels) + v2 (nodes graph)
+│   │   ├── manifest_opr/ # Operator engine for manifest-based orchestration
+│   │   │   ├── graph.py       # ExecutionNode, ManifestGraph, topo sort
+│   │   │   ├── state.py       # NodeState, ExecutionState persistence
+│   │   │   ├── executor.py    # NodeExecutor - walks graph, runs actions
+│   │   │   └── cli.py         # create/destroy/test verb handlers
 │   │   ├── resolver/     # Configuration resolution
 │   │   │   ├── base.py        # Shared FK resolution utilities
 │   │   │   ├── spec_resolver.py # Spec loading and FK resolution
@@ -349,6 +354,81 @@ git clone https://controller:44443/bootstrap.git
 curl -H "Authorization: Bearer <token>" \
   https://controller:44443/bootstrap.git/install.sh
 ```
+
+## Operator Engine (v0.46+)
+
+The operator engine (`manifest_opr/`) walks a v2 manifest graph to execute create/destroy/test lifecycle operations.
+
+### Manifest Schema v2
+
+Schema v2 uses graph-based `nodes[]` with `parent` references instead of linear `levels[]`:
+
+```yaml
+schema_version: 2
+name: n2-quick-v2
+pattern: tiered
+nodes:
+  - name: nested-pve
+    type: pve
+    preset: vm-large
+    image: debian-13-pve
+    vmid: 99011
+    disk: 64
+  - name: edge
+    type: vm
+    preset: vm-medium
+    image: debian-12
+    vmid: 99021
+    parent: nested-pve
+```
+
+v2 manifests are backward-compatible: nodes are converted to levels via topological sort for use with existing recursive-pve scenarios.
+
+### Verb Commands
+
+```bash
+# Create infrastructure from manifest
+./run.sh create -M n2-quick-v2 -H father [--dry-run] [--json-output] [--verbose]
+
+# Destroy infrastructure
+./run.sh destroy -M n2-quick-v2 -H father [--dry-run] [--yes]
+
+# Full cycle: create, verify SSH, destroy
+./run.sh test -M n2-quick-v2 -H father [--dry-run] [--json-output]
+```
+
+### Architecture
+
+```
+ManifestGraph (graph.py)          NodeExecutor (executor.py)
+┌─────────────────────┐           ┌────────────────────────┐
+│ build from manifest │           │ walks graph in order   │
+│ create_order() BFS  │──────────▶│ TofuApplyInlineAction  │
+│ destroy_order() rev │           │ StartVMAction          │
+│ get_parent_ip_key() │           │ WaitForGuestAgentAction│
+└─────────────────────┘           │ WaitForSSHAction       │
+                                  └────────────────────────┘
+ExecutionState (state.py)                    │
+┌─────────────────────┐                      │
+│ per-node status     │◄─────────────────────┘
+│ vm_id, ip tracking  │
+│ save/load JSON      │
+└─────────────────────┘
+```
+
+### Error Handling
+
+The `on_error` setting controls behavior when a node fails:
+
+| Mode | Behavior |
+|------|----------|
+| `stop` | Halt immediately (default) |
+| `rollback` | Destroy already-created nodes, then halt |
+| `continue` | Skip failed node, continue with independent nodes |
+
+### Depth Limit
+
+The operator supports flat (depth=0) and tiered (depth=1) topologies via local tofu execution. Nodes at depth>1 require SSH-based remote execution (deferred to #145). Use `--scenario recursive-pve-*` for deeper nesting.
 
 ## Common Commands
 
