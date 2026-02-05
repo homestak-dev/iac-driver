@@ -483,3 +483,579 @@ class TestLoadManifestFunction:
         manifest = load_manifest(json_str=json_str, depth=5)
 
         assert manifest.depth == 1  # Not modified
+
+
+# ============================================================================
+# Schema v2 Tests
+# ============================================================================
+
+
+class TestManifestNode:
+    """Test ManifestNode dataclass."""
+
+    def test_from_dict_minimal(self):
+        """Should create node with minimal required fields."""
+        from manifest import ManifestNode
+
+        data = {'name': 'test', 'type': 'vm'}
+        node = ManifestNode.from_dict(data)
+
+        assert node.name == 'test'
+        assert node.type == 'vm'
+        assert node.spec is None
+        assert node.preset is None
+        assert node.image is None
+        assert node.vmid is None
+        assert node.disk is None
+        assert node.parent is None
+        assert node.execution_mode is None
+
+    def test_from_dict_full(self):
+        """Should create node with all fields."""
+        from manifest import ManifestNode
+
+        data = {
+            'name': 'nested-pve',
+            'type': 'pve',
+            'spec': 'pve',
+            'preset': 'vm-large',
+            'image': 'debian-13-pve',
+            'vmid': 99011,
+            'disk': 64,
+            'parent': None,
+            'execution': {'mode': 'push'},
+        }
+        node = ManifestNode.from_dict(data)
+
+        assert node.name == 'nested-pve'
+        assert node.type == 'pve'
+        assert node.spec == 'pve'
+        assert node.preset == 'vm-large'
+        assert node.image == 'debian-13-pve'
+        assert node.vmid == 99011
+        assert node.disk == 64
+        assert node.parent is None
+        assert node.execution_mode == 'push'
+
+    def test_from_dict_with_parent(self):
+        """Should create child node with parent reference."""
+        from manifest import ManifestNode
+
+        data = {
+            'name': 'test',
+            'type': 'vm',
+            'preset': 'vm-small',
+            'image': 'debian-12',
+            'vmid': 99021,
+            'parent': 'nested-pve',
+        }
+        node = ManifestNode.from_dict(data)
+
+        assert node.parent == 'nested-pve'
+
+    def test_to_dict_roundtrip(self):
+        """Should survive dict roundtrip."""
+        from manifest import ManifestNode
+
+        original = {
+            'name': 'test',
+            'type': 'vm',
+            'preset': 'vm-small',
+            'image': 'debian-12',
+            'vmid': 99021,
+            'parent': 'nested-pve',
+        }
+        node = ManifestNode.from_dict(original)
+        result = node.to_dict()
+
+        assert result['name'] == 'test'
+        assert result['type'] == 'vm'
+        assert result['parent'] == 'nested-pve'
+        assert result['vmid'] == 99021
+
+    def test_to_dict_omits_none_fields(self):
+        """Should omit None optional fields in serialization."""
+        from manifest import ManifestNode
+
+        node = ManifestNode(name='test', type='vm')
+        result = node.to_dict()
+
+        assert 'spec' not in result
+        assert 'parent' not in result
+        assert 'disk' not in result
+        assert 'execution' not in result
+
+    def test_to_dict_includes_execution_mode(self):
+        """Should include execution mode when set."""
+        from manifest import ManifestNode
+
+        node = ManifestNode(name='test', type='vm', execution_mode='pull')
+        result = node.to_dict()
+
+        assert result['execution'] == {'mode': 'pull'}
+
+
+class TestManifestV2:
+    """Test v2 manifest parsing (graph-based nodes)."""
+
+    def test_from_dict_flat(self):
+        """Should parse flat (single-level) v2 manifest."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 2,
+            'name': 'n1-basic-v2',
+            'pattern': 'flat',
+            'nodes': [
+                {'name': 'test', 'type': 'vm', 'preset': 'vm-small', 'image': 'debian-12', 'vmid': 99001}
+            ]
+        }
+        manifest = Manifest.from_dict(data)
+
+        assert manifest.schema_version == 2
+        assert manifest.name == 'n1-basic-v2'
+        assert manifest.pattern == 'flat'
+        assert manifest.nodes is not None
+        assert len(manifest.nodes) == 1
+        assert manifest.nodes[0].name == 'test'
+        # Should also have levels (backward compat)
+        assert len(manifest.levels) == 1
+        assert manifest.levels[0].name == 'test'
+
+    def test_from_dict_tiered(self):
+        """Should parse tiered (parent-child) v2 manifest."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 2,
+            'name': 'n2-quick-v2',
+            'pattern': 'tiered',
+            'nodes': [
+                {'name': 'nested-pve', 'type': 'pve', 'preset': 'vm-large', 'image': 'debian-13-pve', 'vmid': 99011},
+                {'name': 'test', 'type': 'vm', 'preset': 'vm-medium', 'image': 'debian-12', 'vmid': 99021, 'parent': 'nested-pve'}
+            ]
+        }
+        manifest = Manifest.from_dict(data)
+
+        assert manifest.schema_version == 2
+        assert manifest.pattern == 'tiered'
+        assert len(manifest.nodes) == 2
+        # Levels should be in topo order (parent before child)
+        assert manifest.levels[0].name == 'nested-pve'
+        assert manifest.levels[1].name == 'test'
+
+    def test_from_dict_three_level(self):
+        """Should parse 3-level tiered manifest."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 2,
+            'name': 'n3-full-v2',
+            'pattern': 'tiered',
+            'nodes': [
+                {'name': 'root-pve', 'type': 'pve', 'preset': 'vm-large', 'image': 'debian-13-pve', 'vmid': 99011},
+                {'name': 'leaf-pve', 'type': 'pve', 'preset': 'vm-medium', 'image': 'debian-13-pve', 'vmid': 99021, 'parent': 'root-pve'},
+                {'name': 'test', 'type': 'vm', 'preset': 'vm-small', 'image': 'debian-12', 'vmid': 99031, 'parent': 'leaf-pve'}
+            ]
+        }
+        manifest = Manifest.from_dict(data)
+
+        assert len(manifest.nodes) == 3
+        assert manifest.depth == 3
+        assert manifest.levels[0].name == 'root-pve'
+        assert manifest.levels[1].name == 'leaf-pve'
+        assert manifest.levels[2].name == 'test'
+
+    def test_pve_nodes_get_post_scenario(self):
+        """PVE nodes should get pve-setup as post_scenario in converted levels."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 2,
+            'name': 'test',
+            'nodes': [
+                {'name': 'nested-pve', 'type': 'pve', 'preset': 'vm-large', 'image': 'debian-13-pve', 'vmid': 99011},
+                {'name': 'test', 'type': 'vm', 'preset': 'vm-small', 'image': 'debian-12', 'vmid': 99021, 'parent': 'nested-pve'}
+            ]
+        }
+        manifest = Manifest.from_dict(data)
+
+        # PVE node should have pve-setup post_scenario
+        assert manifest.levels[0].post_scenario == 'pve-setup'
+        assert manifest.levels[0].post_scenario_args == ['--local', '--skip-preflight']
+        # VM node should not
+        assert manifest.levels[1].post_scenario is None
+
+    def test_vm_preset_prefix_stripped(self):
+        """v2 presets (vm-prefixed) should have prefix stripped for v1 compat."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 2,
+            'name': 'test',
+            'nodes': [
+                {'name': 'test', 'type': 'vm', 'preset': 'vm-small', 'image': 'debian-12', 'vmid': 99001}
+            ]
+        }
+        manifest = Manifest.from_dict(data)
+
+        # v1 level should have prefix-stripped preset
+        assert manifest.levels[0].vm_preset == 'small'
+
+    def test_default_pattern_is_flat(self):
+        """Should default to flat pattern when not specified."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 2,
+            'name': 'test',
+            'nodes': [
+                {'name': 'test', 'type': 'vm', 'vmid': 99001}
+            ]
+        }
+        manifest = Manifest.from_dict(data)
+
+        assert manifest.pattern == 'flat'
+
+    def test_default_execution_mode_is_push(self):
+        """Should default to push execution mode."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 2,
+            'name': 'test',
+            'nodes': [
+                {'name': 'test', 'type': 'vm', 'vmid': 99001}
+            ]
+        }
+        manifest = Manifest.from_dict(data)
+
+        assert manifest.execution_mode == 'push'
+
+    def test_missing_nodes_raises_error(self):
+        """Should raise error when nodes missing."""
+        from manifest import Manifest
+
+        data = {'schema_version': 2, 'name': 'test'}
+
+        with pytest.raises(ConfigError, match='missing required field: nodes'):
+            Manifest.from_dict(data)
+
+    def test_empty_nodes_raises_error(self):
+        """Should raise error when nodes empty."""
+        from manifest import Manifest
+
+        data = {'schema_version': 2, 'name': 'test', 'nodes': []}
+
+        with pytest.raises(ConfigError, match='must have at least one node'):
+            Manifest.from_dict(data)
+
+    def test_node_missing_name_raises_error(self):
+        """Should raise error when node missing name."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 2,
+            'name': 'test',
+            'nodes': [{'type': 'vm'}]
+        }
+
+        with pytest.raises(ConfigError, match='Node 0 missing required field: name'):
+            Manifest.from_dict(data)
+
+    def test_node_missing_type_raises_error(self):
+        """Should raise error when node missing type."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 2,
+            'name': 'test',
+            'nodes': [{'name': 'test'}]
+        }
+
+        with pytest.raises(ConfigError, match='missing required field: type'):
+            Manifest.from_dict(data)
+
+    def test_settings_with_on_error(self):
+        """Should parse on_error setting."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 2,
+            'name': 'test',
+            'nodes': [{'name': 'test', 'type': 'vm'}],
+            'settings': {'on_error': 'rollback'}
+        }
+        manifest = Manifest.from_dict(data)
+
+        assert manifest.settings.on_error == 'rollback'
+
+
+class TestManifestV2GraphValidation:
+    """Test graph validation for v2 manifests."""
+
+    def test_duplicate_names_raises_error(self):
+        """Should raise error for duplicate node names."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 2,
+            'name': 'test',
+            'nodes': [
+                {'name': 'test', 'type': 'vm'},
+                {'name': 'test', 'type': 'vm'}
+            ]
+        }
+
+        with pytest.raises(ConfigError, match="Duplicate node name: 'test'"):
+            Manifest.from_dict(data)
+
+    def test_dangling_parent_raises_error(self):
+        """Should raise error for dangling parent reference."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 2,
+            'name': 'test',
+            'nodes': [
+                {'name': 'test', 'type': 'vm', 'parent': 'nonexistent'}
+            ]
+        }
+
+        with pytest.raises(ConfigError, match="references unknown parent 'nonexistent'"):
+            Manifest.from_dict(data)
+
+    def test_cycle_raises_error(self):
+        """Should raise error for cycles in parent graph."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 2,
+            'name': 'test',
+            'nodes': [
+                {'name': 'a', 'type': 'vm', 'parent': 'b'},
+                {'name': 'b', 'type': 'vm', 'parent': 'a'}
+            ]
+        }
+
+        with pytest.raises(ConfigError, match='Cycle detected'):
+            Manifest.from_dict(data)
+
+    def test_self_reference_raises_error(self):
+        """Should raise error for self-referencing parent."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 2,
+            'name': 'test',
+            'nodes': [
+                {'name': 'a', 'type': 'vm', 'parent': 'a'}
+            ]
+        }
+
+        with pytest.raises(ConfigError, match='Cycle detected'):
+            Manifest.from_dict(data)
+
+    def test_valid_tree_passes(self):
+        """Should accept valid tree structure."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 2,
+            'name': 'test',
+            'nodes': [
+                {'name': 'root', 'type': 'pve'},
+                {'name': 'child1', 'type': 'vm', 'parent': 'root'},
+                {'name': 'child2', 'type': 'vm', 'parent': 'root'}
+            ]
+        }
+        manifest = Manifest.from_dict(data)
+
+        assert len(manifest.nodes) == 3
+
+
+class TestManifestV2TopologicalSort:
+    """Test topological sort ordering for v2 manifests."""
+
+    def test_parent_before_child(self):
+        """Parents should appear before children in levels."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 2,
+            'name': 'test',
+            'nodes': [
+                # Intentionally reversed order in input
+                {'name': 'child', 'type': 'vm', 'parent': 'parent'},
+                {'name': 'parent', 'type': 'pve'}
+            ]
+        }
+        manifest = Manifest.from_dict(data)
+
+        assert manifest.levels[0].name == 'parent'
+        assert manifest.levels[1].name == 'child'
+
+    def test_three_level_chain(self):
+        """Should order 3-level chain correctly."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 2,
+            'name': 'test',
+            'nodes': [
+                # Reversed order
+                {'name': 'leaf', 'type': 'vm', 'parent': 'middle'},
+                {'name': 'root', 'type': 'pve'},
+                {'name': 'middle', 'type': 'pve', 'parent': 'root'}
+            ]
+        }
+        manifest = Manifest.from_dict(data)
+
+        assert manifest.levels[0].name == 'root'
+        assert manifest.levels[1].name == 'middle'
+        assert manifest.levels[2].name == 'leaf'
+
+    def test_flat_multiple_roots(self):
+        """Multiple root nodes should all appear in levels."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 2,
+            'name': 'test',
+            'pattern': 'flat',
+            'nodes': [
+                {'name': 'vm1', 'type': 'vm'},
+                {'name': 'vm2', 'type': 'vm'},
+                {'name': 'vm3', 'type': 'vm'}
+            ]
+        }
+        manifest = Manifest.from_dict(data)
+
+        assert manifest.depth == 3
+        names = [l.name for l in manifest.levels]
+        assert 'vm1' in names
+        assert 'vm2' in names
+        assert 'vm3' in names
+
+
+class TestManifestV2Serialization:
+    """Test v2 manifest serialization."""
+
+    def test_to_dict_v2(self):
+        """Should serialize v2 manifest correctly."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 2,
+            'name': 'test',
+            'pattern': 'tiered',
+            'nodes': [
+                {'name': 'pve', 'type': 'pve', 'vmid': 99011},
+                {'name': 'test', 'type': 'vm', 'vmid': 99021, 'parent': 'pve'}
+            ]
+        }
+        manifest = Manifest.from_dict(data)
+        result = manifest.to_dict()
+
+        assert result['schema_version'] == 2
+        assert result['pattern'] == 'tiered'
+        assert len(result['nodes']) == 2
+        assert result['nodes'][0]['name'] == 'pve'
+        assert result['nodes'][1]['parent'] == 'pve'
+
+    def test_json_roundtrip_v2(self):
+        """Should survive JSON roundtrip for v2 manifests."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 2,
+            'name': 'n2-quick-v2',
+            'description': 'Test',
+            'pattern': 'tiered',
+            'nodes': [
+                {'name': 'nested-pve', 'type': 'pve', 'preset': 'vm-large', 'image': 'debian-13-pve', 'vmid': 99011},
+                {'name': 'test', 'type': 'vm', 'preset': 'vm-small', 'image': 'debian-12', 'vmid': 99021, 'parent': 'nested-pve'}
+            ],
+            'settings': {'on_error': 'rollback'}
+        }
+        manifest = Manifest.from_dict(data)
+
+        json_str = manifest.to_json()
+        restored = Manifest.from_json(json_str)
+
+        assert restored.schema_version == 2
+        assert restored.name == manifest.name
+        assert restored.pattern == 'tiered'
+        assert len(restored.nodes) == 2
+        assert restored.settings.on_error == 'rollback'
+
+
+class TestManifestV1Regression:
+    """Verify v1 manifests still work identically after v2 changes."""
+
+    def test_v1_still_parses(self):
+        """v1 manifest should parse exactly as before."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 1,
+            'name': 'n2-quick',
+            'levels': [
+                {'name': 'inner', 'env': 'nested-pve', 'image': 'debian-13-pve'},
+                {'name': 'leaf', 'env': 'test'}
+            ]
+        }
+        manifest = Manifest.from_dict(data)
+
+        assert manifest.schema_version == 1
+        assert manifest.nodes is None
+        assert manifest.pattern is None
+        assert len(manifest.levels) == 2
+
+    def test_v1_implicit_version(self):
+        """Manifest without schema_version should default to v1."""
+        from manifest import Manifest
+
+        data = {
+            'name': 'test',
+            'levels': [{'name': 'level1', 'env': 'test'}]
+        }
+        manifest = Manifest.from_dict(data)
+
+        assert manifest.schema_version == 1
+
+    def test_v1_to_dict_unchanged(self):
+        """v1 serialization format should be unchanged."""
+        from manifest import Manifest
+
+        data = {
+            'schema_version': 1,
+            'name': 'test',
+            'levels': [{'name': 'l1', 'vm_preset': 'small', 'vmid': 99001, 'image': 'debian-12'}]
+        }
+        manifest = Manifest.from_dict(data)
+        result = manifest.to_dict()
+
+        assert result['schema_version'] == 1
+        assert 'levels' in result
+        assert 'nodes' not in result
+
+    def test_v1_json_roundtrip_unchanged(self):
+        """v1 JSON roundtrip should produce identical results."""
+        from manifest import Manifest
+
+        original = {
+            'name': 'test',
+            'levels': [
+                {'name': 'inner', 'env': 'nested-pve', 'image': 'debian-13'},
+                {'name': 'leaf', 'env': 'test', 'vmid_offset': 100}
+            ],
+            'settings': {'cleanup_on_failure': False}
+        }
+        manifest = Manifest.from_dict(original)
+        json_str = manifest.to_json()
+        restored = Manifest.from_json(json_str)
+
+        assert restored.name == manifest.name
+        assert restored.depth == manifest.depth
+        assert restored.settings.cleanup_on_failure is False
