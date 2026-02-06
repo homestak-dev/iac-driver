@@ -38,6 +38,10 @@ Validates all unreleased work since v0.45 on live PVE infrastructure. Fixes 7 bu
   - Logs to `/tmp/homestak-controller.log`
 
 ### Fixed
+- Fix pull-mode bootstrap chain for controller-based repo serving (#163)
+  - Fix `--repo-token ''` passthrough in controller CLI (empty string no longer triggers auto-generate)
+  - Add `serve_repos` and `repo_token` parameters to `StartSpecServerAction`
+  - Enable repo serving with disabled auth in `spec-vm-pull-roundtrip` scenario
 - Fix operator context propagation after tofu apply (VM IDs not reaching downstream actions)
 - Fix WaitForGuestAgentAction using wrong IP context key for named nodes
 - Fix subtree delegation passing `--skip-preflight` (inner PVE needs preflight for lockfile cleanup)

@@ -153,7 +153,7 @@ def main(argv=None):
             repos_dir=repos_dir,
             exclude_repos=args.exclude,
         )
-        repo_token = args.repo_token or generate_repo_token()
+        repo_token = args.repo_token if args.repo_token is not None else generate_repo_token()
 
     # Create and start server
     server = ControllerServer(
