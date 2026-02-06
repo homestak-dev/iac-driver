@@ -7,7 +7,7 @@ from actions.tofu import (
     TofuDestroyInlineAction,
 )
 from actions.ansible import AnsiblePlaybookAction, AnsibleLocalPlaybookAction, EnsurePVEAction
-from actions.ssh import SSHCommandAction, WaitForSSHAction, VerifySSHChainAction
+from actions.ssh import SSHCommandAction, WaitForSSHAction, WaitForFileAction, VerifySSHChainAction
 from actions.proxmox import (
     StartVMAction,
     WaitForGuestAgentAction,
@@ -41,6 +41,7 @@ __all__ = [
     'EnsurePVEAction',
     'SSHCommandAction',
     'WaitForSSHAction',
+    'WaitForFileAction',
     'VerifySSHChainAction',
     'StartVMAction',
     'WaitForGuestAgentAction',

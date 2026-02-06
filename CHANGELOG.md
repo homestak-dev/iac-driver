@@ -20,6 +20,10 @@ Adds the config phase (`./run.sh config`) and pull execution mode for the node l
   - Pull nodes: polls for spec.yaml and config-complete.json markers
   - PVE nodes always use push (complex multi-step orchestration)
   - Push nodes: no change (default behavior preserved)
+- Add `spec-vm-pull-roundtrip` integration test scenario (#156)
+  - Validates autonomous spec fetch + config apply (pull mode end-to-end)
+  - Verifies packages installed and users created after pull config
+  - `VerifyPackagesAction` and `VerifyUserAction` reusable actions
 
 ### Theme: Integration Test (#198)
 

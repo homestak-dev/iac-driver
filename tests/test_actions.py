@@ -107,6 +107,159 @@ class TestWaitForSSHAction:
         assert 'missing' in result.message
 
 
+class TestWaitForFileAction:
+    """Test WaitForFileAction."""
+
+    def test_file_found_immediately(self):
+        """File found on first poll should return success."""
+        from actions.ssh import WaitForFileAction
+
+        action = WaitForFileAction(
+            name='test', host_key='vm_ip',
+            file_path='/tmp/marker.json', timeout=10, interval=1,
+        )
+        config = MockHostConfig()
+        context = {'vm_ip': '192.0.2.1'}
+
+        with patch('actions.ssh.run_ssh', return_value=(0, 'EXISTS', '')):
+            result = action.run(config, context)
+
+        assert result.success is True
+        assert 'marker.json' in result.message
+
+    def test_file_not_found_timeout(self):
+        """File never found should return failure after timeout."""
+        from actions.ssh import WaitForFileAction
+
+        action = WaitForFileAction(
+            name='test', host_key='vm_ip',
+            file_path='/tmp/missing.json', timeout=1, interval=0.5,
+        )
+        config = MockHostConfig()
+        context = {'vm_ip': '192.0.2.1'}
+
+        with patch('actions.ssh.run_ssh', return_value=(1, '', 'not found')):
+            result = action.run(config, context)
+
+        assert result.success is False
+        assert 'Timeout' in result.message
+
+    def test_missing_host_returns_error(self):
+        """Missing host in context should return failure."""
+        from actions.ssh import WaitForFileAction
+
+        action = WaitForFileAction(
+            name='test', host_key='missing', file_path='/tmp/x',
+        )
+        config = MockHostConfig()
+        context = {}
+
+        result = action.run(config, context)
+
+        assert result.success is False
+        assert 'missing' in result.message
+
+
+class TestVerifyPackagesAction:
+    """Test VerifyPackagesAction."""
+
+    def test_all_packages_installed(self):
+        """All packages installed should return success."""
+        from scenarios.spec_vm import VerifyPackagesAction
+
+        action = VerifyPackagesAction(
+            name='test', host_key='vm_ip', packages=('htop', 'curl'),
+        )
+        config = MockHostConfig()
+        context = {'vm_ip': '192.0.2.1'}
+
+        with patch('scenarios.spec_vm.run_ssh', return_value=(0, 'INSTALLED', '')):
+            result = action.run(config, context)
+
+        assert result.success is True
+        assert 'htop' in result.message
+
+    def test_missing_package_fails(self):
+        """Missing package should return failure."""
+        from scenarios.spec_vm import VerifyPackagesAction
+
+        action = VerifyPackagesAction(
+            name='test', host_key='vm_ip', packages=('htop', 'missing-pkg'),
+        )
+        config = MockHostConfig()
+        context = {'vm_ip': '192.0.2.1'}
+
+        with patch('scenarios.spec_vm.run_ssh') as mock_ssh:
+            mock_ssh.side_effect = [
+                (0, 'INSTALLED', ''),  # htop
+                (0, 'MISSING', ''),    # missing-pkg
+            ]
+            result = action.run(config, context)
+
+        assert result.success is False
+        assert 'missing-pkg' in result.message
+
+    def test_missing_host_returns_error(self):
+        """Missing host in context should return failure."""
+        from scenarios.spec_vm import VerifyPackagesAction
+
+        action = VerifyPackagesAction(name='test', host_key='missing')
+        config = MockHostConfig()
+        result = action.run(config, {})
+
+        assert result.success is False
+        assert 'missing' in result.message
+
+
+class TestVerifyUserAction:
+    """Test VerifyUserAction."""
+
+    def test_user_exists(self):
+        """User exists should return success."""
+        from scenarios.spec_vm import VerifyUserAction
+
+        action = VerifyUserAction(
+            name='test', host_key='vm_ip', username='homestak',
+        )
+        config = MockHostConfig()
+        context = {'vm_ip': '192.0.2.1'}
+
+        with patch('scenarios.spec_vm.run_ssh',
+                   return_value=(0, 'uid=1000(homestak) gid=1000(homestak)\nUSER_EXISTS', '')):
+            result = action.run(config, context)
+
+        assert result.success is True
+        assert 'homestak' in result.message
+
+    def test_user_missing_fails(self):
+        """Missing user should return failure."""
+        from scenarios.spec_vm import VerifyUserAction
+
+        action = VerifyUserAction(
+            name='test', host_key='vm_ip', username='noone',
+        )
+        config = MockHostConfig()
+        context = {'vm_ip': '192.0.2.1'}
+
+        with patch('scenarios.spec_vm.run_ssh',
+                   return_value=(1, 'USER_MISSING', '')):
+            result = action.run(config, context)
+
+        assert result.success is False
+        assert 'noone' in result.message
+
+    def test_missing_host_returns_error(self):
+        """Missing host in context should return failure."""
+        from scenarios.spec_vm import VerifyUserAction
+
+        action = VerifyUserAction(name='test', host_key='missing')
+        config = MockHostConfig()
+        result = action.run(config, {})
+
+        assert result.success is False
+        assert 'missing' in result.message
+
+
 class TestStartVMAction:
     """Test StartVMAction."""
 

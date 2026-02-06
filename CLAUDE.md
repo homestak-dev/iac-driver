@@ -939,6 +939,7 @@ The `latest` tag is maintained by the packer release process (see packer#5).
 | `packer-sync-build-fetch` | ~6m | Sync, build, fetch (dev workflow) |
 | `pve-setup` | ~3m | Install PVE (if needed), configure host, generate node config |
 | `spec-vm-push-roundtrip` | ~3m | Spec discovery integration test (push verification) |
+| `spec-vm-pull-roundtrip` | ~5m | Config phase integration test (pull verification) |
 | `user-setup` | ~30s | Create homestak user |
 
 **Retired Scenarios (v0.47):** `vm-constructor`, `vm-destructor`, `vm-roundtrip`, `nested-pve-*`, `recursive-pve-*` — replaced by verb commands (`create`/`destroy`/`test`). Running a retired scenario prints a migration hint.

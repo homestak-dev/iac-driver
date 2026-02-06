@@ -2,6 +2,8 @@
 
 Validates the Create → Specify integration: VMs provisioned via tofu
 receive spec server environment variables via cloud-init.
+
+Includes push (verify env vars) and pull (verify autonomous config) modes.
 """
 
 import logging
@@ -15,6 +17,7 @@ from actions import (
     StartProvisionedVMsAction,
     WaitForProvisionedVMsAction,
     WaitForSSHAction,
+    WaitForFileAction,
     SSHCommandAction,
 )
 from common import ActionResult, run_ssh
@@ -284,6 +287,84 @@ class StopSpecServerAction:
         )
 
 
+@dataclass
+class VerifyPackagesAction:
+    """Verify expected packages are installed on a VM."""
+    name: str
+    host_key: str = 'vm_ip'
+    packages: tuple = ('htop', 'curl')
+    timeout: int = 30
+
+    def run(self, config: HostConfig, context: dict) -> ActionResult:
+        """Check that packages are installed via dpkg."""
+        start = time.time()
+
+        host = context.get(self.host_key)
+        if not host:
+            return ActionResult(
+                success=False,
+                message=f"No {self.host_key} in context",
+                duration=time.time() - start
+            )
+
+        missing = []
+        for pkg in self.packages:
+            cmd = f'dpkg -s {pkg} 2>/dev/null | grep -q "Status: install ok installed" && echo INSTALLED || echo MISSING'
+            rc, out, _ = run_ssh(host, cmd, user=config.automation_user, timeout=self.timeout)
+            if 'MISSING' in out or rc != 0:
+                missing.append(pkg)
+
+        if missing:
+            return ActionResult(
+                success=False,
+                message=f"Packages not installed: {', '.join(missing)}",
+                duration=time.time() - start
+            )
+
+        return ActionResult(
+            success=True,
+            message=f"All packages installed: {', '.join(self.packages)}",
+            duration=time.time() - start
+        )
+
+
+@dataclass
+class VerifyUserAction:
+    """Verify expected user exists on a VM."""
+    name: str
+    host_key: str = 'vm_ip'
+    username: str = 'homestak'
+    timeout: int = 30
+
+    def run(self, config: HostConfig, context: dict) -> ActionResult:
+        """Check that user exists via id command."""
+        start = time.time()
+
+        host = context.get(self.host_key)
+        if not host:
+            return ActionResult(
+                success=False,
+                message=f"No {self.host_key} in context",
+                duration=time.time() - start
+            )
+
+        cmd = f'id {self.username} 2>/dev/null && echo USER_EXISTS || echo USER_MISSING'
+        rc, out, _ = run_ssh(host, cmd, user=config.automation_user, timeout=self.timeout)
+
+        if 'USER_MISSING' in out or rc != 0:
+            return ActionResult(
+                success=False,
+                message=f"User '{self.username}' not found",
+                duration=time.time() - start
+            )
+
+        return ActionResult(
+            success=True,
+            message=f"User '{self.username}' exists: {out.strip().splitlines()[0][:60]}",
+            duration=time.time() - start
+        )
+
+
 @register_scenario
 class SpecVMPushRoundtrip:
     """Test Create → Specify flow (push): provision VM, verify spec server integration."""
@@ -341,6 +422,95 @@ class SpecVMPushRoundtrip:
                 name='verify-server-reachable',
                 host_key='vm_ip',
             ), 'Verify spec server reachable'),
+
+            # Cleanup
+            ('destroy', TofuDestroyAction(
+                name='destroy-vm',
+                env_name='test',
+            ), 'Destroy VM(s)'),
+
+            ('stop_server', StopSpecServerAction(
+                name='stop-spec-server',
+            ), 'Stop spec discovery server'),
+        ]
+
+
+@register_scenario
+class SpecVMPullRoundtrip:
+    """Test Create → Config flow (pull): VM self-configures, driver verifies."""
+
+    name = 'spec-vm-pull-roundtrip'
+    description = 'Deploy VM with pull mode, verify autonomous spec fetch + config apply, destroy'
+    expected_runtime = 300  # ~5 min (includes waiting for cloud-init config)
+
+    def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
+        """Return phases for spec VM pull roundtrip test."""
+        return [
+            # Prerequisites
+            ('check_config', CheckSpecServerConfigAction(
+                name='check-spec-config',
+            ), 'Verify spec_server configured'),
+
+            ('start_server', StartSpecServerAction(
+                name='start-spec-server',
+            ), 'Start spec discovery server'),
+
+            # Standard VM provisioning
+            ('ensure_image', EnsureImageAction(
+                name='ensure-image',
+            ), 'Ensure packer image exists'),
+
+            ('provision', TofuApplyAction(
+                name='provision-vm',
+                env_name='test',
+            ), 'Provision VM(s)'),
+
+            ('start', StartProvisionedVMsAction(
+                name='start-vms',
+                pve_host_attr='ssh_host',
+            ), 'Start VM(s)'),
+
+            ('wait_ip', WaitForProvisionedVMsAction(
+                name='wait-for-ips',
+                pve_host_attr='ssh_host',
+                timeout=180,
+            ), 'Wait for VM IP(s)'),
+
+            ('verify_ssh', WaitForSSHAction(
+                name='verify-ssh',
+                host_key='vm_ip',
+                timeout=120,
+            ), 'Verify SSH access'),
+
+            # Pull mode verification: VM autonomously fetches spec and applies config
+            ('wait_spec', WaitForFileAction(
+                name='wait-spec-file',
+                host_key='vm_ip',
+                file_path='/usr/local/etc/homestak/state/spec.yaml',
+                timeout=300,
+                interval=10,
+            ), 'Wait for spec fetch (pull)'),
+
+            ('wait_config', WaitForFileAction(
+                name='wait-config-complete',
+                host_key='vm_ip',
+                file_path='/usr/local/etc/homestak/state/config-complete.json',
+                timeout=300,
+                interval=10,
+            ), 'Wait for config complete (pull)'),
+
+            # Verify config was applied correctly
+            ('verify_packages', VerifyPackagesAction(
+                name='verify-packages',
+                host_key='vm_ip',
+                packages=('htop', 'curl'),
+            ), 'Verify packages installed'),
+
+            ('verify_user', VerifyUserAction(
+                name='verify-user',
+                host_key='vm_ip',
+                username='homestak',
+            ), 'Verify user created'),
 
             # Cleanup
             ('destroy', TofuDestroyAction(
