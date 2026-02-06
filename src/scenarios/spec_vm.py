@@ -295,15 +295,15 @@ class StopSpecServerAction:
 
 
 @register_scenario
-class SpecVMRoundtrip:
-    """Test Create → Specify flow: provision VM, verify spec server integration."""
+class SpecVMPushRoundtrip:
+    """Test Create → Specify flow (push): provision VM, verify spec server integration."""
 
-    name = 'spec-vm-roundtrip'
-    description = 'Deploy VM with spec server vars, verify env injection, destroy'
+    name = 'spec-vm-push-roundtrip'
+    description = 'Deploy VM with spec server vars, verify env injection via SSH, destroy'
     expected_runtime = 180  # ~3 min
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
-        """Return phases for spec VM roundtrip test."""
+        """Return phases for spec VM push roundtrip test."""
         return [
             # Prerequisites
             ('check_config', CheckSpecServerConfigAction(
