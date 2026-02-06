@@ -462,7 +462,7 @@ class SpecVMPullRoundtrip:
 
             ('provision', TofuApplyAction(
                 name='provision-vm',
-                env_name='test',
+                env_name='pull-test',
             ), 'Provision VM(s)'),
 
             ('start', StartProvisionedVMsAction(
@@ -515,7 +515,7 @@ class SpecVMPullRoundtrip:
             # Cleanup
             ('destroy', TofuDestroyAction(
                 name='destroy-vm',
-                env_name='test',
+                env_name='pull-test',
             ), 'Destroy VM(s)'),
 
             ('stop_server', StopSpecServerAction(
