@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Theme: Integration Test (#198)
+
+Validates all unreleased work since v0.45 on live PVE infrastructure. Fixes 7 bugs found during testing.
+
+### Fixed
+- Fix operator context propagation after tofu apply (VM IDs not reaching downstream actions)
+- Fix WaitForGuestAgentAction using wrong IP context key for named nodes
+- Fix subtree delegation passing `--skip-preflight` (inner PVE needs preflight for lockfile cleanup)
+- Fix RecursiveScenarioAction context extraction for verb command JSON format (nodes[] array)
+- Add SyncDriverCodeAction to PVE lifecycle (ensures delegation uses same code as calling operator)
+- Fix spec-vm-roundtrip server detection using pgrep (self-matches SSH commands)
+- Fix spec-vm-roundtrip server stop using pgrep (replaced with port-based PID lookup)
+
+---
+
 ### Theme: Scenario Consolidation (Phase 3 of #140)
 
 Retires 9 legacy scenarios and 3 remote actions, replacing them with the manifest-based operator engine. PVE lifecycle and subtree delegation enable arbitrary nesting depth via verb commands.
