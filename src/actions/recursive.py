@@ -405,14 +405,31 @@ class RecursiveScenarioAction:
         return "Unknown error (no details available)"
 
     def _extract_context(self, json_result: Optional[dict]) -> dict:
-        """Extract specified context keys from JSON result."""
+        """Extract specified context keys from JSON result.
+
+        Supports two JSON output formats:
+        1. Scenario format: {"context": {"key": "value"}}
+        2. Verb command format: {"nodes": [{"name": "x", "ip": "...", "vm_id": N}]}
+
+        For verb format, builds context keys as {name}_ip and {name}_vm_id.
+        """
         context_updates = {}
 
         if not json_result:
             return context_updates
 
-        # Extract from context field if present
+        # Extract from context field if present (scenario format)
         result_context = json_result.get('context', {})
+
+        # Also extract from nodes[] array (verb command format)
+        for node in json_result.get('nodes', []):
+            name = node.get('name')
+            if not name:
+                continue
+            if node.get('ip'):
+                result_context[f'{name}_ip'] = node['ip']
+            if node.get('vm_id'):
+                result_context[f'{name}_vm_id'] = node['vm_id']
 
         for key in self.context_keys:
             if key in result_context:

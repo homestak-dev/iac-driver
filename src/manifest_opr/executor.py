@@ -274,6 +274,7 @@ class NodeExecutor:
             return result
 
         context_updates = dict(result.context_updates or {})
+        context.update(context_updates)
 
         # 2. Start VM
         start_action = StartVMAction(
@@ -299,6 +300,7 @@ class NodeExecutor:
             name=f'wait-ip-{mn.name}',
             vm_id_attr=f'{mn.name}_vm_id',
             pve_host_attr='ssh_host' if exec_node.is_root else None,
+            ip_context_key=f'{mn.name}_ip',
             timeout=300,
         )
         wait_result = wait_action.run(self.config, context)
@@ -381,6 +383,7 @@ class NodeExecutor:
         """
         from actions.pve_lifecycle import (
             BootstrapAction,
+            SyncDriverCodeAction,
             CopySecretsAction,
             InjectSSHKeyAction,
             CopySSHPrivateKeyAction,
@@ -410,7 +413,13 @@ class NodeExecutor:
             timeout=600,
         )))
 
-        # 2. Copy secrets
+        # 2. Sync iac-driver code (ensures delegation uses same code)
+        phases.append(('sync_code', SyncDriverCodeAction(
+            name=f'sync-{mn.name}',
+            host_attr=host_key,
+        )))
+
+        # 3. Copy secrets
         phases.append(('copy_secrets', CopySecretsAction(
             name=f'secrets-{mn.name}',
             host_attr=host_key,
@@ -543,7 +552,7 @@ class NodeExecutor:
             f'sudo ./run.sh create '
             f'--manifest-json {shlex.quote(subtree_json)} '
             f'-H {shlex.quote(inner_hostname)} '
-            f'--json-output --skip-preflight'
+            f'--json-output'
         )
 
         logger.info(f"[delegate] Delegating subtree of '{mn.name}' ({len(descendants)} nodes)")
