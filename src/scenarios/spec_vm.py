@@ -68,33 +68,23 @@ class StartSpecServerAction:
     """Start spec server on controller host."""
     name: str
     server_port: int = 44443
-    timeout: int = 30
+    timeout: int = 60
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
-        """Start spec server on controller via SSH."""
+        """Start controller serve on PVE host via SSH."""
         start = time.time()
 
         pve_host = config.ssh_host
         ssh_user = config.ssh_user
+        iac_dir = '/usr/local/lib/homestak/iac-driver'
 
-        # Check if serve command exists (requires v0.44+)
-        version_cmd = 'homestak --version 2>/dev/null || echo "NOT_FOUND"'
-        rc, out, err = run_ssh(pve_host, version_cmd, user=ssh_user, timeout=10)
+        # Check if iac-driver exists on remote host
+        check_cmd = f'test -f {iac_dir}/run.sh && echo FOUND || echo NOT_FOUND'
+        rc, out, err = run_ssh(pve_host, check_cmd, user=ssh_user, timeout=10)
         if 'NOT_FOUND' in out:
             return ActionResult(
                 success=False,
-                message="homestak CLI not found on controller. Run bootstrap first.",
-                duration=time.time() - start
-            )
-
-        # Check if serve subcommand exists
-        help_cmd = 'homestak serve --help 2>&1 | head -1 || echo "COMMAND_NOT_FOUND"'
-        rc, out, err = run_ssh(pve_host, help_cmd, user=ssh_user, timeout=10)
-        if 'COMMAND_NOT_FOUND' in out or 'Unknown' in out:
-            return ActionResult(
-                success=False,
-                message="'homestak serve' command not available. Requires v0.44+. "
-                        "Update bootstrap on controller: cd /usr/local/lib/homestak/bootstrap && git pull",
+                message=f"iac-driver not found at {iac_dir}. Run bootstrap first.",
                 duration=time.time() - start
             )
 
@@ -102,26 +92,26 @@ class StartSpecServerAction:
         check_cmd = f'ss -tlnp | grep ":{self.server_port} " || true'
         rc, out, err = run_ssh(pve_host, check_cmd, user=ssh_user, timeout=10)
         if out.strip():
-            logger.info(f"[{self.name}] Spec server already running on port {self.server_port}")
+            logger.info(f"[{self.name}] Controller already running on port {self.server_port}")
             return ActionResult(
                 success=True,
-                message=f"Spec server already running on port {self.server_port}",
+                message=f"Controller already running on port {self.server_port}",
                 duration=time.time() - start,
             )
 
-        # Start spec server in background
-        # Use nohup and redirect to log file
+        # Start controller in background via iac-driver
         start_cmd = (
-            f'nohup /usr/local/bin/homestak serve --port {self.server_port} '
-            f'> /tmp/homestak-serve.log 2>&1 & echo $!'
+            f'cd {iac_dir} && '
+            f'nohup ./run.sh serve --port {self.server_port} '
+            f'> /tmp/homestak-controller.log 2>&1 </dev/null & echo $!'
         )
-        logger.info(f"[{self.name}] Starting spec server on {pve_host}:{self.server_port}...")
+        logger.info(f"[{self.name}] Starting controller on {pve_host}:{self.server_port}...")
         rc, out, err = run_ssh(pve_host, start_cmd, user=ssh_user, timeout=self.timeout)
 
         if rc != 0:
             return ActionResult(
                 success=False,
-                message=f"Failed to start spec server: {err}",
+                message=f"Failed to start controller: {err}",
                 duration=time.time() - start
             )
 
@@ -134,17 +124,17 @@ class StartSpecServerAction:
 
         if 'running' not in out:
             # Check log for errors
-            log_cmd = 'tail -20 /tmp/homestak-serve.log 2>/dev/null || true'
+            log_cmd = 'tail -20 /tmp/homestak-controller.log 2>/dev/null || true'
             _, log_out, _ = run_ssh(pve_host, log_cmd, user=ssh_user, timeout=10)
             return ActionResult(
                 success=False,
-                message=f"Spec server failed to start. Log: {log_out}",
+                message=f"Controller failed to start. Log: {log_out}",
                 duration=time.time() - start
             )
 
         return ActionResult(
             success=True,
-            message=f"Spec server started (PID: {pid})",
+            message=f"Controller started (PID: {pid})",
             duration=time.time() - start,
             context_updates={'spec_server_pid': pid}
         )

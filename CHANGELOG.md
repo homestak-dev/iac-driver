@@ -6,6 +6,12 @@
 
 Validates all unreleased work since v0.45 on live PVE infrastructure. Fixes 7 bugs found during testing.
 
+### Changed
+- Update StartSpecServerAction to use iac-driver controller instead of `homestak serve` (bootstrap#38)
+  - Checks for `iac-driver/run.sh` instead of `homestak` CLI
+  - Starts controller via `./run.sh serve` (HTTPS)
+  - Logs to `/tmp/homestak-controller.log`
+
 ### Fixed
 - Fix operator context propagation after tofu apply (VM IDs not reaching downstream actions)
 - Fix WaitForGuestAgentAction using wrong IP context key for named nodes
