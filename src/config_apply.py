@@ -1,10 +1,11 @@
 """Config phase: apply a specification to the local host.
 
-Reads a resolved spec (from `homestak spec get`) and maps it to ansible
-variables, then runs the config-apply.yml playbook to reach "platform ready".
+Reads a resolved spec and maps it to ansible variables, then runs the
+config-apply.yml playbook to reach "platform ready".
 
 Usage:
     ./run.sh config                     # Apply from default state dir
+    ./run.sh config --fetch             # Fetch spec from server, then apply
     ./run.sh config --spec /path.yaml   # Apply from explicit path
     ./run.sh config --dry-run           # Preview what would be applied
 
@@ -375,6 +376,48 @@ def apply_config(
     return result
 
 
+def _fetch_spec(insecure: bool = False) -> Optional[Path]:
+    """Fetch spec from server using environment variables.
+
+    Uses HOMESTAK_SPEC_SERVER, HOMESTAK_IDENTITY, and optionally
+    HOMESTAK_AUTH_TOKEN from the environment.
+
+    Args:
+        insecure: Skip SSL certificate verification
+
+    Returns:
+        Path to the saved spec file, or None on failure
+    """
+    from resolver.spec_client import SpecClient, SpecClientError, get_config_from_env
+
+    env_config = get_config_from_env()
+    server = env_config.get('server')
+    identity = env_config.get('identity')
+    token = env_config.get('token')
+
+    if not server:
+        logger.error("--fetch requires HOMESTAK_SPEC_SERVER environment variable")
+        return None
+    if not identity:
+        logger.error("--fetch requires HOMESTAK_IDENTITY environment variable")
+        return None
+
+    try:
+        client = SpecClient(
+            server=server,
+            identity=identity,
+            token=token,
+            insecure=insecure,
+        )
+        logger.info(f"Fetching spec for '{identity}' from {server}...")
+        spec, path = client.fetch_and_save()
+        logger.info(f"Spec saved to {path}")
+        return path
+    except SpecClientError as e:
+        logger.error(f"Failed to fetch spec: {e.code} - {e.message}")
+        return None
+
+
 def config_main(argv: list) -> int:
     """CLI entry point for the config verb.
 
@@ -394,6 +437,17 @@ def config_main(argv: list) -> int:
         '--spec',
         type=Path,
         help=f'Path to spec file (default: {DEFAULT_SPEC_PATH})',
+    )
+    parser.add_argument(
+        '--fetch',
+        action='store_true',
+        help='Fetch spec from server before applying '
+             '(uses HOMESTAK_SPEC_SERVER + HOMESTAK_IDENTITY env vars)',
+    )
+    parser.add_argument(
+        '--insecure', '-k',
+        action='store_true',
+        help='Skip SSL certificate verification (for self-signed certs)',
     )
     parser.add_argument(
         '--dry-run',
@@ -416,8 +470,15 @@ def config_main(argv: list) -> int:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
+    # Fetch spec from server if requested
+    spec_path = args.spec
+    if args.fetch and spec_path is None:
+        spec_path = _fetch_spec(insecure=args.insecure)
+        if spec_path is None:
+            return 1
+
     result = apply_config(
-        spec_path=args.spec,
+        spec_path=spec_path,
         dry_run=args.dry_run,
         json_output=args.json_output,
     )

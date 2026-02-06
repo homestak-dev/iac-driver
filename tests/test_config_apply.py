@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 from config_apply import (
     spec_to_ansible_vars,
     _load_spec,
+    _fetch_spec,
     _write_marker,
     apply_config,
     ConfigError,
@@ -232,3 +233,35 @@ class TestApplyConfig:
         data = json.loads(captured.out)
         assert data['spec'] == 'json-test'
         assert data['dry_run'] is True
+
+
+class TestFetchSpec:
+    """Test _fetch_spec function."""
+
+    def test_missing_server_returns_none(self):
+        """Missing HOMESTAK_SPEC_SERVER returns None."""
+        with patch.dict('os.environ', {}, clear=True):
+            result = _fetch_spec()
+        assert result is None
+
+    def test_missing_identity_returns_none(self):
+        """Missing HOMESTAK_IDENTITY returns None."""
+        with patch.dict('os.environ', {'HOMESTAK_SPEC_SERVER': 'https://localhost:44443'}, clear=True):
+            result = _fetch_spec()
+        assert result is None
+
+    def test_successful_fetch_returns_path(self, tmp_path):
+        """Successful fetch returns path to saved spec."""
+        spec_file = tmp_path / 'spec.yaml'
+        mock_spec = {'schema_version': 1, 'identity': {'hostname': 'test'}}
+
+        with patch.dict('os.environ', {
+            'HOMESTAK_SPEC_SERVER': 'https://localhost:44443',
+            'HOMESTAK_IDENTITY': 'test',
+        }, clear=True):
+            with patch('resolver.spec_client.SpecClient') as MockClient:
+                instance = MockClient.return_value
+                instance.fetch_and_save.return_value = (mock_spec, spec_file)
+                result = _fetch_spec()
+
+        assert result == spec_file

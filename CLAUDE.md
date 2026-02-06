@@ -384,7 +384,7 @@ v2 manifests are backward-compatible: nodes are converted to levels via topologi
 ./run.sh test -M n2-quick -H father [--dry-run] [--json-output]
 
 # Apply spec to local host (config phase)
-./run.sh config [--spec /path/to/spec.yaml] [--dry-run] [--json-output] [--verbose]
+./run.sh config [--fetch] [--insecure] [--spec /path.yaml] [--dry-run] [--json-output]
 ```
 
 ### Architecture
@@ -434,12 +434,14 @@ Nodes can use **push** (default) or **pull** execution mode for the config phase
 | `pull` | VM self-configures via cloud-init | Operator polls for marker files |
 
 **Pull mode flow:**
-1. Cloud-init runs `homestak spec get` + `./run.sh config` on first boot
-2. Operator polls via SSH for `/usr/local/etc/homestak/state/spec.yaml`
-3. Then polls for `/usr/local/etc/homestak/state/config-complete.json`
-4. Node is considered configured when both markers exist
+1. Cloud-init runs `./run.sh config --fetch --insecure` on first boot
+2. `--fetch` uses HOMESTAK_SPEC_SERVER + HOMESTAK_IDENTITY env vars to fetch spec
+3. Config applies spec (packages, users, services) via ansible roles
+4. Operator polls via SSH for `/usr/local/etc/homestak/state/config-complete.json`
+5. Node is considered configured when marker exists
 
 **Config verb (`./run.sh config`):**
+- `--fetch`: Fetches spec from server using env vars (HOMESTAK_SPEC_SERVER, HOMESTAK_IDENTITY)
 - Reads spec from `/usr/local/etc/homestak/state/spec.yaml` (or `--spec` path)
 - Maps spec sections to ansible role variables via `spec_to_ansible_vars()`
 - Writes vars to `/usr/local/etc/homestak/state/config-vars.json`
@@ -822,6 +824,7 @@ The orchestrator supports two command styles: verb commands for manifest-based o
 
 # Config verb (local execution)
 ./run.sh config                                         # Apply spec to local host
+./run.sh config --fetch --insecure                      # Fetch spec from server + apply
 ./run.sh config --spec /path/to/spec.yaml --dry-run     # Preview with custom spec
 
 # Scenarios (standalone workflows)
