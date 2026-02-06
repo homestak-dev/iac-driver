@@ -496,7 +496,7 @@ class SpecVMPullRoundtrip:
                 name='wait-spec-file',
                 host_key='vm_ip',
                 file_path='/usr/local/etc/homestak/state/spec.yaml',
-                timeout=300,
+                timeout=150,
                 interval=10,
             ), 'Wait for spec fetch (pull)'),
 
@@ -504,7 +504,7 @@ class SpecVMPullRoundtrip:
                 name='wait-config-complete',
                 host_key='vm_ip',
                 file_path='/usr/local/etc/homestak/state/config-complete.json',
-                timeout=300,
+                timeout=180,
                 interval=10,
             ), 'Wait for config complete (pull)'),
 

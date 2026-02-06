@@ -339,7 +339,10 @@ def apply_config(
         '-e', f'@{vars_file}',
     ]
 
-    rc, out, err = run_command(cmd, cwd=ansible_dir, timeout=600)
+    # Explicitly set ANSIBLE_CONFIG so ansible finds ansible.cfg (and its
+    # collections_path) even in minimal environments like cloud-init runcmd.
+    ansible_env = {**os.environ, 'ANSIBLE_CONFIG': str(ansible_dir / 'ansible.cfg')}
+    rc, out, err = run_command(cmd, cwd=ansible_dir, timeout=600, env=ansible_env)
     if rc != 0:
         error_msg = err[-500:] if err else out[-500:]
         return ConfigResult(

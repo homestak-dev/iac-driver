@@ -140,6 +140,13 @@ class RepoManager:
             )
             logger.debug("%s: _working branch (clean)", repo_name)
 
+        # Set HEAD to _working so git clone gets uncommitted changes
+        subprocess.run(
+            ["git", "-C", str(bare_path), "symbolic-ref", "HEAD", "refs/heads/_working"],
+            check=True,
+            capture_output=True,
+        )
+
         # Enable dumb HTTP protocol
         subprocess.run(
             ["git", "-C", str(bare_path), "update-server-info"],
