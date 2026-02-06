@@ -363,7 +363,7 @@ nodes:
     disk: 64
   - name: edge
     type: vm
-    preset: vm-medium
+    preset: vm-small
     image: debian-12
     vmid: 99021
     parent: root-pve
@@ -449,7 +449,7 @@ Nodes can use **push** (default) or **pull** execution mode for the config phase
 **Per-node execution mode** is set in manifests:
 ```yaml
 nodes:
-  - name: pull-test
+  - name: edge
     type: vm
     execution:
       mode: pull  # Default: push
