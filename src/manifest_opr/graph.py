@@ -9,7 +9,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Optional
 
-from manifest import Manifest, ManifestNode
+from manifest import Manifest, ManifestNode, ManifestSettings
 
 logger = logging.getLogger(__name__)
 
@@ -161,3 +161,75 @@ class ManifestGraph:
         if node.is_root:
             return 'ssh_host'
         return f'{node.parent.name}_ip'
+
+    def extract_subtree(self, node_name: str) -> Manifest:
+        """Extract descendants of a node as a new Manifest.
+
+        Collects all descendants of the named node. Direct children get
+        parent=None (promoted to roots). Deeper descendants keep their
+        parent references unchanged.
+
+        Args:
+            node_name: Name of the node whose children form the subtree
+
+        Returns:
+            New Manifest with schema_version=2 containing the subtree nodes
+
+        Raises:
+            KeyError: If node_name not found in graph
+            ValueError: If node has no children
+        """
+        parent_node = self._nodes[node_name]
+        if not parent_node.children:
+            raise ValueError(f"Node '{node_name}' has no children to extract")
+
+        # Collect all descendants via BFS
+        descendants: list[ExecutionNode] = []
+        queue: deque[ExecutionNode] = deque(parent_node.children)
+        while queue:
+            node = queue.popleft()
+            descendants.append(node)
+            queue.extend(node.children)
+
+        # Build new ManifestNode list with adjusted parent references
+        subtree_nodes: list[ManifestNode] = []
+        for desc in descendants:
+            mn = desc.manifest_node
+            # Direct children of the extracted node become roots (parent=None)
+            # Deeper descendants keep their parent reference unchanged
+            new_parent = None if desc.parent == parent_node else mn.parent
+
+            subtree_nodes.append(ManifestNode(
+                name=mn.name,
+                type=mn.type,
+                spec=mn.spec,
+                preset=mn.preset,
+                image=mn.image,
+                vmid=mn.vmid,
+                disk=mn.disk,
+                parent=new_parent,
+                execution_mode=mn.execution_mode,
+            ))
+
+        # Copy settings from original manifest
+        orig = self.manifest.settings
+        settings = ManifestSettings(
+            verify_ssh=orig.verify_ssh,
+            cleanup_on_failure=orig.cleanup_on_failure,
+            timeout_buffer=orig.timeout_buffer,
+            on_error=orig.on_error,
+        )
+
+        return Manifest.from_dict({
+            'schema_version': 2,
+            'name': f'{node_name}-subtree',
+            'description': f'Subtree of {self.manifest.name} rooted at children of {node_name}',
+            'pattern': self.manifest.pattern or 'flat',
+            'nodes': [n.to_dict() for n in subtree_nodes],
+            'settings': {
+                'verify_ssh': settings.verify_ssh,
+                'cleanup_on_failure': settings.cleanup_on_failure,
+                'timeout_buffer': settings.timeout_buffer,
+                'on_error': settings.on_error,
+            },
+        })

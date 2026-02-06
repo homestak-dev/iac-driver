@@ -44,13 +44,14 @@ class RecursiveScenarioAction:
         ssh_user: SSH username (default: 'root')
     """
     name: str
-    scenario_name: str
+    scenario_name: str = ''
     host_attr: str = 'inner_ip'
     timeout: int = 600
     scenario_args: list[str] = field(default_factory=list)
     context_keys: list[str] = field(default_factory=list)
     use_pty: bool = True
     ssh_user: str = 'root'
+    raw_command: str = ''  # When set, replaces the default homestak scenario command
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
         """Execute scenario via SSH with streaming output.
@@ -127,7 +128,10 @@ class RecursiveScenarioAction:
             )
 
     def _build_remote_command(self) -> str:
-        """Build the homestak command to run on the remote host.
+        """Build the command to run on the remote host.
+
+        When raw_command is set, uses it directly (with serve-repos prefix if active).
+        Otherwise builds the default homestak scenario command.
 
         All arguments are shell-quoted to handle JSON and other special characters
         that may be passed via scenario_args.
@@ -138,6 +142,13 @@ class RecursiveScenarioAction:
         """
         # Build env var prefix if serve-repos is active
         env_prefix = self._build_serve_repos_prefix()
+
+        if self.raw_command:
+            # Use raw command directly (caller is responsible for quoting)
+            cmd = self.raw_command
+            if env_prefix:
+                return f'{env_prefix} {cmd}'
+            return cmd
 
         cmd_parts = [
             'homestak', 'scenario', self.scenario_name,

@@ -1,47 +1,28 @@
-"""Recursive PVE scenarios with manifest-driven depth.
+"""PVE lifecycle actions for nested/recursive deployments.
 
-These scenarios use RecursiveScenarioAction to execute scenarios on nested
-bootstrapped hosts, enabling N-level nesting defined by manifest configuration.
+These actions handle the bootstrapping and configuration of inner PVE hosts:
+- Bootstrap (curl|bash installer)
+- Secrets management (copy, inject SSH keys, API tokens)
+- Network configuration (vmbr0 bridge)
+- Node config generation
+- Image management (ensure packer image exists)
 
-Key differences from nested-pve scenarios:
-- Manifest-driven: N is data, not code
-- Uses RecursiveScenarioAction: SSH streaming with --json-output
-- Uses bootstrap: Inner hosts install homestak, not file sync
-
-Scenarios:
-- recursive-pve-constructor: Build N-level stack per manifest
-- recursive-pve-destructor: Tear down stack (reverse order)
-- recursive-pve-roundtrip: Constructor + verify + destructor
+Extracted from scenarios/recursive_pve.py for reuse by the operator engine.
 """
 
+import base64
+import json
 import logging
 import os
+import subprocess
 import time
 from dataclasses import dataclass
 from typing import Optional
 
-from actions import (
-    TofuApplyAction,
-    TofuApplyInlineAction,
-    TofuDestroyAction,
-    TofuDestroyInlineAction,
-    StartVMAction,
-    WaitForGuestAgentAction,
-    WaitForSSHAction,
-    RecursiveScenarioAction,
-    DownloadGitHubReleaseAction,
-    LookupVMIPAction,
-)
 from common import ActionResult, run_ssh
 from config import HostConfig
-from manifest import Manifest, ManifestLevel, load_manifest
-from scenarios import register_scenario
 
 logger = logging.getLogger(__name__)
-
-
-# Default timeout for recursive scenario execution
-DEFAULT_RECURSIVE_TIMEOUT = 1200
 
 
 def _image_to_asset_name(image: str) -> str:
@@ -62,6 +43,68 @@ def _image_to_asset_name(image: str) -> str:
         return f"{image}.qcow2"
     # Otherwise, append -custom
     return f"{image}-custom.qcow2"
+
+
+@dataclass
+class EnsureImageAction:
+    """Ensure packer image exists on PVE host, download if missing."""
+    name: str
+
+    def run(self, config: HostConfig, context: dict) -> ActionResult:
+        """Check for image, download from release if missing."""
+        start = time.time()
+
+        pve_host = config.ssh_host
+        ssh_user = config.ssh_user
+        image_name = config.packer_image.replace('.qcow2', '.img')
+        image_path = f'/var/lib/vz/template/iso/{image_name}'
+
+        # Use sudo if not root
+        sudo = '' if ssh_user == 'root' else 'sudo '
+
+        # Check if image exists
+        logger.info(f"[{self.name}] Checking for {image_name} on {pve_host}...")
+        rc, out, err = run_ssh(pve_host, f'{sudo}test -f {image_path} && echo exists',
+                               user=ssh_user, timeout=30)
+
+        if rc == 0 and 'exists' in out:
+            return ActionResult(
+                success=True,
+                message=f"Image {image_name} already exists",
+                duration=time.time() - start
+            )
+
+        # Download from release
+        repo = config.packer_release_repo
+        tag = config.packer_release
+        url = f'https://github.com/{repo}/releases/download/{tag}/{config.packer_image}'
+
+        logger.info(f"[{self.name}] Downloading {config.packer_image} from {repo} {tag}...")
+
+        # Create directory and download
+        rc, out, err = run_ssh(pve_host, f'{sudo}mkdir -p /var/lib/vz/template/iso',
+                               user=ssh_user, timeout=30)
+        if rc != 0:
+            return ActionResult(
+                success=False,
+                message=f"Failed to create directory: {err}",
+                duration=time.time() - start
+            )
+
+        dl_cmd = f'{sudo}curl -fSL -o {image_path} {url}'
+        rc, out, err = run_ssh(pve_host, dl_cmd, user=ssh_user, timeout=300)
+        if rc != 0:
+            return ActionResult(
+                success=False,
+                message=f"Failed to download image: {err}",
+                duration=time.time() - start
+            )
+
+        return ActionResult(
+            success=True,
+            message=f"Downloaded {image_name}",
+            duration=time.time() - start
+        )
 
 
 @dataclass
@@ -135,7 +178,6 @@ sudo pveum user token add root@pam tofu --privsep 0 --output-format json
             )
 
         # Step 3: Parse the token from JSON output
-        import json
         try:
             token_data = json.loads(out.strip())
             full_token = f"{token_data['full-tokenid']}={token_data['value']}"
@@ -307,7 +349,6 @@ class CopySecretsAction:
 
         logger.info(f"[{self.name}] Copying secrets to {host}...")
 
-        import subprocess
         # Use automation_user for VM connections
         user = config.automation_user
         cmd = [
@@ -483,7 +524,6 @@ class CopySSHPrivateKeyAction:
 
         # Copy private key to both root and homestak users
         # Using base64 encoding to avoid shell escaping issues with the key content
-        import base64
         privkey_b64 = base64.b64encode(privkey.encode()).decode()
         pubkey_b64 = base64.b64encode(pubkey.encode()).decode() if pubkey else ''
 
@@ -598,7 +638,6 @@ with open(secrets_file, "r") as f:
         sys.exit(1)
 print(f"Injected {{key_name}}")
 '''
-        import base64
         encoded = base64.b64encode(python_script.encode()).decode()
         inject_script = f"echo '{encoded}' | base64 -d | sudo python3 - {self.key_name}"
 
@@ -756,415 +795,3 @@ class GenerateNodeConfigAction:
             message=f"Node config generated on {host}",
             duration=time.time() - start
         )
-
-
-class RecursivePVEBase:
-    """Base class for recursive PVE scenarios with manifest support.
-
-    Attributes:
-        manifest: Loaded manifest defining recursion levels
-        keep_on_failure: If True, don't cleanup on failure (for debugging)
-            Set by --keep-on-failure CLI flag or manifest settings.cleanup_on_failure
-    """
-
-    # To be set by subclasses or CLI
-    manifest: Optional[Manifest] = None
-    keep_on_failure: bool = False
-
-    def _get_effective_keep_on_failure(self) -> bool:
-        """Get effective keep_on_failure value.
-
-        CLI --keep-on-failure flag takes precedence over manifest setting.
-        Manifest cleanup_on_failure=false means keep_on_failure=true.
-        """
-        # CLI flag takes precedence (if set to True)
-        if self.keep_on_failure:
-            return True
-        # Otherwise, invert manifest setting (cleanup_on_failure=false -> keep=true)
-        if self.manifest and not self.manifest.settings.cleanup_on_failure:
-            return True
-        return False
-
-    def _get_recursive_timeout(self, base_timeout: int = DEFAULT_RECURSIVE_TIMEOUT) -> int:
-        """Get timeout for recursive actions, applying timeout_buffer.
-
-        Each level gets base_timeout minus timeout_buffer to ensure outer
-        levels have time for cleanup if inner levels timeout.
-        """
-        if self.manifest:
-            buffer = self.manifest.settings.timeout_buffer
-            return max(base_timeout - buffer, 60)  # Minimum 60s
-        return base_timeout
-
-    def get_level_phases(
-        self,
-        level: ManifestLevel,
-        config: HostConfig,
-        remaining_manifest: Optional[Manifest] = None,
-        is_leaf: bool = False
-    ) -> list[tuple[str, object, str]]:
-        """Get phases for a single level.
-
-        Args:
-            level: Current level from manifest
-            config: Host config
-            remaining_manifest: Manifest with remaining levels (for recursion)
-            is_leaf: True if this is the leaf level (no children)
-
-        Returns:
-            List of (phase_name, action, description) tuples
-        """
-        phases = []
-        host_key = f'{level.name}_ip'
-        vm_id_key = f'{level.name}_vm_id'
-
-        # Phase 1: Provision VM using tofu
-        # Use inline action for inline mode, env-based action for legacy mode
-        if level.is_inline:
-            provision_action = TofuApplyInlineAction(
-                name=f'provision-{level.name}',
-                vm_name=level.name,
-                vmid=level.vmid,
-                template=level.template,
-                vm_preset=level.vm_preset,
-                image=level.image,
-            )
-        else:
-            provision_action = TofuApplyAction(
-                name=f'provision-{level.name}',
-                env_name=level.env,
-                image_override=level.image,
-                vmid_offset=level.vmid_offset,
-                context_prefix=level.name,  # Use level name for context keys
-            )
-        phases.append((
-            f'provision_{level.name}',
-            provision_action,
-            f'Provision {level.name}'
-        ))
-
-        # Phase 2: Start VM
-        phases.append((
-            f'start_{level.name}',
-            StartVMAction(
-                name=f'start-{level.name}',
-                vm_id_attr=vm_id_key,
-                pve_host_attr='ssh_host',
-            ),
-            f'Start {level.name}'
-        ))
-
-        # Phase 3: Wait for IP
-        phases.append((
-            f'wait_ip_{level.name}',
-            WaitForGuestAgentAction(
-                name=f'wait-ip-{level.name}',
-                vm_id_attr=vm_id_key,
-                pve_host_attr='ssh_host',
-                ip_context_key=host_key,
-                timeout=300,
-            ),
-            f'Wait for {level.name} IP'
-        ))
-
-        # Phase 4: Verify SSH
-        phases.append((
-            f'verify_ssh_{level.name}',
-            WaitForSSHAction(
-                name=f'verify-ssh-{level.name}',
-                host_key=host_key,
-                timeout=120,
-            ),
-            f'Verify SSH on {level.name}'
-        ))
-
-        # If not leaf: bootstrap and recurse
-        if not is_leaf and remaining_manifest:
-            # Phase 5: Bootstrap
-            phases.append((
-                f'bootstrap_{level.name}',
-                BootstrapAction(
-                    name=f'bootstrap-{level.name}',
-                    host_attr=host_key,
-                    timeout=600,
-                ),
-                f'Bootstrap {level.name}'
-            ))
-
-            # Phase 6: Copy secrets
-            phases.append((
-                f'secrets_{level.name}',
-                CopySecretsAction(
-                    name=f'secrets-{level.name}',
-                    host_attr=host_key,
-                ),
-                f'Copy secrets to {level.name}'
-            ))
-
-            # Phase 6b: Inject outer host SSH key for leaf VM access
-            phases.append((
-                f'sshkey_{level.name}',
-                InjectSSHKeyAction(
-                    name=f'sshkey-{level.name}',
-                    host_attr=host_key,
-                ),
-                f'Inject SSH key on {level.name}'
-            ))
-
-            # Phase 6c: Copy SSH private key for outbound SSH from inner host
-            # This enables inner-pve to SSH to VMs it provisions
-            phases.append((
-                f'privkey_{level.name}',
-                CopySSHPrivateKeyAction(
-                    name=f'privkey-{level.name}',
-                    host_attr=host_key,
-                ),
-                f'Copy SSH private key to {level.name}'
-            ))
-
-            # Phase 7: Run post_scenario (e.g., pve-setup) - installs PVE
-            if level.post_scenario:
-                phases.append((
-                    f'post_{level.name}',
-                    RecursiveScenarioAction(
-                        name=f'post-{level.name}',
-                        scenario_name=level.post_scenario,
-                        host_attr=host_key,
-                        scenario_args=level.post_scenario_args,
-                        timeout=self._get_recursive_timeout(600),
-                    ),
-                    f'Run {level.post_scenario} on {level.name}'
-                ))
-
-            # Phase 8: Configure vmbr0 bridge (required for nested VMs)
-            phases.append((
-                f'network_{level.name}',
-                ConfigureNetworkBridgeAction(
-                    name=f'network-{level.name}',
-                    host_attr=host_key,
-                ),
-                f'Configure vmbr0 bridge on {level.name}'
-            ))
-
-            # Phase 9: Generate node config (requires PVE installed)
-            phases.append((
-                f'nodeconfig_{level.name}',
-                GenerateNodeConfigAction(
-                    name=f'nodeconfig-{level.name}',
-                    host_attr=host_key,
-                ),
-                f'Generate node config on {level.name}'
-            ))
-
-            # Phase 9: Create API token and inject into secrets.yaml
-            # Token key is derived from hostname on the target (retrieved dynamically)
-            phases.append((
-                f'apitoken_{level.name}',
-                CreateApiTokenAction(
-                    name=f'apitoken-{level.name}',
-                    host_attr=host_key,
-                ),
-                f'Create API token on {level.name}'
-            ))
-
-            # Phase 9b: Inject inner host's own SSH key for VM access
-            # This enables the inner host to SSH to VMs it provisions
-            phases.append((
-                f'selfsshkey_{level.name}',
-                InjectSelfSSHKeyAction(
-                    name=f'selfsshkey-{level.name}',
-                    host_attr=host_key,
-                ),
-                f'Inject {level.name} SSH key'
-            ))
-
-            # Phase 10: Download packer image for next level
-            next_level = remaining_manifest.get_current_level()
-            # Get image from next level (fall back to debian-12 if not specified)
-            next_image = next_level.image or 'debian-12'
-            next_asset = _image_to_asset_name(next_image)
-            phases.append((
-                f'download_image_{next_level.name}',
-                DownloadGitHubReleaseAction(
-                    name=f'download-image-{next_level.name}',
-                    asset_name=next_asset,
-                    dest_dir='/var/lib/vz/template/iso',
-                    host_key=host_key,
-                    rename_ext='.img',
-                    timeout=300,
-                ),
-                f'Download {next_asset} for {next_level.name}'
-            ))
-
-            # Phase 11: Recurse to next level
-            # Build args for recursive call
-            # Use level.name as the host (in inline mode, level.name = VM hostname = node name)
-            # Skip preflight on recursive calls - API may not be fully ready after pve-setup
-            host_for_recurse = level.name if level.is_inline else level.env
-            recurse_args = ['--host', host_for_recurse, '--manifest-json', remaining_manifest.to_json(), '--skip-preflight']
-            # Propagate keep_on_failure setting
-            if self._get_effective_keep_on_failure():
-                recurse_args.append('--keep-on-failure')
-
-            phases.append((
-                f'recurse_{next_level.name}',
-                RecursiveScenarioAction(
-                    name=f'recurse-{next_level.name}',
-                    scenario_name='recursive-pve-constructor',
-                    host_attr=host_key,
-                    scenario_args=recurse_args,
-                    context_keys=[f'{next_level.name}_ip', f'{next_level.name}_vm_id'],
-                    timeout=self._get_recursive_timeout(),
-                ),
-                f'Build {next_level.name}'
-            ))
-
-        return phases
-
-
-@register_scenario
-class RecursivePVEConstructor(RecursivePVEBase):
-    """Build N-level nested PVE stack from manifest."""
-
-    name = 'recursive-pve-constructor'
-    description = 'Build N-level nested PVE stack per manifest'
-    expected_runtime = 360  # ~6 min for N=2
-
-    def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
-        """Return phases for recursive construction."""
-        # Load manifest from context or default
-        # Note: In recursive calls, manifest comes from --manifest-json
-        if self.manifest is None:
-            self.manifest = load_manifest()
-
-        level = self.manifest.get_current_level()
-
-        if self.manifest.is_leaf:
-            # Leaf level: just provision, start, verify
-            return self.get_level_phases(level, config, is_leaf=True)
-        else:
-            # Non-leaf: provision, bootstrap, recurse
-            remaining = self.manifest.get_remaining_manifest()
-            return self.get_level_phases(level, config, remaining, is_leaf=False)
-
-
-@register_scenario
-class RecursivePVEDestructor(RecursivePVEBase):
-    """Tear down N-level nested PVE stack."""
-
-    name = 'recursive-pve-destructor'
-    description = 'Destroy N-level nested PVE stack'
-    expected_runtime = 120  # ~2 min
-    requires_confirmation = True
-
-    def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
-        """Return phases for recursive destruction.
-
-        Destruction happens in reverse order - destroy innermost first.
-        """
-        if self.manifest is None:
-            self.manifest = load_manifest()
-
-        phases = []
-
-        # For destruction, we need to destroy in reverse order
-        # First, recurse to destroy inner levels (if any)
-        if not self.manifest.is_leaf:
-            level = self.manifest.get_current_level()
-            host_key = f'{level.name}_ip'
-            remaining = self.manifest.get_remaining_manifest()
-
-            # Look up the VM's IP from the guest agent
-            # This is needed because the destructor runs as a new scenario
-            # and doesn't have context from the constructor
-            phases.append((
-                f'lookup_ip_{level.name}',
-                LookupVMIPAction(
-                    name=f'lookup-ip-{level.name}',
-                    vmid=level.vmid,
-                    ip_context_key=host_key,
-                ),
-                f'Look up {level.name} IP'
-            ))
-
-            # Build args for recursive call
-            # Use level.name as host in inline mode, level.env in legacy mode
-            # Skip preflight on recursive calls - we're already inside a running scenario
-            host_for_recurse = level.name if level.is_inline else level.env
-            recurse_args = [
-                '--host', host_for_recurse,
-                '--manifest-json', remaining.to_json(),
-                '--yes',  # Already confirmed at outer level
-                '--skip-preflight'
-            ]
-
-            # Recurse to destroy inner levels first
-            phases.append((
-                f'recurse_destroy',
-                RecursiveScenarioAction(
-                    name='recurse-destroy',
-                    scenario_name='recursive-pve-destructor',
-                    host_attr=host_key,
-                    scenario_args=recurse_args,
-                    timeout=self._get_recursive_timeout(600),
-                ),
-                'Destroy inner levels'
-            ))
-
-        # Then destroy this level (outermost for this invocation)
-        level = self.manifest.get_current_level()
-        # Use inline action for inline mode, env-based action for legacy mode
-        if level.is_inline:
-            destroy_action = TofuDestroyInlineAction(
-                name=f'destroy-{level.name}',
-                vm_name=level.name,
-                vmid=level.vmid,
-                template=level.template,
-                vm_preset=level.vm_preset,
-                image=level.image,
-            )
-        else:
-            destroy_action = TofuDestroyAction(
-                name=f'destroy-{level.name}',
-                env_name=level.env,
-            )
-        phases.append((
-            f'destroy_{level.name}',
-            destroy_action,
-            f'Destroy {level.name}'
-        ))
-
-        return phases
-
-
-@register_scenario
-class RecursivePVERoundtrip(RecursivePVEBase):
-    """Full roundtrip: construct, verify, destruct."""
-
-    name = 'recursive-pve-roundtrip'
-    description = 'Build N-level stack, verify, destroy (full cycle)'
-    expected_runtime = 540  # ~9 min for N=2
-
-    def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
-        """Return phases for full roundtrip.
-
-        Combines constructor phases with destructor phases.
-        """
-        if self.manifest is None:
-            self.manifest = load_manifest()
-
-        # Get all construction phases
-        constructor = RecursivePVEConstructor()
-        constructor.manifest = self.manifest
-        phases = constructor.get_phases(config)
-
-        # Add destruction phases
-        destructor = RecursivePVEDestructor()
-        destructor.manifest = self.manifest
-        destroy_phases = destructor.get_phases(config)
-
-        # Prefix destruction phase names to avoid conflicts
-        for name, action, desc in destroy_phases:
-            phases.append((f'cleanup_{name}', action, f'Cleanup: {desc}'))
-
-        return phases

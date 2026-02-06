@@ -21,7 +21,7 @@ from common import ActionResult, run_ssh
 from config import HostConfig
 from config_resolver import ConfigResolver
 from scenarios import register_scenario
-from scenarios.vm import EnsureImageAction
+from actions.pve_lifecycle import EnsureImageAction
 
 logger = logging.getLogger(__name__)
 

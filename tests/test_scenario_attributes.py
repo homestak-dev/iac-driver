@@ -74,21 +74,21 @@ class TestScenarioAttributes:
 class TestScenarioDefaults:
     """Test default values for scenarios without explicit attributes."""
 
-    def test_nested_pve_constructor_requires_host_config_by_default(self):
-        """nested-pve-constructor should require host config (no explicit attr)."""
-        scenario = get_scenario('nested-pve-constructor')
+    def test_spec_vm_roundtrip_requires_host_config_by_default(self):
+        """spec-vm-roundtrip should require host config (no explicit attr)."""
+        scenario = get_scenario('spec-vm-roundtrip')
         # Default should be True when not specified
         assert getattr(scenario, 'requires_host_config', True) is True
 
-    def test_nested_pve_constructor_does_not_require_root_by_default(self):
-        """nested-pve-constructor should not require root (no explicit attr)."""
-        scenario = get_scenario('nested-pve-constructor')
+    def test_spec_vm_roundtrip_does_not_require_root_by_default(self):
+        """spec-vm-roundtrip should not require root (no explicit attr)."""
+        scenario = get_scenario('spec-vm-roundtrip')
         # Default should be False when not specified
         assert getattr(scenario, 'requires_root', False) is False
 
-    def test_vm_constructor_requires_host_config_by_default(self):
-        """vm-constructor should require host config (no explicit attr)."""
-        scenario = get_scenario('vm-constructor')
+    def test_bootstrap_install_requires_host_config_by_default(self):
+        """bootstrap-install should require host config (no explicit attr)."""
+        scenario = get_scenario('bootstrap-install')
         assert getattr(scenario, 'requires_host_config', True) is True
 
 
@@ -130,8 +130,8 @@ class TestGetAttrDefaults:
 
     def test_getattr_returns_default_for_missing(self):
         """When attribute is missing, getattr should return default."""
-        scenario = get_scenario('nested-pve-constructor')
-        # These attributes are not defined on nested-pve-constructor
+        scenario = get_scenario('spec-vm-roundtrip')
+        # These attributes are not defined on spec-vm-roundtrip
         # Default for requires_root should be False
         assert getattr(scenario, 'requires_root', False) is False
         # Default for requires_host_config should be True
@@ -150,15 +150,10 @@ class TestExpectedRuntime:
             assert isinstance(runtime, int), f"{name} expected_runtime should be int"
             assert runtime > 0, f"{name} expected_runtime should be positive"
 
-    def test_nested_pve_roundtrip_runtime(self):
-        """nested-pve-roundtrip should have ~9 min runtime."""
-        scenario = get_scenario('nested-pve-roundtrip')
-        assert scenario.expected_runtime == 540  # 9 * 60
-
-    def test_vm_roundtrip_runtime(self):
-        """vm-roundtrip should have ~2 min runtime."""
-        scenario = get_scenario('vm-roundtrip')
-        assert scenario.expected_runtime == 120  # 2 * 60
+    def test_spec_vm_roundtrip_runtime(self):
+        """spec-vm-roundtrip should have ~3 min runtime."""
+        scenario = get_scenario('spec-vm-roundtrip')
+        assert scenario.expected_runtime == 180  # 3 * 60
 
     def test_packer_sync_runtime(self):
         """packer-sync should have short runtime (~30s)."""
@@ -169,24 +164,14 @@ class TestExpectedRuntime:
 class TestRequiresConfirmation:
     """Test requires_confirmation attribute for destructive scenarios."""
 
-    def test_vm_destructor_requires_confirmation(self):
-        """VMDestructor should require confirmation."""
-        scenario = get_scenario('vm-destructor')
-        assert getattr(scenario, 'requires_confirmation', False) is True
-
-    def test_nested_pve_destructor_requires_confirmation(self):
-        """NestedPVEDestructor should require confirmation."""
-        scenario = get_scenario('nested-pve-destructor')
-        assert getattr(scenario, 'requires_confirmation', False) is True
-
-    def test_vm_constructor_does_not_require_confirmation(self):
-        """VMConstructor should not require confirmation (non-destructive)."""
-        scenario = get_scenario('vm-constructor')
-        assert getattr(scenario, 'requires_confirmation', False) is False
-
     def test_packer_build_does_not_require_confirmation(self):
         """PackerBuild should not require confirmation (non-destructive)."""
         scenario = get_scenario('packer-build')
+        assert getattr(scenario, 'requires_confirmation', False) is False
+
+    def test_pve_setup_does_not_require_confirmation(self):
+        """PVESetup should not require confirmation."""
+        scenario = get_scenario('pve-setup')
         assert getattr(scenario, 'requires_confirmation', False) is False
 
 
