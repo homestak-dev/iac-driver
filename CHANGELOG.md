@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Theme: Scenario Consolidation (Phase 3 of #140)
+
+Retires 9 legacy scenarios and 3 remote actions, replacing them with the manifest-based operator engine. PVE lifecycle and subtree delegation enable arbitrary nesting depth via verb commands.
+
+### Added
+- Add PVE lifecycle actions in `src/actions/pve_lifecycle.py` (#145)
+  - 9 extracted actions: EnsureImageAction, BootstrapAction, CopySecretsAction, InjectSSHKeyAction, CopySSHPrivateKeyAction, InjectSelfSSHKeyAction, ConfigureNetworkBridgeAction, GenerateNodeConfigAction, CreateApiTokenAction
+  - `_image_to_asset_name()` helper for manifest image → release asset mapping
+- Add `ManifestGraph.extract_subtree()` for subtree delegation (#145)
+  - Direct children promoted to roots; deeper descendants keep parent refs
+  - Settings inherited from original manifest
+- Add `raw_command` field to `RecursiveScenarioAction` (#145)
+  - Enables verb delegation via SSH without legacy scenario wrappers
+- Add operator PVE lifecycle and subtree delegation (#145)
+  - `_run_pve_lifecycle()`: 10-phase PVE setup (bootstrap, secrets, bridge, API token, image download)
+  - `_delegate_subtree()`: SSH to inner PVE, run `./run.sh create --manifest-json`
+  - Arbitrary nesting depth (N=2, N=3, etc.) via recursion
+- Add CLI migration hints for retired scenarios (#145)
+  - `RETIRED_SCENARIOS` dict maps 9 old names to verb command equivalents
+  - Running a retired scenario prints clear migration message + exit code 1
+
+### Removed
+- Remove legacy scenario files (#145): `vm.py`, `nested_pve.py`, `recursive_pve.py`, `cleanup_nested_pve.py`
+  - Retired: vm-constructor, vm-destructor, vm-roundtrip, nested-pve-*, recursive-pve-*
+- Remove legacy remote actions (#113): `TofuApplyRemoteAction`, `TofuDestroyRemoteAction`, `SyncReposToVMAction`
+  - Replaced by RecursiveScenarioAction with raw_command and bootstrap-based installation
+
+---
+
 ### Theme: Manifest-Based Orchestration Phase 2
 
 Adds manifest schema v2 (graph-based nodes) and operator engine for create/destroy/test lifecycle.

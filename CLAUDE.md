@@ -76,20 +76,18 @@ All repos are siblings in a common parent directory:
 │   │   │   ├── server.py      # Unified HTTPS server
 │   │   │   └── cli.py         # serve verb CLI integration
 │   │   ├── actions/      # Reusable primitive operations
-│   │   │   ├── tofu.py   # TofuApply/Destroy[Remote]Action
+│   │   │   ├── tofu.py   # TofuApplyAction, TofuDestroyAction
 │   │   │   ├── ansible.py# AnsiblePlaybookAction
 │   │   │   ├── ssh.py    # SSHCommandAction, WaitForSSHAction
 │   │   │   ├── proxmox.py# StartVMAction, WaitForGuestAgentAction
 │   │   │   ├── file.py   # DownloadFileAction, RemoveImageAction
-│   │   │   └── recursive.py   # RecursiveScenarioAction
+│   │   │   ├── recursive.py   # RecursiveScenarioAction
+│   │   │   └── pve_lifecycle.py # PVE lifecycle actions (bootstrap, secrets, bridge, etc.)
 │   │   ├── scenarios/    # Workflow definitions
-│   │   │   ├── nested_pve.py        # nested-pve-{constructor,destructor,roundtrip}
-│   │   │   ├── recursive_pve.py     # recursive-pve-{constructor,destructor,roundtrip}
-│   │   │   ├── vm.py                # vm-{constructor,destructor,roundtrip}
 │   │   │   ├── pve_setup.py         # pve-setup (local/remote)
 │   │   │   ├── user_setup.py        # user-setup (local/remote)
 │   │   │   ├── bootstrap.py         # bootstrap-install
-│   │   │   └── cleanup_nested_pve.py # Shared cleanup actions
+│   │   │   └── spec_vm.py           # spec-vm-roundtrip
 │   │   └── reporting/    # Test report generation (JSON + markdown)
 │   ├── reports/          # Generated test reports
 │   └── scripts/          # Helper scripts
@@ -220,8 +218,6 @@ Actions in `src/actions/tofu.py` use ConfigResolver to generate tfvars and run t
 |--------|-------------|
 | `TofuApplyAction` | Run tofu apply with ConfigResolver on local host |
 | `TofuDestroyAction` | Run tofu destroy with ConfigResolver on local host |
-| `TofuApplyRemoteAction` | Run ConfigResolver + tofu apply on remote host via SSH |
-| `TofuDestroyRemoteAction` | Run ConfigResolver + tofu destroy on remote host via SSH |
 
 **State Isolation:** Each env+node gets isolated state via explicit `-state` flag:
 ```
@@ -229,16 +225,6 @@ iac-driver/.states/{env}-{node}/terraform.tfstate
 ```
 
 **Important:** The `-state` flag is required because `TF_DATA_DIR` only affects plugin/module caching, not state file location. Without explicit state isolation, running scenarios on different hosts can cause state conflicts.
-
-**Remote Actions:** Run ConfigResolver on the target host (recursive pattern):
-```python
-TofuApplyRemoteAction(
-    name='provision-test-vm',
-    env_name='test',           # Environment to deploy
-    node_name='nested-pve',    # Node in remote site-config
-    host_key='inner_ip',       # Context key for SSH target
-)
-```
 
 **Context Passing:** TofuApplyAction extracts VM IDs from resolved config and adds them to context:
 ```python
@@ -382,7 +368,7 @@ nodes:
     parent: root-pve
 ```
 
-v2 manifests are backward-compatible: nodes are converted to levels via topological sort for use with existing recursive-pve scenarios.
+v2 manifests are backward-compatible: nodes are converted to levels via topological sort for v1 compatibility.
 
 ### Verb Commands
 
@@ -426,9 +412,13 @@ The `on_error` setting controls behavior when a node fails:
 | `rollback` | Destroy already-created nodes, then halt |
 | `continue` | Skip failed node, continue with independent nodes |
 
-### Depth Limit
+### Delegation Model
 
-The operator supports flat (depth=0) and tiered (depth=1) topologies via local tofu execution. Nodes at depth>1 require SSH-based remote execution (deferred to #145). Use `--scenario recursive-pve-*` for deeper nesting.
+The operator handles root nodes (depth 0) locally. PVE nodes with children trigger:
+1. PVE lifecycle setup (bootstrap, secrets, bridge, API token, image download)
+2. Subtree delegation via SSH — extracts child nodes as a new manifest, runs `./run.sh create --manifest-json` on the inner PVE
+
+This recursion handles arbitrary depth (N=2, N=3, etc.) without depth limits.
 
 ## Common Commands
 
@@ -524,85 +514,48 @@ Node configuration merges in `tofu/envs/common/locals.tf`:
 - **Cloud-init files**: `{hostname}-meta.yaml`, `{hostname}-user.yaml`
 - **Environments**: dev (permissive SSH, passwordless sudo) vs prod (strict SSH, fail2ban)
 
-## Manifest-Driven Recursive Scenarios (v0.39+)
+## Manifest-Driven Orchestration
 
-Recursive-pve scenarios use manifests to define N-level nested PVE deployments. Manifests are YAML files in `site-config/manifests/`.
-
-### Manifest Schema (v1)
-
-Levels support two modes:
-- **env mode**: `env` FK references site-config/envs/ (traditional)
-- **vm_preset mode**: `vm_preset` + `vmid` + `image` (simpler, no envs/ dependency)
-
-```yaml
-schema_version: 1
-name: n2-quick
-description: "Quick 2-level nested PVE test"
-
-levels:
-  # vm_preset mode (v0.41+) - preferred for manifests
-  - name: nested-pve
-    vm_preset: large       # FK to site-config/vms/presets/
-    vmid: 99011            # Explicit VM ID
-    image: debian-13-pve   # Required in vm_preset mode
-    post_scenario: pve-setup
-    post_scenario_args: ["--local", "--skip-preflight"]
-
-  - name: test
-    vm_preset: medium
-    vmid: 99021
-    image: debian-12
-    post_scenario: null    # Leaf level, no post-scenario
-
-settings:
-  verify_ssh: true
-  cleanup_on_failure: true
-  timeout_buffer: 60
-```
-
-### Built-in Manifests
-
-| Manifest | Levels | Description |
-|----------|--------|-------------|
-| `n1-basic` | 1 | test-vm only (single-level) |
-| `n2-quick` | 2 | nested-pve → test |
-| `n3-full` | 3 | root-pve → leaf-pve → test |
+Manifests define N-level nested PVE deployments. Schema v2 (graph-based) is the primary format; v1 (linear levels) is supported for backward compatibility. Manifests are YAML files in `site-config/manifests/`.
 
 ### Usage
 
 ```bash
-# Use built-in manifest
-./run.sh --scenario recursive-pve-roundtrip --host father --manifest n2-quick
+# Create infrastructure from manifest
+./run.sh create -M n2-quick-v2 -H father
 
-# Use custom manifest file
-./run.sh --scenario recursive-pve-constructor --host father --manifest-file /path/to/manifest.yaml
+# Destroy infrastructure
+./run.sh destroy -M n2-quick-v2 -H father --yes
 
-# Limit depth for testing
-./run.sh --scenario recursive-pve-constructor --host father --manifest n3-full --depth 2
+# Full roundtrip: create, verify SSH, destroy
+./run.sh test -M n2-quick-v2 -H father
 
-# Keep levels on failure for debugging
-./run.sh --scenario recursive-pve-roundtrip --host father --manifest n2-quick --keep-on-failure
+# Dry-run preview
+./run.sh create -M n2-quick-v2 -H father --dry-run
+
+# JSON output for programmatic use
+./run.sh test -M n1-basic-v2 -H father --json-output
 ```
 
 ### RecursiveScenarioAction
 
-The `RecursiveScenarioAction` executes scenarios on remote hosts via SSH with PTY streaming:
+The `RecursiveScenarioAction` executes commands on remote hosts via SSH with PTY streaming. Used by the operator for subtree delegation:
 
 ```python
 RecursiveScenarioAction(
-    name='recurse-inner',
-    scenario_name='recursive-pve-constructor',
-    host_attr='inner_ip',              # Context key for SSH target
-    scenario_args=['--manifest-json', manifest.to_json()],
-    context_keys=['leaf_ip', 'leaf_vm_id'],  # Keys to extract from result
+    name='delegate-subtree',
+    raw_command='cd /usr/local/lib/homestak/iac-driver && ./run.sh create --manifest-json \'...\' -H hostname --json-output',
+    host_attr='pve_ip',
+    context_keys=['edge_ip', 'edge_vm_id'],
     timeout=1200,
 )
 ```
 
 Key features:
 - Real-time output streaming via PTY allocation
-- JSON result parsing from `--json-output` scenarios
-- Context key extraction for parent scenario consumption
+- JSON result parsing from `--json-output` commands
+- Context key extraction for parent operator consumption
+- `raw_command` field for verb delegation (v0.47+); `scenario_name` field for legacy scenario execution
 
 ## Naming Conventions
 
@@ -610,7 +563,7 @@ Key features:
 
 | Type | Pattern | Examples |
 |------|---------|----------|
-| **Scenarios** | `noun-verb` | `pve-setup`, `vm-constructor`, `user-setup`, `nested-pve-roundtrip` |
+| **Scenarios** | `noun-verb` | `pve-setup`, `user-setup`, `bootstrap-install`, `spec-vm-roundtrip` |
 | **Phases** | `verb_noun` | `ensure_pve`, `setup_pve`, `provision_vm`, `create_user` |
 | **Actions** | `VerbNounAction` | `EnsurePVEAction`, `StartVMAction`, `WaitForSSHAction` |
 
@@ -631,8 +584,8 @@ Key features:
 
 ```python
 # Scenario class (noun-verb pattern)
-class VMConstructor:
-    name = 'vm-constructor'
+class PVESetup:
+    name = 'pve-setup'
 
 # Phase definitions (verb_noun pattern)
 phases = [
@@ -686,7 +639,7 @@ When provisioning a fresh Debian host that doesn't have PVE yet:
 1. Create `hosts/{hostname}.yaml` (or run `make host-config` on the target)
 2. Run `./run.sh --scenario pve-setup --host {hostname}`
 3. After PVE install, `nodes/{hostname}.yaml` is auto-generated
-4. Host is now usable for `vm-constructor` and other PVE scenarios
+4. Host is now usable for `./run.sh create` and other PVE scenarios
 
 **HostConfig.is_host_only:**
 
@@ -771,9 +724,6 @@ Operations use tiered timeouts based on expected duration. Scenarios can overrid
 | `TofuApplyAction` | timeout_init | 120s | `tofu init` |
 | `TofuApplyAction` | timeout_apply | 300s | `tofu apply` |
 | `TofuDestroyAction` | timeout | 300s | `tofu destroy` |
-| `TofuApplyRemoteAction` | timeout_init | 120s | Remote init |
-| `TofuApplyRemoteAction` | timeout_apply | 300s | Remote apply |
-| `TofuDestroyRemoteAction` | timeout | 300s | Remote destroy |
 | `AnsiblePlaybookAction` | timeout | 600s | Playbook execution |
 | `AnsiblePlaybookAction` | ssh_timeout | 60s | Pre-playbook SSH wait |
 | `WaitForSSHAction` | timeout | 60s | SSH availability |
@@ -781,19 +731,20 @@ Operations use tiered timeouts based on expected duration. Scenarios can overrid
 | `WaitForGuestAgentAction` | timeout | 300s | Guest agent |
 | `WaitForGuestAgentAction` | interval | 5s | Retry interval |
 | `SSHCommandAction` | timeout | 60s | Single SSH command |
-| `SyncReposToVMAction` | timeout | 300s | rsync/tar transfer |
 | `DownloadGitHubReleaseAction` | timeout | 300s | Asset download |
 | `VerifySSHChainAction` | timeout | 60s | Jump host verification |
+| `RecursiveScenarioAction` | timeout | 1200s | Subtree delegation via SSH |
 
-### Scenario Overrides (nested-pve)
+### Operator PVE Lifecycle Timeouts
 
 | Phase | Timeout | Rationale |
 |-------|---------|-----------|
 | wait_ip | 300s | Guest agent can be slow on first boot |
-| install_pve | 1200s | PVE install includes apt, kernel, reboot |
-| configure | 600s | Ansible nested-pve-setup playbook |
-| download_image | 300s | ~200MB image from GitHub |
-| test_vm_apply | 300s | Remote tofu on nested PVE |
+| bootstrap | 600s | curl\|bash installer on remote host |
+| pve-setup (delegation) | 1200s | PVE install includes apt, kernel, reboot |
+| configure_bridge | 120s | Network bridge configuration |
+| download_images | 300s | ~200MB image from GitHub |
+| subtree_delegation | 1200s | SSH to inner PVE, run operator |
 
 ### Tuning Guidelines
 
@@ -821,44 +772,20 @@ Outer PVE Host (pve)
 
 ### CLI
 
-The orchestrator runs scenarios composed of reusable actions:
+The orchestrator supports two command styles: verb commands for manifest-based orchestration, and `--scenario` for standalone workflows.
 
 ```bash
-# List available scenarios
-./run.sh --list-scenarios
+# Verb commands (manifest-based)
+./run.sh create -M n2-quick-v2 -H father              # Create infrastructure
+./run.sh destroy -M n2-quick-v2 -H father --yes        # Destroy infrastructure
+./run.sh test -M n2-quick-v2 -H father                 # Full roundtrip
 
-# List phases for a scenario
-./run.sh --scenario nested-pve-roundtrip --list-phases
-
-# Run full integration roundtrip (construct, verify, destruct)
-./run.sh --scenario nested-pve-roundtrip --host father --verbose
-
-# Run only constructor (leave environment running)
-./run.sh --scenario nested-pve-constructor --host father
-
-# Run only destructor (cleanup existing environment)
-./run.sh --scenario nested-pve-destructor --host father --inner-ip 10.0.12.x
-
-# VM test (deploy, verify SSH, destroy)
-./run.sh --scenario vm-roundtrip --host father
-
-# Deploy custom environment (multi-VM)
-./run.sh --scenario vm-constructor --host father --env ansible-test
-
-# Install + configure PVE (local)
-./run.sh --scenario pve-setup --local
-
-# Install + configure PVE (remote)
-./run.sh --scenario pve-setup --remote 10.0.12.x
-
-# Create homestak user (local)
-./run.sh --scenario user-setup --local
-
-# Create homestak user (remote)
-./run.sh --scenario user-setup --remote 10.0.12.x
-
-# Test bootstrap on a VM (requires vm_ip)
-./run.sh --scenario bootstrap-install --vm-ip 10.0.12.x --homestak-user homestak
+# Scenarios (standalone workflows)
+./run.sh --scenario pve-setup --local                   # Install + configure PVE
+./run.sh --scenario pve-setup --remote 10.0.12.x        # Remote PVE setup
+./run.sh --scenario user-setup --local                  # Create homestak user
+./run.sh --scenario bootstrap-install --vm-ip 10.0.12.x # Test bootstrap
+./run.sh --list-scenarios                                # List available scenarios
 ```
 
 **CLI Options:**
@@ -873,7 +800,6 @@ The orchestrator runs scenarios composed of reusable actions:
 | `--skip`, `-s` | Phases to skip (repeatable) |
 | `--list-scenarios` | List available scenarios |
 | `--list-phases` | List phases for selected scenario |
-| `--inner-ip` | Inner PVE IP (for nested-pve-destructor) |
 | `--local` | Run locally (for pve-setup, user-setup, packer-build) |
 | `--remote` | Remote host IP (for pve-setup, user-setup, packer-build) |
 | `--templates` | Comma-separated packer templates (for packer-build) |
@@ -887,24 +813,22 @@ The orchestrator runs scenarios composed of reusable actions:
 | `--preflight` | Run preflight checks only (no scenario execution) |
 | `--skip-preflight` | Skip preflight checks before scenario execution |
 | `--json-output` | Output structured JSON to stdout (logs to stderr) |
-| `--manifest`, `-M` | Manifest name from site-config/manifests/ (for recursive-pve) |
-| `--manifest-file` | Path to manifest file (for recursive-pve) |
-| `--manifest-json` | Inline manifest JSON (for recursive calls) |
-| `--keep-on-failure` | Keep levels on failure for debugging (for recursive-pve) |
-| `--depth` | Limit manifest to first N levels (for recursive-pve) |
+| `--manifest`, `-M` | Manifest name from site-config/manifests/ (for verb commands) |
+| `--manifest-file` | Path to manifest file (for verb commands) |
+| `--manifest-json` | Inline manifest JSON (for delegation) |
 
 **JSON Output (v0.38+):**
 
 The `--json-output` flag emits structured JSON for programmatic consumption:
 
 ```bash
-./run.sh --scenario vm-roundtrip --host father --json-output 2>/dev/null | jq .
+./run.sh test -M n1-basic-v2 -H father --json-output 2>/dev/null | jq .
 ```
 
 Output schema:
 ```json
 {
-  "scenario": "vm-roundtrip",
+  "scenario": "test",
   "success": true,
   "duration_seconds": 45.2,
   "phases": [
@@ -939,7 +863,7 @@ Preflight checks validate host prerequisites before running scenarios:
 ./run.sh --preflight --host mother
 
 # Skip preflight for faster iteration
-./run.sh --scenario nested-pve-roundtrip --host father --skip-preflight
+./run.sh --scenario pve-setup --host father --skip-preflight
 ```
 
 Checks include:
@@ -947,30 +871,7 @@ Checks include:
 - site-init completion (secrets.yaml decrypted, node config exists)
 - PVE API connectivity and token validity
 - Provider lockfile sync (auto-clears stale lockfiles in `.states/`)
-- Nested virtualization (for nested-pve-* scenarios)
-
-**Context File Usage:**
-
-The `--context-file` flag enables running constructor and destructor scenarios separately by persisting context (VM IDs, IPs) between invocations:
-
-```bash
-# Constructor saves context
-./run.sh --scenario nested-pve-constructor --host father -C /tmp/nested-pve.ctx
-
-# Inspect context
-cat /tmp/nested-pve.ctx
-# {"nested-pve_vm_id": 99913, "inner_ip": "10.0.12.152", ...}
-
-# Destructor loads context
-./run.sh --scenario nested-pve-destructor --host father -C /tmp/nested-pve.ctx
-```
-
-Context keys populated by nested-pve scenarios:
-- `nested-pve_vm_id` - Inner PVE VM ID
-- `inner_ip` - Inner PVE IP address
-- `test_vm_id` - Test VM ID (on inner PVE)
-- `leaf_ip` - Leaf VM IP address (innermost VM in nesting hierarchy)
-- `provisioned_vms` - List of all provisioned VMs
+- Nested virtualization (for tiered manifests)
 
 **Packer Release:**
 
@@ -984,25 +885,19 @@ The `latest` tag is maintained by the packer release process (see packer#5).
 **Split File Handling:** Large images (>2GB) are split into parts on GitHub releases (e.g., `debian-13-pve.qcow2.partaa`, `.partab`). `DownloadGitHubReleaseAction` automatically detects split files, downloads all parts, reassembles them, and cleans up.
 
 **Available Scenarios:**
-| Scenario | Runtime | Phases | Description |
-|----------|---------|--------|-------------|
-| `bootstrap-install` | ~2m | 3 | Run bootstrap, verify installation and user |
-| `nested-pve-constructor` | ~6m | 11 | Provision inner PVE, install Proxmox, create test VM, verify |
-| `nested-pve-destructor` | ~2m | 3 | Cleanup test VM, stop and destroy inner PVE |
-| `nested-pve-roundtrip` | ~9m | 14 | Full cycle: construct → verify → destruct |
-| `packer-build` | ~3m | 1 | Build packer images (local or remote) |
-| `packer-build-fetch` | ~5m | 2 | Build remotely, fetch to local |
-| `packer-build-publish` | ~7m | 2 | Build and publish to PVE storage |
-| `packer-sync` | ~30s | 1 | Sync local packer to remote |
-| `packer-sync-build-fetch` | ~6m | 3 | Sync, build, fetch (dev workflow) |
-| `pve-setup` | ~3m | 3 | Install PVE (if needed), configure host, generate node config |
-| `recursive-pve-constructor` | ~6m | varies | Build N-level nested PVE stack per manifest |
-| `recursive-pve-destructor` | ~2m | varies | Destroy N-level stack in reverse order |
-| `recursive-pve-roundtrip` | ~9m | varies | Constructor + destructor full cycle |
-| `user-setup` | ~30s | 1 | Create homestak user |
-| `vm-constructor` | ~1.5m | 5 | Ensure image, provision VM, verify SSH |
-| `vm-destructor` | ~30s | 1 | Destroy VM |
-| `vm-roundtrip` | ~2m | 6 | Full cycle: construct → verify → destruct |
+| Scenario | Runtime | Description |
+|----------|---------|-------------|
+| `bootstrap-install` | ~2m | Run bootstrap, verify installation and user |
+| `packer-build` | ~3m | Build packer images (local or remote) |
+| `packer-build-fetch` | ~5m | Build remotely, fetch to local |
+| `packer-build-publish` | ~7m | Build and publish to PVE storage |
+| `packer-sync` | ~30s | Sync local packer to remote |
+| `packer-sync-build-fetch` | ~6m | Sync, build, fetch (dev workflow) |
+| `pve-setup` | ~3m | Install PVE (if needed), configure host, generate node config |
+| `spec-vm-roundtrip` | ~3m | Spec discovery integration test |
+| `user-setup` | ~30s | Create homestak user |
+
+**Retired Scenarios (v0.47):** `vm-constructor`, `vm-destructor`, `vm-roundtrip`, `nested-pve-*`, `recursive-pve-*` — replaced by verb commands (`create`/`destroy`/`test`). Running a retired scenario prints a migration hint.
 
 Runtime estimates are shown by `--list-scenarios` and used for `--timeout` defaults.
 

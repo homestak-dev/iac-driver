@@ -210,6 +210,119 @@ class TestManifestGraphOrdering:
         assert set(destroy[:-1]) == {'vm1', 'vm2'}  # Children first
 
 
+class TestManifestGraphExtractSubtree:
+    """Tests for extract_subtree method."""
+
+    def test_extract_simple_subtree(self):
+        """Extract single child from PVE parent."""
+        manifest = _make_manifest([
+            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve'},
+            {'name': 'test', 'type': 'vm', 'vmid': 99002, 'image': 'debian-12', 'parent': 'pve'},
+        ], pattern='tiered')
+        graph = ManifestGraph(manifest)
+        subtree = graph.extract_subtree('pve')
+
+        assert subtree.schema_version == 2
+        assert subtree.name == 'pve-subtree'
+        assert len(subtree.nodes) == 1
+        assert subtree.nodes[0].name == 'test'
+        assert subtree.nodes[0].parent is None  # Promoted to root
+
+    def test_extract_multi_child_subtree(self):
+        """Extract multiple children from PVE parent."""
+        manifest = _make_manifest([
+            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve'},
+            {'name': 'vm1', 'type': 'vm', 'vmid': 99002, 'image': 'debian-12', 'parent': 'pve'},
+            {'name': 'vm2', 'type': 'vm', 'vmid': 99003, 'image': 'debian-12', 'parent': 'pve'},
+        ], pattern='tiered')
+        graph = ManifestGraph(manifest)
+        subtree = graph.extract_subtree('pve')
+
+        assert len(subtree.nodes) == 2
+        names = {n.name for n in subtree.nodes}
+        assert names == {'vm1', 'vm2'}
+        # Both promoted to root
+        for n in subtree.nodes:
+            assert n.parent is None
+
+    def test_extract_deep_subtree(self):
+        """Extract 3-level chain: direct children become roots, deeper keep parents."""
+        manifest = _make_manifest([
+            {'name': 'root', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve'},
+            {'name': 'leaf', 'type': 'pve', 'vmid': 99002, 'image': 'debian-13-pve', 'parent': 'root'},
+            {'name': 'test', 'type': 'vm', 'vmid': 99003, 'image': 'debian-12', 'parent': 'leaf'},
+        ], pattern='tiered')
+        graph = ManifestGraph(manifest)
+        subtree = graph.extract_subtree('root')
+
+        assert len(subtree.nodes) == 2
+        node_map = {n.name: n for n in subtree.nodes}
+
+        # leaf is direct child of root -> promoted to root
+        assert node_map['leaf'].parent is None
+
+        # test is child of leaf -> keeps parent reference
+        assert node_map['test'].parent == 'leaf'
+
+    def test_extract_subtree_no_children_raises(self):
+        """Extracting from a leaf node should raise ValueError."""
+        manifest = _make_manifest([
+            {'name': 'test', 'type': 'vm', 'vmid': 99001, 'image': 'debian-12'},
+        ])
+        graph = ManifestGraph(manifest)
+        with pytest.raises(ValueError, match="no children"):
+            graph.extract_subtree('test')
+
+    def test_extract_subtree_not_found_raises(self):
+        """Extracting from nonexistent node should raise KeyError."""
+        manifest = _make_manifest([
+            {'name': 'test', 'type': 'vm', 'vmid': 99001, 'image': 'debian-12'},
+        ])
+        graph = ManifestGraph(manifest)
+        with pytest.raises(KeyError):
+            graph.extract_subtree('nonexistent')
+
+    def test_extract_subtree_preserves_settings(self):
+        """Subtree should inherit settings from original manifest."""
+        manifest = Manifest.from_dict({
+            'schema_version': 2,
+            'name': 'original',
+            'pattern': 'tiered',
+            'nodes': [
+                {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve'},
+                {'name': 'test', 'type': 'vm', 'vmid': 99002, 'image': 'debian-12', 'parent': 'pve'},
+            ],
+            'settings': {
+                'verify_ssh': False,
+                'cleanup_on_failure': True,
+                'on_error': 'rollback',
+            },
+        })
+        graph = ManifestGraph(manifest)
+        subtree = graph.extract_subtree('pve')
+
+        assert subtree.settings.verify_ssh is False
+        assert subtree.settings.cleanup_on_failure is True
+        assert subtree.settings.on_error == 'rollback'
+
+    def test_extract_subtree_builds_valid_graph(self):
+        """Extracted subtree should be usable to build a new ManifestGraph."""
+        manifest = _make_manifest([
+            {'name': 'root', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve'},
+            {'name': 'leaf', 'type': 'pve', 'vmid': 99002, 'image': 'debian-13-pve', 'parent': 'root'},
+            {'name': 'test', 'type': 'vm', 'vmid': 99003, 'image': 'debian-12', 'parent': 'leaf'},
+        ], pattern='tiered')
+        graph = ManifestGraph(manifest)
+        subtree = graph.extract_subtree('root')
+
+        # Should be usable to build a new graph
+        sub_graph = ManifestGraph(subtree)
+        assert len(sub_graph.roots) == 1
+        assert sub_graph.roots[0].name == 'leaf'
+        assert len(sub_graph.roots[0].children) == 1
+        assert sub_graph.roots[0].children[0].name == 'test'
+
+
 class TestManifestGraphParentIPKey:
     """Tests for get_parent_ip_key."""
 

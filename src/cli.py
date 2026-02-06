@@ -36,6 +36,20 @@ VERB_COMMANDS = {
     # "config": "Configure nodes",
 }
 
+# Scenarios retired in v0.47 (scenario consolidation)
+# Maps old scenario names to migration hints
+RETIRED_SCENARIOS = {
+    "vm-constructor": "Use: ./run.sh create -M n1-basic-v2 -H <host>",
+    "vm-destructor": "Use: ./run.sh destroy -M n1-basic-v2 -H <host>",
+    "vm-roundtrip": "Use: ./run.sh test -M n1-basic-v2 -H <host>",
+    "nested-pve-constructor": "Use: ./run.sh create -M n2-quick-v2 -H <host>",
+    "nested-pve-destructor": "Use: ./run.sh destroy -M n2-quick-v2 -H <host>",
+    "nested-pve-roundtrip": "Use: ./run.sh test -M n2-quick-v2 -H <host>",
+    "recursive-pve-constructor": "Use: ./run.sh create -M <manifest> -H <host>",
+    "recursive-pve-destructor": "Use: ./run.sh destroy -M <manifest> -H <host>",
+    "recursive-pve-roundtrip": "Use: ./run.sh test -M <manifest> -H <host>",
+}
+
 
 def dispatch_verb(verb: str, argv: list) -> int:
     """Dispatch to verb-specific CLI handler.
@@ -132,6 +146,17 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] in VERB_COMMANDS:
         verb = sys.argv[1]
         return dispatch_verb(verb, sys.argv[2:])
+
+    # Check for retired scenarios and print migration hint
+    for i, arg in enumerate(sys.argv[1:], 1):
+        if arg in ('--scenario', '-S') and i < len(sys.argv) - 1:
+            scenario_name = sys.argv[i + 1]
+            if scenario_name in RETIRED_SCENARIOS:
+                hint = RETIRED_SCENARIOS[scenario_name]
+                print(f"Error: Scenario '{scenario_name}' was retired in v0.47.")
+                print(f"  {hint}")
+                print(f"\nSee: ./run.sh create --help")
+                return 1
 
     # Legacy scenario-based CLI continues below
     available_hosts = list_hosts()

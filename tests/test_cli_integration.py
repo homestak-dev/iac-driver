@@ -98,7 +98,7 @@ class TestListScenarios:
     """Test CLI --list-scenarios works correctly."""
 
     def test_list_scenarios_shows_all(self):
-        """--list-scenarios should show all scenarios."""
+        """--list-scenarios should show active scenarios."""
         result = subprocess.run(
             [str(RUN_SH), '--list-scenarios'],
             capture_output=True,
@@ -106,11 +106,16 @@ class TestListScenarios:
         )
         assert result.returncode == 0
         output = result.stdout
-        # Check key scenarios are listed
+        # Check active scenarios are listed
         assert 'pve-setup' in output
         assert 'user-setup' in output
         assert 'packer-build' in output
-        assert 'nested-pve-constructor' in output
+        # Retired scenarios should NOT appear (check with leading whitespace to avoid substring matches)
+        lines = output.split('\n')
+        scenario_names = [line.strip().split()[0] for line in lines if line.strip() and not line.startswith('Available') and not line.startswith('Usage')]
+        assert 'vm-roundtrip' not in scenario_names
+        assert 'nested-pve-constructor' not in scenario_names
+        assert 'recursive-pve-constructor' not in scenario_names
 
     def test_list_scenarios_shows_runtime_estimates(self):
         """--list-scenarios should show runtime estimates."""
@@ -122,9 +127,46 @@ class TestListScenarios:
         assert result.returncode == 0
         output = result.stdout
         # Check runtime estimates are shown (format: ~Nm or ~Ns)
-        assert '~9m' in output  # nested-pve-roundtrip
-        assert '~2m' in output  # vm-roundtrip, nested-pve-destructor, bootstrap-install
-        assert '~30s' in output  # user-setup, packer-sync, vm-destructor
+        assert '~2m' in output  # bootstrap-install
+        assert '~30s' in output  # user-setup, packer-sync
+
+
+class TestRetiredScenarios:
+    """Test CLI migration hints for retired scenarios."""
+
+    def test_retired_scenario_shows_hint(self):
+        """Retired scenario should show migration hint."""
+        result = subprocess.run(
+            [str(RUN_SH), '--scenario', 'vm-roundtrip', '--host', 'father'],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode == 1
+        combined = result.stdout + result.stderr
+        assert "retired" in combined.lower()
+        assert "create" in combined or "test" in combined  # Migration hint
+
+    def test_retired_nested_pve_shows_hint(self):
+        """Retired nested-pve scenario should show migration hint."""
+        result = subprocess.run(
+            [str(RUN_SH), '--scenario', 'nested-pve-roundtrip', '--host', 'father'],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode == 1
+        combined = result.stdout + result.stderr
+        assert "retired" in combined.lower()
+
+    def test_retired_recursive_pve_shows_hint(self):
+        """Retired recursive-pve scenario should show migration hint."""
+        result = subprocess.run(
+            [str(RUN_SH), '--scenario', 'recursive-pve-constructor', '--host', 'father'],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode == 1
+        combined = result.stdout + result.stderr
+        assert "retired" in combined.lower()
 
 
 class TestTimeoutFlag:
@@ -172,7 +214,8 @@ class TestVmIdFlag:
     def test_vm_id_invalid_format_no_equals(self):
         """--vm-id without = should fail with clear error."""
         result = subprocess.run(
-            [str(RUN_SH), '--scenario', 'vm-roundtrip', '--host', 'father', '--vm-id', 'badformat'],
+            [str(RUN_SH), '--scenario', 'pve-setup', '--host', 'father',
+             '--skip-preflight', '--vm-id', 'badformat'],
             capture_output=True,
             text=True
         )
@@ -185,7 +228,8 @@ class TestVmIdFlag:
     def test_vm_id_invalid_format_non_numeric(self):
         """--vm-id with non-numeric ID should fail with clear error."""
         result = subprocess.run(
-            [str(RUN_SH), '--scenario', 'vm-roundtrip', '--host', 'father', '--vm-id', 'test=abc'],
+            [str(RUN_SH), '--scenario', 'pve-setup', '--host', 'father',
+             '--skip-preflight', '--vm-id', 'test=abc'],
             capture_output=True,
             text=True
         )
@@ -198,7 +242,8 @@ class TestVmIdFlag:
     def test_vm_id_empty_name_rejected(self):
         """--vm-id with empty name should fail with clear error."""
         result = subprocess.run(
-            [str(RUN_SH), '--scenario', 'vm-roundtrip', '--host', 'father', '--vm-id', '=99990'],
+            [str(RUN_SH), '--scenario', 'pve-setup', '--host', 'father',
+             '--skip-preflight', '--vm-id', '=99990'],
             capture_output=True,
             text=True
         )
@@ -210,9 +255,8 @@ class TestVmIdFlag:
     @requires_infrastructure
     def test_vm_id_valid_format_accepted(self):
         """Valid --vm-id should be accepted (though scenario may fail for other reasons)."""
-        # We can't fully test without a running PVE, but we can verify parsing works
         result = subprocess.run(
-            [str(RUN_SH), '--scenario', 'vm-roundtrip', '--host', 'father',
+            [str(RUN_SH), '--scenario', 'pve-setup', '--host', 'father',
              '--vm-id', 'test=99990', '--list-phases'],
             capture_output=True,
             text=True

@@ -5,11 +5,9 @@ from actions.tofu import (
     TofuApplyInlineAction,
     TofuDestroyAction,
     TofuDestroyInlineAction,
-    TofuApplyRemoteAction,
-    TofuDestroyRemoteAction,
 )
 from actions.ansible import AnsiblePlaybookAction, AnsibleLocalPlaybookAction, EnsurePVEAction
-from actions.ssh import SSHCommandAction, WaitForSSHAction, SyncReposToVMAction, VerifySSHChainAction
+from actions.ssh import SSHCommandAction, WaitForSSHAction, VerifySSHChainAction
 from actions.proxmox import (
     StartVMAction,
     WaitForGuestAgentAction,
@@ -21,20 +19,28 @@ from actions.proxmox import (
 )
 from actions.file import RemoveImageAction, DownloadFileAction, DownloadGitHubReleaseAction
 from actions.recursive import RecursiveScenarioAction
+from actions.pve_lifecycle import (
+    EnsureImageAction,
+    CreateApiTokenAction,
+    BootstrapAction,
+    CopySecretsAction,
+    InjectSSHKeyAction,
+    CopySSHPrivateKeyAction,
+    InjectSelfSSHKeyAction,
+    ConfigureNetworkBridgeAction,
+    GenerateNodeConfigAction,
+)
 
 __all__ = [
     'TofuApplyAction',
     'TofuApplyInlineAction',
     'TofuDestroyAction',
     'TofuDestroyInlineAction',
-    'TofuApplyRemoteAction',
-    'TofuDestroyRemoteAction',
     'AnsiblePlaybookAction',
     'AnsibleLocalPlaybookAction',
     'EnsurePVEAction',
     'SSHCommandAction',
     'WaitForSSHAction',
-    'SyncReposToVMAction',
     'VerifySSHChainAction',
     'StartVMAction',
     'WaitForGuestAgentAction',
@@ -47,4 +53,13 @@ __all__ = [
     'DownloadFileAction',
     'DownloadGitHubReleaseAction',
     'RecursiveScenarioAction',
+    'EnsureImageAction',
+    'CreateApiTokenAction',
+    'BootstrapAction',
+    'CopySecretsAction',
+    'InjectSSHKeyAction',
+    'CopySSHPrivateKeyAction',
+    'InjectSelfSSHKeyAction',
+    'ConfigureNetworkBridgeAction',
+    'GenerateNodeConfigAction',
 ]
