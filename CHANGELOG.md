@@ -2,11 +2,36 @@
 
 ## Unreleased
 
+### Theme: Config Phase + Pull Execution Mode (#147)
+
+Adds the config phase (`./run.sh config`) and pull execution mode for the node lifecycle. VMs can now self-configure via cloud-init instead of requiring SSH-based push from the driver.
+
+### Added
+- Add `config` verb (`./run.sh config`) for applying specs to the local host (#147)
+  - Maps spec fields to ansible vars (packages, users, SSH keys, posture)
+  - Runs `config-apply.yml` playbook with existing roles (base, users, security)
+  - Writes platform-ready marker on success
+  - Supports `--spec`, `--dry-run`, `--json-output` flags
+- Add `WaitForFileAction` in `src/actions/ssh.py` (#147)
+  - Polls for file existence on remote host via SSH
+  - Used by operator to wait for pull-mode completion markers
+- Add pull execution mode in operator (`manifest_opr/executor.py`) (#147)
+  - Checks `execution.mode` per node after SSH becomes available
+  - Pull nodes: polls for spec.yaml and config-complete.json markers
+  - PVE nodes always use push (complex multi-step orchestration)
+  - Push nodes: no change (default behavior preserved)
+- Add `spec-vm-pull-roundtrip` integration test scenario (#156)
+  - Validates autonomous spec fetch + config apply (pull mode end-to-end)
+  - Verifies packages installed and users created after pull config
+  - `VerifyPackagesAction` and `VerifyUserAction` reusable actions
+
 ### Theme: Integration Test (#198)
 
 Validates all unreleased work since v0.45 on live PVE infrastructure. Fixes 7 bugs found during testing.
 
 ### Changed
+- Update manifest references: drop `-v2` suffix from manifest names (site-config#51)
+  - `n1-basic-v2` → `n1-basic`, `n2-quick-v2` → `n2-quick` in CLI, tests, docs
 - Update StartSpecServerAction to use iac-driver controller instead of `homestak serve` (bootstrap#38)
   - Checks for `iac-driver/run.sh` instead of `homestak` CLI
   - Starts controller via `./run.sh serve` (HTTPS)

@@ -110,6 +110,54 @@ class WaitForSSHAction:
 
 
 @dataclass
+class WaitForFileAction:
+    """Poll for a file to exist on a remote host via SSH."""
+    name: str
+    host_key: str
+    file_path: str
+    timeout: int = 300
+    interval: int = 10
+
+    def run(self, config: HostConfig, context: dict) -> ActionResult:
+        """Poll until file exists or timeout."""
+        start = time.time()
+
+        host = context.get(self.host_key)
+        if not host:
+            return ActionResult(
+                success=False,
+                message=f"No {self.host_key} in context",
+                duration=time.time() - start
+            )
+
+        logger.info(f"[{self.name}] Waiting for {self.file_path} on {host}...")
+
+        deadline = time.time() + self.timeout
+        while time.time() < deadline:
+            rc, out, _ = run_ssh(
+                host,
+                f'test -f {self.file_path} && echo EXISTS',
+                user=config.automation_user,
+                timeout=10,
+            )
+            if rc == 0 and 'EXISTS' in out:
+                logger.info(f"[{self.name}] Found {self.file_path} on {host}")
+                return ActionResult(
+                    success=True,
+                    message=f"File {self.file_path} found on {host}",
+                    duration=time.time() - start,
+                )
+            logger.debug(f"File not found yet, retrying in {self.interval}s...")
+            time.sleep(self.interval)
+
+        return ActionResult(
+            success=False,
+            message=f"Timeout ({self.timeout}s) waiting for {self.file_path} on {host}",
+            duration=time.time() - start,
+        )
+
+
+@dataclass
 class VerifySSHChainAction:
     """Verify SSH connectivity through a jump host chain."""
     name: str

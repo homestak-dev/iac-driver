@@ -57,6 +57,7 @@ All repos are siblings in a common parent directory:
 │   │   ├── cli.py        # CLI implementation
 │   │   ├── common.py     # ActionResult + shared utilities
 │   │   ├── config.py          # Host configuration (auto-discovery from site-config)
+│   │   ├── config_apply.py    # Config phase: spec-to-ansible-vars + apply
 │   │   ├── config_resolver.py # ConfigResolver - resolves site-config for tofu
 │   │   ├── manifest.py        # Manifest schema v1 (levels) + v2 (nodes graph)
 │   │   ├── manifest_opr/ # Operator engine for manifest-based orchestration
@@ -78,7 +79,7 @@ All repos are siblings in a common parent directory:
 │   │   ├── actions/      # Reusable primitive operations
 │   │   │   ├── tofu.py   # TofuApplyAction, TofuDestroyAction
 │   │   │   ├── ansible.py# AnsiblePlaybookAction
-│   │   │   ├── ssh.py    # SSHCommandAction, WaitForSSHAction
+│   │   │   ├── ssh.py    # SSHCommandAction, WaitForSSHAction, WaitForFileAction
 │   │   │   ├── proxmox.py# StartVMAction, WaitForGuestAgentAction
 │   │   │   ├── file.py   # DownloadFileAction, RemoveImageAction
 │   │   │   ├── recursive.py   # RecursiveScenarioAction
@@ -351,7 +352,7 @@ Schema v2 uses graph-based `nodes[]` with `parent` references instead of linear 
 
 ```yaml
 schema_version: 2
-name: n2-quick-v2
+name: n2-quick
 pattern: tiered
 nodes:
   - name: root-pve
@@ -362,7 +363,7 @@ nodes:
     disk: 64
   - name: edge
     type: vm
-    preset: vm-medium
+    preset: vm-small
     image: debian-12
     vmid: 99021
     parent: root-pve
@@ -374,13 +375,16 @@ v2 manifests are backward-compatible: nodes are converted to levels via topologi
 
 ```bash
 # Create infrastructure from manifest
-./run.sh create -M n2-quick-v2 -H father [--dry-run] [--json-output] [--verbose]
+./run.sh create -M n2-quick -H father [--dry-run] [--json-output] [--verbose]
 
 # Destroy infrastructure
-./run.sh destroy -M n2-quick-v2 -H father [--dry-run] [--yes]
+./run.sh destroy -M n2-quick -H father [--dry-run] [--yes]
 
 # Full cycle: create, verify SSH, destroy
-./run.sh test -M n2-quick-v2 -H father [--dry-run] [--json-output]
+./run.sh test -M n2-quick -H father [--dry-run] [--json-output]
+
+# Apply spec to local host (config phase)
+./run.sh config [--fetch] [--insecure] [--spec /path.yaml] [--dry-run] [--json-output]
 ```
 
 ### Architecture
@@ -419,6 +423,41 @@ The operator handles root nodes (depth 0) locally. PVE nodes with children trigg
 2. Subtree delegation via SSH — extracts child nodes as a new manifest, runs `./run.sh create --manifest-json` on the inner PVE
 
 This recursion handles arbitrary depth (N=2, N=3, etc.) without depth limits.
+
+### Execution Modes (v0.48+)
+
+Nodes can use **push** (default) or **pull** execution mode for the config phase:
+
+| Mode | How Config Runs | Operator Behavior |
+|------|----------------|-------------------|
+| `push` | Driver SSHes in and runs config | Default, used for PVE lifecycle |
+| `pull` | VM self-configures via cloud-init | Operator polls for marker files |
+
+**Pull mode flow:**
+1. Cloud-init runs `./run.sh config --fetch --insecure` on first boot
+2. `--fetch` uses HOMESTAK_SPEC_SERVER + HOMESTAK_IDENTITY env vars to fetch spec
+3. Config applies spec (packages, users, services) via ansible roles
+4. Operator polls via SSH for `/usr/local/etc/homestak/state/config-complete.json`
+5. Node is considered configured when marker exists
+
+**Config verb (`./run.sh config`):**
+- `--fetch`: Fetches spec from server using env vars (HOMESTAK_SPEC_SERVER, HOMESTAK_IDENTITY)
+- Reads spec from `/usr/local/etc/homestak/state/spec.yaml` (or `--spec` path)
+- Maps spec sections to ansible role variables via `spec_to_ansible_vars()`
+- Writes vars to `/usr/local/etc/homestak/state/config-vars.json`
+- Runs `ansible/playbooks/config-apply.yml` locally
+- Writes completion marker to `/usr/local/etc/homestak/state/config-complete.json`
+
+**Per-node execution mode** is set in manifests:
+```yaml
+nodes:
+  - name: edge
+    type: vm
+    execution:
+      mode: pull  # Default: push
+```
+
+PVE nodes always use push regardless of setting (complex lifecycle requires SSH).
 
 ## Common Commands
 
@@ -522,19 +561,19 @@ Manifests define N-level nested PVE deployments. Schema v2 (graph-based) is the 
 
 ```bash
 # Create infrastructure from manifest
-./run.sh create -M n2-quick-v2 -H father
+./run.sh create -M n2-quick -H father
 
 # Destroy infrastructure
-./run.sh destroy -M n2-quick-v2 -H father --yes
+./run.sh destroy -M n2-quick -H father --yes
 
 # Full roundtrip: create, verify SSH, destroy
-./run.sh test -M n2-quick-v2 -H father
+./run.sh test -M n2-quick -H father
 
 # Dry-run preview
-./run.sh create -M n2-quick-v2 -H father --dry-run
+./run.sh create -M n2-quick -H father --dry-run
 
 # JSON output for programmatic use
-./run.sh test -M n1-basic-v2 -H father --json-output
+./run.sh test -M n1-basic -H father --json-output
 ```
 
 ### RecursiveScenarioAction
@@ -728,6 +767,8 @@ Operations use tiered timeouts based on expected duration. Scenarios can overrid
 | `AnsiblePlaybookAction` | ssh_timeout | 60s | Pre-playbook SSH wait |
 | `WaitForSSHAction` | timeout | 60s | SSH availability |
 | `WaitForSSHAction` | interval | 5s | Retry interval |
+| `WaitForFileAction` | timeout | 300s | File existence via SSH |
+| `WaitForFileAction` | interval | 10s | Retry interval |
 | `WaitForGuestAgentAction` | timeout | 300s | Guest agent |
 | `WaitForGuestAgentAction` | interval | 5s | Retry interval |
 | `SSHCommandAction` | timeout | 60s | Single SSH command |
@@ -745,6 +786,7 @@ Operations use tiered timeouts based on expected duration. Scenarios can overrid
 | configure_bridge | 120s | Network bridge configuration |
 | download_images | 300s | ~200MB image from GitHub |
 | subtree_delegation | 1200s | SSH to inner PVE, run operator |
+| pull_config_complete | 300s | Poll for config-complete.json (pull mode) |
 
 ### Tuning Guidelines
 
@@ -776,9 +818,14 @@ The orchestrator supports two command styles: verb commands for manifest-based o
 
 ```bash
 # Verb commands (manifest-based)
-./run.sh create -M n2-quick-v2 -H father              # Create infrastructure
-./run.sh destroy -M n2-quick-v2 -H father --yes        # Destroy infrastructure
-./run.sh test -M n2-quick-v2 -H father                 # Full roundtrip
+./run.sh create -M n2-quick -H father              # Create infrastructure
+./run.sh destroy -M n2-quick -H father --yes        # Destroy infrastructure
+./run.sh test -M n2-quick -H father                 # Full roundtrip
+
+# Config verb (local execution)
+./run.sh config                                         # Apply spec to local host
+./run.sh config --fetch --insecure                      # Fetch spec from server + apply
+./run.sh config --spec /path/to/spec.yaml --dry-run     # Preview with custom spec
 
 # Scenarios (standalone workflows)
 ./run.sh --scenario pve-setup --local                   # Install + configure PVE
@@ -822,7 +869,7 @@ The orchestrator supports two command styles: verb commands for manifest-based o
 The `--json-output` flag emits structured JSON for programmatic consumption:
 
 ```bash
-./run.sh test -M n1-basic-v2 -H father --json-output 2>/dev/null | jq .
+./run.sh test -M n1-basic -H father --json-output 2>/dev/null | jq .
 ```
 
 Output schema:
@@ -895,6 +942,7 @@ The `latest` tag is maintained by the packer release process (see packer#5).
 | `packer-sync-build-fetch` | ~6m | Sync, build, fetch (dev workflow) |
 | `pve-setup` | ~3m | Install PVE (if needed), configure host, generate node config |
 | `spec-vm-push-roundtrip` | ~3m | Spec discovery integration test (push verification) |
+| `spec-vm-pull-roundtrip` | ~5m | Config phase integration test (pull verification) |
 | `user-setup` | ~30s | Create homestak user |
 
 **Retired Scenarios (v0.47):** `vm-constructor`, `vm-destructor`, `vm-roundtrip`, `nested-pve-*`, `recursive-pve-*` — replaced by verb commands (`create`/`destroy`/`test`). Running a retired scenario prints a migration hint.

@@ -338,13 +338,28 @@ class NodeExecutor:
                     context_updates=context_updates,
                 )
 
-        # 5. PVE lifecycle (only for PVE-type nodes that will host children)
+        # 5. Post-SSH: PVE lifecycle, pull mode wait, or pass-through
+        exec_mode = mn.execution_mode or self.manifest.execution_mode
         if mn.type == 'pve' and ip:
+            # PVE lifecycle requires push: bootstrap install, secrets injection,
+            # bridge config, API token creation, and image download are
+            # multi-step orchestration steps that need the driver's active
+            # participation. A single spec→ansible flow can't cover these.
             pve_result = self._run_pve_lifecycle(exec_node, ip, context)
             if not pve_result.success:
                 return ActionResult(
                     success=False,
                     message=f"PVE lifecycle failed for {mn.name}: {pve_result.message}",
+                    duration=time.time() - start,
+                    context_updates=context_updates,
+                )
+        elif exec_mode == 'pull' and ip:
+            # Pull mode: VM self-configures, poll for completion markers
+            pull_result = self._wait_for_config_complete(exec_node, ip, context)
+            if not pull_result.success:
+                return ActionResult(
+                    success=False,
+                    message=f"Pull mode wait failed for {mn.name}: {pull_result.message}",
                     duration=time.time() - start,
                     context_updates=context_updates,
                 )
@@ -499,6 +514,71 @@ class NodeExecutor:
         return ActionResult(
             success=True,
             message=f"PVE lifecycle completed for {mn.name}",
+            duration=time.time() - start,
+        )
+
+    def _wait_for_config_complete(
+        self, exec_node: ExecutionNode, ip: str, context: dict, timeout: int = 300
+    ) -> ActionResult:
+        """Poll for spec fetch + config completion on a pull-mode node.
+
+        Waits for two marker files:
+        1. spec.yaml — indicates spec was fetched from controller
+        2. config-complete.json — indicates config phase completed
+
+        Args:
+            exec_node: The ExecutionNode being created
+            ip: IP address of the node
+            context: Shared execution context
+            timeout: Max seconds to wait for each marker
+
+        Returns:
+            ActionResult indicating success/failure
+        """
+        from actions.ssh import WaitForFileAction
+
+        mn = exec_node.manifest_node
+        start = time.time()
+
+        # Ensure IP is in context
+        context[f'{mn.name}_ip'] = ip
+
+        # 1. Wait for spec.yaml (fetched by cloud-init)
+        wait_spec = WaitForFileAction(
+            name=f'wait-spec-{mn.name}',
+            host_key=f'{mn.name}_ip',
+            file_path='/usr/local/etc/homestak/state/spec.yaml',
+            timeout=timeout,
+            interval=10,
+        )
+        spec_result = wait_spec.run(self.config, context)
+        if not spec_result.success:
+            return ActionResult(
+                success=False,
+                message=f"Spec not fetched on {mn.name}: {spec_result.message}",
+                duration=time.time() - start,
+            )
+
+        # 2. Wait for config-complete marker (written by ./run.sh config)
+        wait_config = WaitForFileAction(
+            name=f'wait-config-{mn.name}',
+            host_key=f'{mn.name}_ip',
+            file_path='/usr/local/etc/homestak/state/config-complete.json',
+            timeout=timeout,
+            interval=10,
+        )
+        config_result = wait_config.run(self.config, context)
+        if not config_result.success:
+            return ActionResult(
+                success=False,
+                message=f"Config not complete on {mn.name}: {config_result.message}",
+                duration=time.time() - start,
+            )
+
+        logger.info(f"[pull] Node '{mn.name}' self-configured successfully")
+        return ActionResult(
+            success=True,
+            message=f"Pull mode config complete for {mn.name}",
             duration=time.time() - start,
         )
 

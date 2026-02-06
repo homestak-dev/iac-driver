@@ -10,7 +10,7 @@ Verb commands (4-phase lifecycle):
 - create: Create infrastructure from manifest
 - destroy: Destroy infrastructure from manifest
 - test: Create, verify, and destroy infrastructure
-- (Future) config: Configure nodes
+- config: Apply specification to the local host
 """
 
 import argparse
@@ -32,19 +32,18 @@ VERB_COMMANDS = {
     "create": "Create infrastructure from manifest",
     "destroy": "Destroy infrastructure from manifest",
     "test": "Create, verify, and destroy infrastructure from manifest",
-    # Future verbs (stubs):
-    # "config": "Configure nodes",
+    "config": "Apply specification to the local host",
 }
 
 # Scenarios retired in v0.47 (scenario consolidation)
 # Maps old scenario names to migration hints
 RETIRED_SCENARIOS = {
-    "vm-constructor": "Use: ./run.sh create -M n1-basic-v2 -H <host>",
-    "vm-destructor": "Use: ./run.sh destroy -M n1-basic-v2 -H <host>",
-    "vm-roundtrip": "Use: ./run.sh test -M n1-basic-v2 -H <host>",
-    "nested-pve-constructor": "Use: ./run.sh create -M n2-quick-v2 -H <host>",
-    "nested-pve-destructor": "Use: ./run.sh destroy -M n2-quick-v2 -H <host>",
-    "nested-pve-roundtrip": "Use: ./run.sh test -M n2-quick-v2 -H <host>",
+    "vm-constructor": "Use: ./run.sh create -M n1-basic -H <host>",
+    "vm-destructor": "Use: ./run.sh destroy -M n1-basic -H <host>",
+    "vm-roundtrip": "Use: ./run.sh test -M n1-basic -H <host>",
+    "nested-pve-constructor": "Use: ./run.sh create -M n2-quick -H <host>",
+    "nested-pve-destructor": "Use: ./run.sh destroy -M n2-quick -H <host>",
+    "nested-pve-roundtrip": "Use: ./run.sh test -M n2-quick -H <host>",
     "recursive-pve-constructor": "Use: ./run.sh create -M <manifest> -H <host>",
     "recursive-pve-destructor": "Use: ./run.sh destroy -M <manifest> -H <host>",
     "recursive-pve-roundtrip": "Use: ./run.sh test -M <manifest> -H <host>",
@@ -76,6 +75,10 @@ def dispatch_verb(verb: str, argv: list) -> int:
     if verb == "test":
         from manifest_opr.cli import test_main
         return test_main(argv)
+
+    if verb == "config":
+        from config_apply import config_main
+        return config_main(argv)
 
     print(f"Error: Verb '{verb}' not yet implemented")
     return 1
