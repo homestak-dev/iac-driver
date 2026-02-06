@@ -72,6 +72,8 @@ class StartSpecServerAction:
     name: str
     server_port: int = 44443
     timeout: int = 60
+    serve_repos: bool = False
+    repo_token: str | None = None  # None = don't pass flag, "" = disable auth
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
         """Start controller serve on PVE host via SSH."""
@@ -103,9 +105,14 @@ class StartSpecServerAction:
             )
 
         # Start controller in background via iac-driver
+        serve_flags = f'--port {self.server_port}'
+        if self.serve_repos:
+            serve_flags += ' --repos'
+            if self.repo_token is not None:
+                serve_flags += f" --repo-token '{self.repo_token}'"
         start_cmd = (
             f'cd {iac_dir} && '
-            f'nohup ./run.sh serve --port {self.server_port} '
+            f'nohup ./run.sh serve {serve_flags} '
             f'> /tmp/homestak-controller.log 2>&1 </dev/null & echo $!'
         )
         logger.info(f"[{self.name}] Starting controller on {pve_host}:{self.server_port}...")
@@ -453,7 +460,9 @@ class SpecVMPullRoundtrip:
 
             ('start_server', StartSpecServerAction(
                 name='start-spec-server',
-            ), 'Start spec discovery server'),
+                serve_repos=True,
+                repo_token='',  # Disable auth for dev posture (network trust)
+            ), 'Start spec + repo server'),
 
             # Standard VM provisioning
             ('ensure_image', EnsureImageAction(
