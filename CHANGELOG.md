@@ -7,6 +7,8 @@
 Validates all unreleased work since v0.45 on live PVE infrastructure. Fixes 7 bugs found during testing.
 
 ### Changed
+- Update manifest references: drop `-v2` suffix from manifest names (site-config#51)
+  - `n1-basic-v2` → `n1-basic`, `n2-quick-v2` → `n2-quick` in CLI, tests, docs
 - Update StartSpecServerAction to use iac-driver controller instead of `homestak serve` (bootstrap#38)
   - Checks for `iac-driver/run.sh` instead of `homestak` CLI
   - Starts controller via `./run.sh serve` (HTTPS)

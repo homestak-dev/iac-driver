@@ -351,7 +351,7 @@ Schema v2 uses graph-based `nodes[]` with `parent` references instead of linear 
 
 ```yaml
 schema_version: 2
-name: n2-quick-v2
+name: n2-quick
 pattern: tiered
 nodes:
   - name: root-pve
@@ -374,13 +374,13 @@ v2 manifests are backward-compatible: nodes are converted to levels via topologi
 
 ```bash
 # Create infrastructure from manifest
-./run.sh create -M n2-quick-v2 -H father [--dry-run] [--json-output] [--verbose]
+./run.sh create -M n2-quick -H father [--dry-run] [--json-output] [--verbose]
 
 # Destroy infrastructure
-./run.sh destroy -M n2-quick-v2 -H father [--dry-run] [--yes]
+./run.sh destroy -M n2-quick -H father [--dry-run] [--yes]
 
 # Full cycle: create, verify SSH, destroy
-./run.sh test -M n2-quick-v2 -H father [--dry-run] [--json-output]
+./run.sh test -M n2-quick -H father [--dry-run] [--json-output]
 ```
 
 ### Architecture
@@ -522,19 +522,19 @@ Manifests define N-level nested PVE deployments. Schema v2 (graph-based) is the 
 
 ```bash
 # Create infrastructure from manifest
-./run.sh create -M n2-quick-v2 -H father
+./run.sh create -M n2-quick -H father
 
 # Destroy infrastructure
-./run.sh destroy -M n2-quick-v2 -H father --yes
+./run.sh destroy -M n2-quick -H father --yes
 
 # Full roundtrip: create, verify SSH, destroy
-./run.sh test -M n2-quick-v2 -H father
+./run.sh test -M n2-quick -H father
 
 # Dry-run preview
-./run.sh create -M n2-quick-v2 -H father --dry-run
+./run.sh create -M n2-quick -H father --dry-run
 
 # JSON output for programmatic use
-./run.sh test -M n1-basic-v2 -H father --json-output
+./run.sh test -M n1-basic -H father --json-output
 ```
 
 ### RecursiveScenarioAction
@@ -776,9 +776,9 @@ The orchestrator supports two command styles: verb commands for manifest-based o
 
 ```bash
 # Verb commands (manifest-based)
-./run.sh create -M n2-quick-v2 -H father              # Create infrastructure
-./run.sh destroy -M n2-quick-v2 -H father --yes        # Destroy infrastructure
-./run.sh test -M n2-quick-v2 -H father                 # Full roundtrip
+./run.sh create -M n2-quick -H father              # Create infrastructure
+./run.sh destroy -M n2-quick -H father --yes        # Destroy infrastructure
+./run.sh test -M n2-quick -H father                 # Full roundtrip
 
 # Scenarios (standalone workflows)
 ./run.sh --scenario pve-setup --local                   # Install + configure PVE
@@ -822,7 +822,7 @@ The orchestrator supports two command styles: verb commands for manifest-based o
 The `--json-output` flag emits structured JSON for programmatic consumption:
 
 ```bash
-./run.sh test -M n1-basic-v2 -H father --json-output 2>/dev/null | jq .
+./run.sh test -M n1-basic -H father --json-output 2>/dev/null | jq .
 ```
 
 Output schema:

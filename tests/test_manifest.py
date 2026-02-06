@@ -604,7 +604,7 @@ class TestManifestV2:
 
         data = {
             'schema_version': 2,
-            'name': 'n1-basic-v2',
+            'name': 'n1-basic',
             'pattern': 'flat',
             'nodes': [
                 {'name': 'edge', 'type': 'vm', 'preset': 'vm-small', 'image': 'debian-12', 'vmid': 99001}
@@ -613,7 +613,7 @@ class TestManifestV2:
         manifest = Manifest.from_dict(data)
 
         assert manifest.schema_version == 2
-        assert manifest.name == 'n1-basic-v2'
+        assert manifest.name == 'n1-basic'
         assert manifest.pattern == 'flat'
         assert manifest.nodes is not None
         assert len(manifest.nodes) == 1
@@ -628,7 +628,7 @@ class TestManifestV2:
 
         data = {
             'schema_version': 2,
-            'name': 'n2-quick-v2',
+            'name': 'n2-quick',
             'pattern': 'tiered',
             'nodes': [
                 {'name': 'root-pve', 'type': 'pve', 'preset': 'vm-large', 'image': 'debian-13-pve', 'vmid': 99011},
@@ -650,7 +650,7 @@ class TestManifestV2:
 
         data = {
             'schema_version': 2,
-            'name': 'n3-full-v2',
+            'name': 'n3-full',
             'pattern': 'tiered',
             'nodes': [
                 {'name': 'root-pve', 'type': 'pve', 'preset': 'vm-large', 'image': 'debian-13-pve', 'vmid': 99011},
@@ -969,7 +969,7 @@ class TestManifestV2Serialization:
 
         data = {
             'schema_version': 2,
-            'name': 'n2-quick-v2',
+            'name': 'n2-quick',
             'description': 'Test',
             'pattern': 'tiered',
             'nodes': [
