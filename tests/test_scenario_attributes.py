@@ -75,14 +75,14 @@ class TestScenarioDefaults:
     """Test default values for scenarios without explicit attributes."""
 
     def test_spec_vm_roundtrip_requires_host_config_by_default(self):
-        """spec-vm-roundtrip should require host config (no explicit attr)."""
-        scenario = get_scenario('spec-vm-roundtrip')
+        """spec-vm-push-roundtrip should require host config (no explicit attr)."""
+        scenario = get_scenario('spec-vm-push-roundtrip')
         # Default should be True when not specified
         assert getattr(scenario, 'requires_host_config', True) is True
 
     def test_spec_vm_roundtrip_does_not_require_root_by_default(self):
-        """spec-vm-roundtrip should not require root (no explicit attr)."""
-        scenario = get_scenario('spec-vm-roundtrip')
+        """spec-vm-push-roundtrip should not require root (no explicit attr)."""
+        scenario = get_scenario('spec-vm-push-roundtrip')
         # Default should be False when not specified
         assert getattr(scenario, 'requires_root', False) is False
 
@@ -130,8 +130,8 @@ class TestGetAttrDefaults:
 
     def test_getattr_returns_default_for_missing(self):
         """When attribute is missing, getattr should return default."""
-        scenario = get_scenario('spec-vm-roundtrip')
-        # These attributes are not defined on spec-vm-roundtrip
+        scenario = get_scenario('spec-vm-push-roundtrip')
+        # These attributes are not defined on spec-vm-push-roundtrip
         # Default for requires_root should be False
         assert getattr(scenario, 'requires_root', False) is False
         # Default for requires_host_config should be True
@@ -151,8 +151,8 @@ class TestExpectedRuntime:
             assert runtime > 0, f"{name} expected_runtime should be positive"
 
     def test_spec_vm_roundtrip_runtime(self):
-        """spec-vm-roundtrip should have ~3 min runtime."""
-        scenario = get_scenario('spec-vm-roundtrip')
+        """spec-vm-push-roundtrip should have ~3 min runtime."""
+        scenario = get_scenario('spec-vm-push-roundtrip')
         assert scenario.expected_runtime == 180  # 3 * 60
 
     def test_packer_sync_runtime(self):

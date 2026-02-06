@@ -87,7 +87,7 @@ All repos are siblings in a common parent directory:
 │   │   │   ├── pve_setup.py         # pve-setup (local/remote)
 │   │   │   ├── user_setup.py        # user-setup (local/remote)
 │   │   │   ├── bootstrap.py         # bootstrap-install
-│   │   │   └── spec_vm.py           # spec-vm-roundtrip
+│   │   │   └── spec_vm.py           # spec-vm-push-roundtrip
 │   │   └── reporting/    # Test report generation (JSON + markdown)
 │   ├── reports/          # Generated test reports
 │   └── scripts/          # Helper scripts
@@ -563,7 +563,7 @@ Key features:
 
 | Type | Pattern | Examples |
 |------|---------|----------|
-| **Scenarios** | `noun-verb` | `pve-setup`, `user-setup`, `bootstrap-install`, `spec-vm-roundtrip` |
+| **Scenarios** | `noun-verb` | `pve-setup`, `user-setup`, `bootstrap-install`, `spec-vm-push-roundtrip` |
 | **Phases** | `verb_noun` | `ensure_pve`, `setup_pve`, `provision_vm`, `create_user` |
 | **Actions** | `VerbNounAction` | `EnsurePVEAction`, `StartVMAction`, `WaitForSSHAction` |
 
@@ -894,7 +894,7 @@ The `latest` tag is maintained by the packer release process (see packer#5).
 | `packer-sync` | ~30s | Sync local packer to remote |
 | `packer-sync-build-fetch` | ~6m | Sync, build, fetch (dev workflow) |
 | `pve-setup` | ~3m | Install PVE (if needed), configure host, generate node config |
-| `spec-vm-roundtrip` | ~3m | Spec discovery integration test |
+| `spec-vm-push-roundtrip` | ~3m | Spec discovery integration test (push verification) |
 | `user-setup` | ~30s | Create homestak user |
 
 **Retired Scenarios (v0.47):** `vm-constructor`, `vm-destructor`, `vm-roundtrip`, `nested-pve-*`, `recursive-pve-*` — replaced by verb commands (`create`/`destroy`/`test`). Running a retired scenario prints a migration hint.

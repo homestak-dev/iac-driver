@@ -315,6 +315,82 @@ class BootstrapAction:
 
 
 @dataclass
+class SyncDriverCodeAction:
+    """Sync iac-driver code from outer host to inner PVE.
+
+    After bootstrap clones from GitHub (master), this action overwrites
+    the installed iac-driver with the outer host's working copy. This
+    ensures delegation uses the same code as the calling operator.
+
+    Only syncs src/ and run.sh — not tests, docs, or .states/.
+    """
+    name: str
+    host_attr: str = 'vm_ip'
+    timeout: int = 120
+
+    def run(self, config: HostConfig, context: dict) -> ActionResult:
+        """Rsync iac-driver source to inner host."""
+        start = time.time()
+
+        host = context.get(self.host_attr)
+        if not host:
+            return ActionResult(
+                success=False,
+                message=f"No {self.host_attr} in context",
+                duration=time.time() - start
+            )
+
+        # Determine local iac-driver path
+        from pathlib import Path
+        local_driver = Path(__file__).resolve().parent.parent.parent
+        if not (local_driver / 'run.sh').exists():
+            return ActionResult(
+                success=False,
+                message=f"Cannot find iac-driver at {local_driver}",
+                duration=time.time() - start
+            )
+
+        remote_driver = '/usr/local/lib/homestak/iac-driver'
+
+        # Rsync src/ and run.sh to inner host
+        cmd = [
+            'rsync', '-az', '--delete',
+            '-e', 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR',
+            f'{local_driver}/src/',
+            f'root@{host}:{remote_driver}/src/',
+        ]
+
+        logger.info(f"[{self.name}] Syncing iac-driver to {host}...")
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+            )
+            if result.returncode != 0:
+                return ActionResult(
+                    success=False,
+                    message=f"rsync failed: {result.stderr}",
+                    duration=time.time() - start
+                )
+        except subprocess.TimeoutExpired:
+            return ActionResult(
+                success=False,
+                message=f"rsync timed out after {self.timeout}s",
+                duration=time.time() - start
+            )
+
+        logger.info(f"[{self.name}] Code synced to {host}")
+        return ActionResult(
+            success=True,
+            message=f"iac-driver synced to {host}",
+            duration=time.time() - start
+        )
+
+
+@dataclass
 class CopySecretsAction:
     """Copy secrets.yaml from outer host to inner host.
 

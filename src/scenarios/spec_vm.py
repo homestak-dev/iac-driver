@@ -98,16 +98,15 @@ class StartSpecServerAction:
                 duration=time.time() - start
             )
 
-        # Check if already running
-        check_cmd = 'pgrep -f "homestak.* serve" || true'
+        # Check if already running by checking the port
+        check_cmd = f'ss -tlnp | grep ":{self.server_port} " || true'
         rc, out, err = run_ssh(pve_host, check_cmd, user=ssh_user, timeout=10)
         if out.strip():
-            logger.info(f"[{self.name}] Spec server already running (PID: {out.strip()})")
+            logger.info(f"[{self.name}] Spec server already running on port {self.server_port}")
             return ActionResult(
                 success=True,
-                message=f"Spec server already running (PID: {out.strip()})",
+                message=f"Spec server already running on port {self.server_port}",
                 duration=time.time() - start,
-                context_updates={'spec_server_pid': out.strip()}
             )
 
         # Start spec server in background
@@ -276,39 +275,35 @@ class StopSpecServerAction:
         pve_host = config.ssh_host
         ssh_user = config.ssh_user
 
-        # Find and kill spec server process
-        kill_cmd = 'pkill -f "homestak.* serve" || true'
-        logger.info(f"[{self.name}] Stopping spec server on {pve_host}...")
-        rc, out, err = run_ssh(pve_host, kill_cmd, user=ssh_user, timeout=self.timeout)
+        # Find PID from port and kill it
+        find_cmd = 'ss -tlnp | grep ":44443 " | grep -oP "pid=\\K[0-9]+" || true'
+        rc, out, err = run_ssh(pve_host, find_cmd, user=ssh_user, timeout=10)
+        pid = out.strip()
 
-        # Verify stopped
-        check_cmd = 'pgrep -f "homestak.* serve" || echo "stopped"'
-        rc, out, err = run_ssh(pve_host, check_cmd, user=ssh_user, timeout=10)
-
-        if 'stopped' in out:
-            return ActionResult(
-                success=True,
-                message="Spec server stopped",
-                duration=time.time() - start
-            )
+        if pid:
+            kill_cmd = f'kill {pid} 2>/dev/null || true'
+            logger.info(f"[{self.name}] Stopping spec server (PID: {pid}) on {pve_host}...")
+            run_ssh(pve_host, kill_cmd, user=ssh_user, timeout=self.timeout)
+        else:
+            logger.info(f"[{self.name}] No spec server found on port 44443")
 
         return ActionResult(
             success=True,
-            message=f"Spec server may still be running: {out.strip()}",
+            message=f"Spec server stopped (PID: {pid})" if pid else "No spec server was running",
             duration=time.time() - start
         )
 
 
 @register_scenario
-class SpecVMRoundtrip:
-    """Test Create → Specify flow: provision VM, verify spec server integration."""
+class SpecVMPushRoundtrip:
+    """Test Create → Specify flow (push): provision VM, verify spec server integration."""
 
-    name = 'spec-vm-roundtrip'
-    description = 'Deploy VM with spec server vars, verify env injection, destroy'
+    name = 'spec-vm-push-roundtrip'
+    description = 'Deploy VM with spec server vars, verify env injection via SSH, destroy'
     expected_runtime = 180  # ~3 min
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
-        """Return phases for spec VM roundtrip test."""
+        """Return phases for spec VM push roundtrip test."""
         return [
             # Prerequisites
             ('check_config', CheckSpecServerConfigAction(
