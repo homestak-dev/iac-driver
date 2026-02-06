@@ -10,7 +10,7 @@ Verb commands (4-phase lifecycle):
 - create: Create infrastructure from manifest
 - destroy: Destroy infrastructure from manifest
 - test: Create, verify, and destroy infrastructure
-- (Future) config: Configure nodes
+- config: Apply specification to the local host
 """
 
 import argparse
@@ -32,8 +32,7 @@ VERB_COMMANDS = {
     "create": "Create infrastructure from manifest",
     "destroy": "Destroy infrastructure from manifest",
     "test": "Create, verify, and destroy infrastructure from manifest",
-    # Future verbs (stubs):
-    # "config": "Configure nodes",
+    "config": "Apply specification to the local host",
 }
 
 # Scenarios retired in v0.47 (scenario consolidation)
@@ -76,6 +75,10 @@ def dispatch_verb(verb: str, argv: list) -> int:
     if verb == "test":
         from manifest_opr.cli import test_main
         return test_main(argv)
+
+    if verb == "config":
+        from config_apply import config_main
+        return config_main(argv)
 
     print(f"Error: Verb '{verb}' not yet implemented")
     return 1

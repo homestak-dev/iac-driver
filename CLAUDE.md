@@ -57,6 +57,7 @@ All repos are siblings in a common parent directory:
 │   │   ├── cli.py        # CLI implementation
 │   │   ├── common.py     # ActionResult + shared utilities
 │   │   ├── config.py          # Host configuration (auto-discovery from site-config)
+│   │   ├── config_apply.py    # Config phase: spec-to-ansible-vars + apply
 │   │   ├── config_resolver.py # ConfigResolver - resolves site-config for tofu
 │   │   ├── manifest.py        # Manifest schema v1 (levels) + v2 (nodes graph)
 │   │   ├── manifest_opr/ # Operator engine for manifest-based orchestration
@@ -78,7 +79,7 @@ All repos are siblings in a common parent directory:
 │   │   ├── actions/      # Reusable primitive operations
 │   │   │   ├── tofu.py   # TofuApplyAction, TofuDestroyAction
 │   │   │   ├── ansible.py# AnsiblePlaybookAction
-│   │   │   ├── ssh.py    # SSHCommandAction, WaitForSSHAction
+│   │   │   ├── ssh.py    # SSHCommandAction, WaitForSSHAction, WaitForFileAction
 │   │   │   ├── proxmox.py# StartVMAction, WaitForGuestAgentAction
 │   │   │   ├── file.py   # DownloadFileAction, RemoveImageAction
 │   │   │   ├── recursive.py   # RecursiveScenarioAction
@@ -381,6 +382,9 @@ v2 manifests are backward-compatible: nodes are converted to levels via topologi
 
 # Full cycle: create, verify SSH, destroy
 ./run.sh test -M n2-quick -H father [--dry-run] [--json-output]
+
+# Apply spec to local host (config phase)
+./run.sh config [--spec /path/to/spec.yaml] [--dry-run] [--json-output] [--verbose]
 ```
 
 ### Architecture
@@ -419,6 +423,39 @@ The operator handles root nodes (depth 0) locally. PVE nodes with children trigg
 2. Subtree delegation via SSH — extracts child nodes as a new manifest, runs `./run.sh create --manifest-json` on the inner PVE
 
 This recursion handles arbitrary depth (N=2, N=3, etc.) without depth limits.
+
+### Execution Modes (v0.48+)
+
+Nodes can use **push** (default) or **pull** execution mode for the config phase:
+
+| Mode | How Config Runs | Operator Behavior |
+|------|----------------|-------------------|
+| `push` | Driver SSHes in and runs config | Default, used for PVE lifecycle |
+| `pull` | VM self-configures via cloud-init | Operator polls for marker files |
+
+**Pull mode flow:**
+1. Cloud-init runs `homestak spec get` + `./run.sh config` on first boot
+2. Operator polls via SSH for `/usr/local/etc/homestak/state/spec.yaml`
+3. Then polls for `/usr/local/etc/homestak/state/config-complete.json`
+4. Node is considered configured when both markers exist
+
+**Config verb (`./run.sh config`):**
+- Reads spec from `/usr/local/etc/homestak/state/spec.yaml` (or `--spec` path)
+- Maps spec sections to ansible role variables via `spec_to_ansible_vars()`
+- Writes vars to `/usr/local/etc/homestak/state/config-vars.json`
+- Runs `ansible/playbooks/config-apply.yml` locally
+- Writes completion marker to `/usr/local/etc/homestak/state/config-complete.json`
+
+**Per-node execution mode** is set in manifests:
+```yaml
+nodes:
+  - name: pull-test
+    type: vm
+    execution:
+      mode: pull  # Default: push
+```
+
+PVE nodes always use push regardless of setting (complex lifecycle requires SSH).
 
 ## Common Commands
 
@@ -728,6 +765,8 @@ Operations use tiered timeouts based on expected duration. Scenarios can overrid
 | `AnsiblePlaybookAction` | ssh_timeout | 60s | Pre-playbook SSH wait |
 | `WaitForSSHAction` | timeout | 60s | SSH availability |
 | `WaitForSSHAction` | interval | 5s | Retry interval |
+| `WaitForFileAction` | timeout | 300s | File existence via SSH |
+| `WaitForFileAction` | interval | 10s | Retry interval |
 | `WaitForGuestAgentAction` | timeout | 300s | Guest agent |
 | `WaitForGuestAgentAction` | interval | 5s | Retry interval |
 | `SSHCommandAction` | timeout | 60s | Single SSH command |
@@ -745,6 +784,7 @@ Operations use tiered timeouts based on expected duration. Scenarios can overrid
 | configure_bridge | 120s | Network bridge configuration |
 | download_images | 300s | ~200MB image from GitHub |
 | subtree_delegation | 1200s | SSH to inner PVE, run operator |
+| pull_config_complete | 300s | Poll for config-complete.json (pull mode) |
 
 ### Tuning Guidelines
 
@@ -779,6 +819,10 @@ The orchestrator supports two command styles: verb commands for manifest-based o
 ./run.sh create -M n2-quick -H father              # Create infrastructure
 ./run.sh destroy -M n2-quick -H father --yes        # Destroy infrastructure
 ./run.sh test -M n2-quick -H father                 # Full roundtrip
+
+# Config verb (local execution)
+./run.sh config                                         # Apply spec to local host
+./run.sh config --spec /path/to/spec.yaml --dry-run     # Preview with custom spec
 
 # Scenarios (standalone workflows)
 ./run.sh --scenario pve-setup --local                   # Install + configure PVE

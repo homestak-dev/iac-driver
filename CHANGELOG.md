@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Theme: Config Phase + Pull Execution Mode (#147)
+
+Adds the config phase (`./run.sh config`) and pull execution mode for the node lifecycle. VMs can now self-configure via cloud-init instead of requiring SSH-based push from the driver.
+
+### Added
+- Add `config` verb (`./run.sh config`) for applying specs to the local host (#147)
+  - Maps spec fields to ansible vars (packages, users, SSH keys, posture)
+  - Runs `config-apply.yml` playbook with existing roles (base, users, security)
+  - Writes platform-ready marker on success
+  - Supports `--spec`, `--dry-run`, `--json-output` flags
+- Add `WaitForFileAction` in `src/actions/ssh.py` (#147)
+  - Polls for file existence on remote host via SSH
+  - Used by operator to wait for pull-mode completion markers
+- Add pull execution mode in operator (`manifest_opr/executor.py`) (#147)
+  - Checks `execution.mode` per node after SSH becomes available
+  - Pull nodes: polls for spec.yaml and config-complete.json markers
+  - PVE nodes always use push (complex multi-step orchestration)
+  - Push nodes: no change (default behavior preserved)
+
 ### Theme: Integration Test (#198)
 
 Validates all unreleased work since v0.45 on live PVE infrastructure. Fixes 7 bugs found during testing.
