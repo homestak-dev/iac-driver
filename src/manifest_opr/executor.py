@@ -341,7 +341,10 @@ class NodeExecutor:
         # 5. Post-SSH: PVE lifecycle, pull mode wait, or pass-through
         exec_mode = mn.execution_mode or self.manifest.execution_mode
         if mn.type == 'pve' and ip:
-            # PVE lifecycle is always push (complex multi-step orchestration)
+            # PVE lifecycle requires push: bootstrap install, secrets injection,
+            # bridge config, API token creation, and image download are
+            # multi-step orchestration steps that need the driver's active
+            # participation. A single spec→ansible flow can't cover these.
             pve_result = self._run_pve_lifecycle(exec_node, ip, context)
             if not pve_result.success:
                 return ActionResult(

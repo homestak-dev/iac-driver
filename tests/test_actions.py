@@ -203,7 +203,7 @@ class TestVerifyPackagesAction:
         """Missing host in context should return failure."""
         from scenarios.spec_vm import VerifyPackagesAction
 
-        action = VerifyPackagesAction(name='test', host_key='missing')
+        action = VerifyPackagesAction(name='test', packages=('curl',), host_key='missing')
         config = MockHostConfig()
         result = action.run(config, {})
 
@@ -252,7 +252,7 @@ class TestVerifyUserAction:
         """Missing host in context should return failure."""
         from scenarios.spec_vm import VerifyUserAction
 
-        action = VerifyUserAction(name='test', host_key='missing')
+        action = VerifyUserAction(name='test', username='homestak', host_key='missing')
         config = MockHostConfig()
         result = action.run(config, {})
 

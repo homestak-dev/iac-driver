@@ -54,20 +54,11 @@ def _discover_state_path() -> Path:
     Resolution order:
     1. $HOMESTAK_ETC/state/
     2. /usr/local/etc/homestak/state/ (FHS)
-    3. /opt/homestak/site-config/state/ (legacy)
     """
     if env_path := os.environ.get('HOMESTAK_ETC'):
         return Path(env_path) / 'state'
 
-    fhs = Path('/usr/local/etc/homestak/state')
-    if fhs.parent.exists():
-        return fhs
-
-    legacy = Path('/opt/homestak/site-config/state')
-    if legacy.parent.exists():
-        return legacy
-
-    return fhs  # Default to FHS
+    return Path('/usr/local/etc/homestak/state')
 
 
 def _discover_ansible_dir() -> Path:
@@ -75,25 +66,16 @@ def _discover_ansible_dir() -> Path:
 
     Resolution order:
     1. $HOMESTAK_LIB/ansible/ (env override)
-    2. ../ansible/ (dev workspace sibling of iac-driver)
-    3. /usr/local/lib/homestak/ansible/ (FHS)
-    4. /opt/homestak/ansible/ (legacy)
+    2. /usr/local/lib/homestak/ansible/ (FHS)
+
+    Dev environments should set HOMESTAK_LIB explicitly.
     """
     if env_path := os.environ.get('HOMESTAK_LIB'):
         return Path(env_path) / 'ansible'
 
-    # Sibling directory (dev workspace)
-    sibling = Path(__file__).parent.parent.parent / 'ansible'
-    if sibling.exists():
-        return sibling
-
     fhs = Path('/usr/local/lib/homestak/ansible')
     if fhs.exists():
         return fhs
-
-    legacy = Path('/opt/homestak/ansible')
-    if legacy.exists():
-        return legacy
 
     raise ConfigError(
         "Ansible directory not found. "

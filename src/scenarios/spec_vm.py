@@ -291,8 +291,8 @@ class StopSpecServerAction:
 class VerifyPackagesAction:
     """Verify expected packages are installed on a VM."""
     name: str
+    packages: tuple
     host_key: str = 'vm_ip'
-    packages: tuple = ('htop', 'curl')
     timeout: int = 30
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
@@ -332,8 +332,8 @@ class VerifyPackagesAction:
 class VerifyUserAction:
     """Verify expected user exists on a VM."""
     name: str
+    username: str
     host_key: str = 'vm_ip'
-    username: str = 'homestak'
     timeout: int = 30
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
