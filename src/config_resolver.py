@@ -5,10 +5,10 @@ flat configurations suitable for tofu and ansible. All template and vm_preset
 inheritance is resolved here, so consumers receive fully-computed values.
 
 Resolution order (tofu):
-1. vms/presets/{vm_preset}.yaml (if template uses vm_preset:)
+1. presets/{vm_preset}.yaml (if template uses preset:)
 2. vms/{template}.yaml (template definition)
 3. envs/{env}.yaml instance overrides (name, ip, vmid)
-4. v2/postures/{posture}.yaml for auth.method (v0.45+)
+4. postures/{posture}.yaml for auth.method (v0.45+)
 
 Resolution order (ansible):
 1. site.yaml defaults (timezone, packages, pve settings)
@@ -54,10 +54,9 @@ class ConfigResolver:
 
         self.site = self._load_yaml("site.yaml")
         self.secrets = _load_secrets(self.path) or {}
-        self.vm_presets = self._load_dir("vms/presets")
+        self.vm_presets = self._load_dir("presets")
         self.templates = self._load_dir("vms")
         self.postures = self._load_dir("postures")
-        self.v2_postures = self._load_dir("v2/postures")
 
     def _load_yaml(self, relative_path: str) -> dict:
         """Load a YAML file from site-config directory."""
@@ -80,19 +79,18 @@ class ConfigResolver:
     def _resolve_auth_token(self, posture_name: str, vm_name: str) -> str:
         """Resolve auth token for a VM based on posture's auth method.
 
-        Uses v2/postures/{posture}.yaml to determine auth.method, then
+        Uses postures/{posture}.yaml to determine auth.method, then
         resolves the appropriate token from secrets.yaml.
 
         Args:
-            posture_name: Posture name (matches v2/postures/{posture}.yaml)
+            posture_name: Posture name (matches postures/{posture}.yaml)
             vm_name: VM name (used for node_token resolution)
 
         Returns:
             Auth token string, or empty string for network trust
         """
-        # Load v2 posture for auth.method
-        v2_posture = self.v2_postures.get(posture_name, {})
-        auth_config = v2_posture.get("auth", {})
+        posture = self.postures.get(posture_name, {})
+        auth_config = posture.get("auth", {})
         auth_method = auth_config.get("method", "network")
 
         # Resolve token based on method
@@ -209,14 +207,14 @@ class ConfigResolver:
 
         Supports two modes:
         1. Template mode: template references vms/{template}.yaml
-        2. Preset mode: vm_preset references vms/presets/{vm_preset}.yaml (requires image)
+        2. Preset mode: vm_preset references presets/{vm_preset}.yaml (requires image)
 
         Args:
             node: Target PVE node name (matches nodes/{node}.yaml)
             vm_name: VM hostname
             vmid: Explicit VM ID
             template: Template name (matches vms/{template}.yaml)
-            vm_preset: Preset name (matches vms/presets/{vm_preset}.yaml)
+            vm_preset: Preset name (matches presets/{vm_preset}.yaml)
             image: Image name (required for vm_preset mode, optional override for template)
             posture: Posture name for auth token resolution (default: dev)
 
@@ -326,7 +324,7 @@ class ConfigResolver:
             # Preset mode: vm_preset → instance (no template)
             base = self.vm_presets.get(direct_vm_preset_name, {}).copy()
             if not base:
-                raise ConfigError(f"Preset not found: vms/presets/{direct_vm_preset_name}.yaml")
+                raise ConfigError(f"Preset not found: presets/{direct_vm_preset_name}.yaml")
         else:
             # No template or vm_preset - start with empty base
             base = {}
@@ -430,6 +428,11 @@ class ConfigResolver:
         ssh_keys_dict = self.secrets.get("ssh_keys", {})
         ssh_keys_list = list(ssh_keys_dict.values())
 
+        # Read posture settings from nested structure
+        ssh_config = posture.get("ssh", {})
+        sudo_config = posture.get("sudo", {})
+        fail2ban_config = posture.get("fail2ban", {})
+
         return {
             # System config from site defaults
             "timezone": defaults.get("timezone", "UTC"),
@@ -438,12 +441,12 @@ class ConfigResolver:
             # Merged packages
             "packages": merged_packages,
 
-            # Security settings from posture
-            "ssh_port": posture.get("ssh_port", 22),
-            "ssh_permit_root_login": posture.get("ssh_permit_root_login", "prohibit-password"),
-            "ssh_password_authentication": posture.get("ssh_password_authentication", "no"),
-            "sudo_nopasswd": posture.get("sudo_nopasswd", False),
-            "fail2ban_enabled": posture.get("fail2ban_enabled", False),
+            # Security settings from posture (nested keys)
+            "ssh_port": ssh_config.get("port", 22),
+            "ssh_permit_root_login": ssh_config.get("permit_root_login", "prohibit-password"),
+            "ssh_password_authentication": ssh_config.get("password_authentication", "no"),
+            "sudo_nopasswd": sudo_config.get("nopasswd", False),
+            "fail2ban_enabled": fail2ban_config.get("enabled", False),
 
             # Metadata
             "env_name": env,

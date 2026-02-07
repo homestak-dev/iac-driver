@@ -169,6 +169,100 @@ class TestRetiredScenarios:
         assert "retired" in combined.lower()
 
 
+class TestScenarioVerb:
+    """Test 'scenario' verb command."""
+
+    @requires_infrastructure
+    def test_scenario_verb_lists_phases(self):
+        """scenario verb should list phases like legacy --scenario."""
+        result = subprocess.run(
+            [str(RUN_SH), 'scenario', 'pve-setup', '--list-phases',
+             '--host', 'father', '--skip-preflight'],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode == 0
+        assert 'ensure_pve' in result.stdout
+
+    def test_scenario_verb_no_name_shows_usage(self):
+        """scenario verb with no name shows usage."""
+        result = subprocess.run(
+            [str(RUN_SH), 'scenario'],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode == 1
+        assert 'Usage' in result.stdout
+
+    def test_scenario_verb_help_lists_scenarios(self):
+        """scenario verb --help lists available scenarios."""
+        result = subprocess.run(
+            [str(RUN_SH), 'scenario', '--help'],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode == 0
+        assert 'pve-setup' in result.stdout
+
+    def test_scenario_verb_retired_shows_hint(self):
+        """scenario verb with retired scenario shows migration hint."""
+        result = subprocess.run(
+            [str(RUN_SH), 'scenario', 'vm-roundtrip', '-H', 'father'],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode == 1
+        assert 'retired' in (result.stdout + result.stderr).lower()
+
+    def test_no_deprecation_warning_with_verb(self):
+        """scenario verb should NOT show deprecation warning."""
+        result = subprocess.run(
+            [str(RUN_SH), 'scenario', 'pve-setup', '--list-phases',
+             '--host', 'father', '--skip-preflight'],
+            capture_output=True,
+            text=True
+        )
+        combined = result.stdout + result.stderr
+        assert 'deprecated' not in combined.lower()
+
+    def test_legacy_flag_shows_deprecation(self):
+        """Legacy --scenario should show deprecation warning."""
+        result = subprocess.run(
+            [str(RUN_SH), '--scenario', 'pve-setup', '--list-phases',
+             '--host', 'father', '--skip-preflight'],
+            capture_output=True,
+            text=True
+        )
+        combined = result.stdout + result.stderr
+        assert 'deprecated' in combined.lower()
+
+
+class TestTopLevelUsage:
+    """Test top-level usage display."""
+
+    def test_no_args_shows_usage(self):
+        """No arguments shows top-level usage."""
+        result = subprocess.run(
+            [str(RUN_SH)],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode == 0
+        assert 'scenario' in result.stdout
+        assert 'create' in result.stdout
+        assert 'serve' in result.stdout
+
+    def test_unknown_command_shows_error(self):
+        """Unknown command shows error and usage."""
+        result = subprocess.run(
+            [str(RUN_SH), 'foobar'],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode == 1
+        assert 'Unknown command' in result.stdout
+
+
 class TestTimeoutFlag:
     """Test CLI --timeout flag."""
 

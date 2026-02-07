@@ -71,7 +71,7 @@ class StartSpecServerAction:
     """Start spec server on controller host."""
     name: str
     server_port: int = 44443
-    timeout: int = 60
+    timeout: int = 10
     serve_repos: bool = False
     repo_token: str | None = None  # None = don't pass flag, "" = disable auth
 
@@ -104,7 +104,9 @@ class StartSpecServerAction:
                 duration=time.time() - start,
             )
 
-        # Start controller in background via iac-driver
+        # Start controller in background via iac-driver.
+        # Close all inherited FDs > 2 before exec to prevent SSH from
+        # blocking until the background process exits (#166).
         serve_flags = f'--port {self.server_port}'
         if self.serve_repos:
             serve_flags += ' --repos'
@@ -112,8 +114,11 @@ class StartSpecServerAction:
                 serve_flags += f" --repo-token '{self.repo_token}'"
         start_cmd = (
             f'cd {iac_dir} && '
-            f'nohup ./run.sh serve {serve_flags} '
-            f'> /tmp/homestak-controller.log 2>&1 </dev/null & echo $!'
+            f'( for fd in $(ls /proc/self/fd 2>/dev/null); do '
+            f'[ "$fd" -gt 2 ] && eval "exec $fd>&-" 2>/dev/null; done; '
+            f'exec ./run.sh serve {serve_flags} '
+            f'> /tmp/homestak-controller.log 2>&1 </dev/null '
+            f') & echo $!'
         )
         logger.info(f"[{self.name}] Starting controller on {pve_host}:{self.server_port}...")
         rc, out, err = run_ssh(pve_host, start_cmd, user=ssh_user, timeout=self.timeout)

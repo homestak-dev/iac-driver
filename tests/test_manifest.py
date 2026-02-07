@@ -686,8 +686,8 @@ class TestManifestV2:
         # VM node should not
         assert manifest.levels[1].post_scenario is None
 
-    def test_vm_preset_prefix_stripped(self):
-        """v2 presets (vm-prefixed) should have prefix stripped for v1 compat."""
+    def test_vm_preset_passed_through(self):
+        """v2 presets (vm-prefixed) should be passed through to v1 level."""
         from manifest import Manifest
 
         data = {
@@ -699,8 +699,8 @@ class TestManifestV2:
         }
         manifest = Manifest.from_dict(data)
 
-        # v1 level should have prefix-stripped preset
-        assert manifest.levels[0].vm_preset == 'small'
+        # v1 level gets vm-prefixed preset directly (presets/ uses vm- prefix)
+        assert manifest.levels[0].vm_preset == 'vm-small'
 
     def test_default_pattern_is_flat(self):
         """Should default to flat pattern when not specified."""

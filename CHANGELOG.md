@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+### Theme: Site-Config/IAC-Driver Cleanup (#209)
+
+Unify resolver paths after site-config v2/ consolidation.
+
+### Added
+- Add `scenario` verb as first-class command: `./run.sh scenario pve-setup -H father` (#169)
+- Add top-level usage display when running `./run.sh` with no arguments (#169)
+
+### Changed
+- Deprecate `--scenario` flag with migration hint (still works) (#169)
+- Update ConfigResolver to load presets from `presets/` instead of `vms/presets/` (#161)
+- Update ConfigResolver to use unified `postures/` (nested format) instead of dual v1/v2 loading (#161)
+- Update `resolve_ansible_vars()` to read nested posture keys (`ssh.port`, `sudo.nopasswd`, etc.) (#161)
+- Update SpecResolver to load specs from `specs/` instead of `v2/specs/` (#161)
+- Update ResolverBase `_load_posture()` to use `postures/` instead of `v2/postures/` (#161)
+
+### Fixed
+- Fix controller startup 60s timeout caused by SSH FD inheritance (#166)
+  - Close inherited FDs > 2 before exec'ing background controller process
+  - Reduces `StartSpecServerAction` default timeout from 60s to 10s
+
+### Removed
+- Remove `v2_postures` secondary loader from ConfigResolver (#161)
+- Remove vm- prefix stripping shim from manifest v2→v1 conversion (#161)
+
 ### Theme: Config Phase + Pull Execution Mode (#147)
 
 Adds the config phase (`./run.sh config`) and pull execution mode for the node lifecycle. VMs can now self-configure via cloud-init instead of requiring SSH-based push from the driver.

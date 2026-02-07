@@ -137,10 +137,10 @@ resolver.list_presets()   # ['small', 'medium', 'large', ...]
 
 ### Resolution Order (Tofu)
 
-1. `vms/presets/{preset}.yaml` - Size presets (if template uses `preset:`)
+1. `presets/{preset}.yaml` - Size presets (if template uses `preset:`)
 2. `vms/{template}.yaml` - Template definition
 3. `envs/{env}.yaml` - Instance overrides (name, ip, vmid)
-4. `v2/postures/{posture}.yaml` - Auth method for spec discovery (v0.45+)
+4. `postures/{posture}.yaml` - Auth method for spec discovery
 
 ### Resolution Order (Ansible)
 
@@ -185,7 +185,7 @@ Per-VM `auth_token` is resolved based on the environment's posture:
 | stage | `site_token` | `secrets.auth.site_token` |
 | prod | `node_token` | `secrets.auth.node_tokens.{vm_name}` |
 
-The auth method is determined by `v2/postures/{posture}.yaml` (not v1 postures).
+The auth method is determined by `postures/{posture}.yaml`.
 
 ### Output Structure (Ansible)
 
@@ -294,7 +294,7 @@ The unified controller daemon serves both specs and git repos over a single HTTP
 
 ### Spec Authentication
 
-Spec endpoints use posture-based authentication from `v2/postures/{posture}.yaml`:
+Spec endpoints use posture-based authentication from `postures/{posture}.yaml`:
 
 | Method | Description | Token Source |
 |--------|-------------|--------------|
@@ -814,7 +814,7 @@ Outer PVE Host (pve)
 
 ### CLI
 
-The orchestrator supports two command styles: verb commands for manifest-based orchestration, and `--scenario` for standalone workflows.
+The orchestrator uses verb commands for all operations. Run `./run.sh` with no arguments for top-level usage.
 
 ```bash
 # Verb commands (manifest-based)
@@ -827,25 +827,30 @@ The orchestrator supports two command styles: verb commands for manifest-based o
 ./run.sh config --fetch --insecure                      # Fetch spec from server + apply
 ./run.sh config --spec /path/to/spec.yaml --dry-run     # Preview with custom spec
 
-# Scenarios (standalone workflows)
-./run.sh --scenario pve-setup --local                   # Install + configure PVE
-./run.sh --scenario pve-setup --remote 10.0.12.x        # Remote PVE setup
-./run.sh --scenario user-setup --local                  # Create homestak user
-./run.sh --scenario bootstrap-install --vm-ip 10.0.12.x # Test bootstrap
-./run.sh --list-scenarios                                # List available scenarios
+# Scenario verb (standalone workflows)
+./run.sh scenario pve-setup --local                   # Install + configure PVE
+./run.sh scenario pve-setup --remote 192.0.2.10       # Remote PVE setup
+./run.sh scenario user-setup --local                  # Create homestak user
+./run.sh scenario bootstrap-install --vm-ip 192.0.2.20 # Test bootstrap
+./run.sh scenario --help                              # List available scenarios
+
+# Top-level help
+./run.sh                                              # Show all commands
 ```
+
+**Note:** The legacy `--scenario` flag is deprecated. Use `./run.sh scenario <name>` instead.
 
 **CLI Options:**
 | Option | Description |
 |--------|-------------|
 | `--version` | Show CLI version |
-| `--scenario`, `-S` | Scenario to run (required) |
+| `--scenario`, `-S` | Scenario to run (deprecated, use `scenario` verb) |
 | `--host`, `-H` | Target PVE host (required for most scenarios) |
 | `--env`, `-E` | Environment to deploy (overrides scenario default) |
 | `--context-file`, `-C` | Save/load context for chained runs |
 | `--verbose`, `-v` | Enable verbose logging |
 | `--skip`, `-s` | Phases to skip (repeatable) |
-| `--list-scenarios` | List available scenarios |
+| `--list-scenarios` | List available scenarios (or `scenario --help`) |
 | `--list-phases` | List phases for selected scenario |
 | `--local` | Run locally (for pve-setup, user-setup, packer-build) |
 | `--remote` | Remote host IP (for pve-setup, user-setup, packer-build) |

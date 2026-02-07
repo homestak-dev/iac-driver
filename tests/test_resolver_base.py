@@ -72,7 +72,7 @@ class TestResolverBase:
     def site_config(self, tmp_path):
         """Create a minimal site-config structure."""
         # Create directories
-        (tmp_path / "v2" / "postures").mkdir(parents=True)
+        (tmp_path / "postures").mkdir(parents=True)
 
         # Create site.yaml
         site_yaml = {
@@ -99,24 +99,24 @@ class TestResolverBase:
         }
         (tmp_path / "secrets.yaml").write_text(yaml.dump(secrets_yaml))
 
-        # Create v2 postures
+        # Create postures
         dev_posture = {
             "auth": {"method": "network"},
             "ssh": {"port": 22},
         }
-        (tmp_path / "v2" / "postures" / "dev.yaml").write_text(yaml.dump(dev_posture))
+        (tmp_path / "postures" / "dev.yaml").write_text(yaml.dump(dev_posture))
 
         stage_posture = {
             "auth": {"method": "site_token"},
             "ssh": {"port": 22},
         }
-        (tmp_path / "v2" / "postures" / "stage.yaml").write_text(yaml.dump(stage_posture))
+        (tmp_path / "postures" / "stage.yaml").write_text(yaml.dump(stage_posture))
 
         prod_posture = {
             "auth": {"method": "node_token"},
             "ssh": {"port": 22},
         }
-        (tmp_path / "v2" / "postures" / "prod.yaml").write_text(yaml.dump(prod_posture))
+        (tmp_path / "postures" / "prod.yaml").write_text(yaml.dump(prod_posture))
 
         return tmp_path
 
@@ -171,24 +171,24 @@ class TestResolverBase:
         site2 = resolver._load_site()
         assert site is site2
 
-    def test_load_posture_v2(self, site_config):
-        """_load_posture loads v2 posture."""
+    def test_load_posture(self, site_config):
+        """_load_posture loads posture."""
         resolver = ResolverBase(etc_path=site_config)
-        posture = resolver._load_posture("dev", version="v2")
+        posture = resolver._load_posture("dev")
         assert posture["auth"]["method"] == "network"
 
     def test_load_posture_caching(self, site_config):
         """_load_posture caches postures."""
         resolver = ResolverBase(etc_path=site_config)
-        posture1 = resolver._load_posture("dev", version="v2")
-        posture2 = resolver._load_posture("dev", version="v2")
+        posture1 = resolver._load_posture("dev")
+        posture2 = resolver._load_posture("dev")
         assert posture1 is posture2
 
     def test_load_posture_not_found(self, site_config):
         """_load_posture raises PostureNotFoundError."""
         resolver = ResolverBase(etc_path=site_config)
         with pytest.raises(PostureNotFoundError) as exc_info:
-            resolver._load_posture("nonexistent", version="v2")
+            resolver._load_posture("nonexistent")
         assert exc_info.value.code == "E201"
 
     def test_resolve_ssh_keys(self, site_config):
@@ -262,7 +262,7 @@ class TestResolverBase:
         # Load data to populate cache
         resolver._load_secrets()
         resolver._load_site()
-        resolver._load_posture("dev", version="v2")
+        resolver._load_posture("dev")
 
         # Verify cache is populated
         assert resolver._secrets is not None

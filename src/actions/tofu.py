@@ -170,13 +170,13 @@ class TofuApplyInlineAction:
 
     Supports two modes:
     - Template mode: template references vms/{template}.yaml
-    - Preset mode: vm_preset references vms/presets/{vm_preset}.yaml (requires image)
+    - Preset mode: vm_preset references presets/{vm_preset}.yaml (requires image)
     """
     name: str
     vm_name: str      # VM hostname (becomes PVE node name)
     vmid: int         # Explicit VM ID
     template: str = None   # FK to vms/{template}.yaml (template mode)
-    vm_preset: str = None     # FK to vms/presets/{vm_preset}.yaml (vm_preset mode)
+    vm_preset: str = None     # FK to presets/{vm_preset}.yaml (vm_preset mode)
     image: str = None      # Image name (required for vm_preset mode)
     timeout_init: int = 120
     timeout_apply: int = 300
@@ -277,7 +277,7 @@ class TofuDestroyInlineAction:
     vm_name: str      # VM hostname
     vmid: int         # VM ID
     template: str = None   # FK to vms/{template}.yaml (template mode)
-    vm_preset: str = None     # FK to vms/presets/{vm_preset}.yaml (vm_preset mode)
+    vm_preset: str = None     # FK to presets/{vm_preset}.yaml (vm_preset mode)
     image: str = None      # Image name (for vm_preset mode)
     timeout: int = 300
 

@@ -68,18 +68,18 @@ class TestControllerServer:
     @pytest.fixture
     def site_config(self, tmp_path):
         """Create a minimal site-config for server testing."""
-        (tmp_path / "v2" / "specs").mkdir(parents=True)
-        (tmp_path / "v2" / "postures").mkdir(parents=True)
+        (tmp_path / "specs").mkdir(parents=True)
+        (tmp_path / "postures").mkdir(parents=True)
 
         site_yaml = {"defaults": {"domain": "test.local"}}
         (tmp_path / "site.yaml").write_text(yaml.dump(site_yaml))
         (tmp_path / "secrets.yaml").write_text(yaml.dump({"ssh_keys": {}}))
 
         dev_posture = {"auth": {"method": "network"}}
-        (tmp_path / "v2" / "postures" / "dev.yaml").write_text(yaml.dump(dev_posture))
+        (tmp_path / "postures" / "dev.yaml").write_text(yaml.dump(dev_posture))
 
         base_spec = {"schema_version": 1, "access": {"posture": "dev"}}
-        (tmp_path / "v2" / "specs" / "base.yaml").write_text(yaml.dump(base_spec))
+        (tmp_path / "specs" / "base.yaml").write_text(yaml.dump(base_spec))
 
         return tmp_path
 
@@ -209,18 +209,18 @@ class TestControllerServerIntegration:
         """Start a server and return connection details."""
         # Create site-config
         site_config = tmp_path / "site-config"
-        (site_config / "v2" / "specs").mkdir(parents=True)
-        (site_config / "v2" / "postures").mkdir(parents=True)
+        (site_config / "specs").mkdir(parents=True)
+        (site_config / "postures").mkdir(parents=True)
 
         site_yaml = {"defaults": {"domain": "test.local", "timezone": "UTC"}}
         (site_config / "site.yaml").write_text(yaml.dump(site_yaml))
         (site_config / "secrets.yaml").write_text(yaml.dump({"ssh_keys": {}}))
 
         dev_posture = {"auth": {"method": "network"}}
-        (site_config / "v2" / "postures" / "dev.yaml").write_text(yaml.dump(dev_posture))
+        (site_config / "postures" / "dev.yaml").write_text(yaml.dump(dev_posture))
 
         base_spec = {"schema_version": 1, "access": {"posture": "dev"}}
-        (site_config / "v2" / "specs" / "base.yaml").write_text(yaml.dump(base_spec))
+        (site_config / "specs" / "base.yaml").write_text(yaml.dump(base_spec))
 
         # Create TLS config
         cert_dir = tmp_path / "certs"
@@ -342,7 +342,7 @@ class TestCreateServer:
     def test_passes_all_options(self, tmp_path):
         """create_server passes all options to constructor."""
         # Create minimal site-config
-        (tmp_path / "v2" / "specs").mkdir(parents=True)
+        (tmp_path / "specs").mkdir(parents=True)
         (tmp_path / "site.yaml").write_text(yaml.dump({"defaults": {}}))
         (tmp_path / "secrets.yaml").write_text(yaml.dump({}))
 
@@ -371,11 +371,11 @@ class TestSignalHandlers:
     def server_with_signals(self, tmp_path):
         """Create a server for signal testing."""
         # Create minimal site-config
-        (tmp_path / "v2" / "specs").mkdir(parents=True)
-        (tmp_path / "v2" / "postures").mkdir(parents=True)
+        (tmp_path / "specs").mkdir(parents=True)
+        (tmp_path / "postures").mkdir(parents=True)
         (tmp_path / "site.yaml").write_text(yaml.dump({"defaults": {}}))
         (tmp_path / "secrets.yaml").write_text(yaml.dump({}))
-        (tmp_path / "v2" / "postures" / "dev.yaml").write_text(
+        (tmp_path / "postures" / "dev.yaml").write_text(
             yaml.dump({"auth": {"method": "network"}})
         )
 
