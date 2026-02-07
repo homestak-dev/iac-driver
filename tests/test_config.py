@@ -23,7 +23,6 @@ from config import (
     get_site_config_dir,
     get_base_dir,
     get_sibling_dir,
-    list_envs,
     list_hosts,
     load_host_config,
     load_secrets,
@@ -159,28 +158,6 @@ class TestListHosts:
         with patch('config.get_site_config_dir', side_effect=ConfigError('test')):
             hosts = list_hosts()
             assert hosts == []
-
-
-class TestListEnvs:
-    """Test environment listing."""
-
-    def test_lists_yaml_envs(self, tmp_path):
-        """Should list envs from envs/*.yaml."""
-        envs_dir = tmp_path / 'envs'
-        envs_dir.mkdir()
-        (envs_dir / 'dev.yaml').write_text('vms: []')
-        (envs_dir / 'test.yaml').write_text('vms: []')
-        (envs_dir / 'prod.yaml').write_text('vms: []')
-
-        with patch('config.get_site_config_dir', return_value=tmp_path):
-            envs = list_envs()
-            assert envs == ['dev', 'prod', 'test']
-
-    def test_config_error_returns_empty(self):
-        """Should return empty list on ConfigError."""
-        with patch('config.get_site_config_dir', side_effect=ConfigError('test')):
-            envs = list_envs()
-            assert envs == []
 
 
 class TestLoadHostConfig:

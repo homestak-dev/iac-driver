@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Theme: Site-Config/IAC-Driver Cleanup, Pt.2 (#212)
+
+Complete v1→v2 config path migration and retire legacy entities.
+
+### Docs
+- Update CLAUDE.md: remove stale `resolve_env()`, `list_envs()`, `list_templates()` references; update resolution order, CLI options table (#211)
+
+### Changed
+- Migrate spec-vm scenarios from v1 env-based actions to inline actions (#173)
+- Rename `TofuApplyInlineAction` → `TofuApplyAction`, `TofuDestroyInlineAction` → `TofuDestroyAction` (#173)
+- Refactor `resolve_ansible_vars()` to accept posture name directly instead of env name (#173)
+- `-H` now accepts raw IPs in addition to named hosts from site-config (#174)
+- Deprecate `--remote` and `--vm-ip` flags with migration hint to use `-H` (#174)
+
+### Removed
+- Remove v1 `TofuApplyAction` (env-based) and `TofuDestroyAction` (env-based) (#173)
+- Remove `resolve_env()` from ConfigResolver (#173)
+- Remove `--env` flag and `list_envs()` — envs/ directory retired (site-config#58) (#174)
+- Remove `list_envs()` and `list_templates()` from ConfigResolver (#174)
+
+### Bug Fixes
+- Fix stale controller detection in spec-vm scenarios — health check before declaring running (#176)
+
 ### Theme: Site-Config/IAC-Driver Cleanup (#209)
 
 Unify resolver paths after site-config v2/ consolidation.

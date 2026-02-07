@@ -2,9 +2,7 @@
 
 from actions.tofu import (
     TofuApplyAction,
-    TofuApplyInlineAction,
     TofuDestroyAction,
-    TofuDestroyInlineAction,
 )
 from actions.ansible import AnsiblePlaybookAction, AnsibleLocalPlaybookAction, EnsurePVEAction
 from actions.ssh import SSHCommandAction, WaitForSSHAction, WaitForFileAction, VerifySSHChainAction
@@ -33,9 +31,7 @@ from actions.pve_lifecycle import (
 
 __all__ = [
     'TofuApplyAction',
-    'TofuApplyInlineAction',
     'TofuDestroyAction',
-    'TofuDestroyInlineAction',
     'AnsiblePlaybookAction',
     'AnsibleLocalPlaybookAction',
     'EnsurePVEAction',
