@@ -6,6 +6,15 @@
 
 Complete v1→v2 config path migration and retire legacy entities.
 
+### Changed
+- Migrate spec-vm scenarios from v1 env-based actions to inline actions (#173)
+- Rename `TofuApplyInlineAction` → `TofuApplyAction`, `TofuDestroyInlineAction` → `TofuDestroyAction` (#173)
+- Refactor `resolve_ansible_vars()` to accept posture name directly instead of env name (#173)
+
+### Removed
+- Remove v1 `TofuApplyAction` (env-based) and `TofuDestroyAction` (env-based) (#173)
+- Remove `resolve_env()` from ConfigResolver (#173)
+
 ### Bug Fixes
 - Fix stale controller detection in spec-vm scenarios — health check before declaring running (#176)
 

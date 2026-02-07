@@ -22,80 +22,6 @@ from config_resolver import ConfigResolver
 # Note: site_config_dir fixture is provided by conftest.py
 
 
-class TestConfigResolver:
-    """Test ConfigResolver functionality."""
-
-    # Uses site_config_dir from conftest.py
-
-    def test_resolve_env_returns_expected_structure(self, site_config_dir):
-        """resolve_env should return dict with required keys."""
-        resolver = ConfigResolver(str(site_config_dir))
-        config = resolver.resolve_env('test', 'test-node')
-
-        assert 'node' in config
-        assert 'api_endpoint' in config
-        assert 'api_token' in config
-        assert 'ssh_user' in config
-        assert 'datastore' in config
-        assert 'vms' in config
-        assert len(config['vms']) == 3
-
-    def test_resolve_env_applies_vmid_base(self, site_config_dir):
-        """VMs should get vmid = vmid_base + index unless overridden."""
-        resolver = ConfigResolver(str(site_config_dir))
-        config = resolver.resolve_env('test', 'test-node')
-
-        assert config['vms'][0]['vmid'] == 99900  # base + 0
-        assert config['vms'][1]['vmid'] == 99901  # base + 1
-        assert config['vms'][2]['vmid'] == 99999  # explicit override
-
-    def test_resolve_env_applies_preset_inheritance(self, site_config_dir):
-        """VM should inherit cores/memory/disk from preset via template."""
-        resolver = ConfigResolver(str(site_config_dir))
-        config = resolver.resolve_env('test', 'test-node')
-
-        vm = config['vms'][0]
-        assert vm['cores'] == 1  # from preset
-        assert vm['memory'] == 2048  # from preset
-        assert vm['disk'] == 20  # from preset
-        assert vm['image'] == 'debian-12-custom.img'  # from template
-
-    def test_resolve_env_allows_instance_override(self, site_config_dir):
-        """Instance values should override preset/template."""
-        resolver = ConfigResolver(str(site_config_dir))
-        config = resolver.resolve_env('test', 'test-node')
-
-        # test3 overrides cores to 2
-        assert config['vms'][2]['cores'] == 2
-        assert config['vms'][2]['memory'] == 2048  # still from preset
-
-    def test_resolve_env_applies_site_defaults(self, site_config_dir):
-        """VMs should get bridge and gateway from site defaults."""
-        resolver = ConfigResolver(str(site_config_dir))
-        config = resolver.resolve_env('test', 'test-node')
-
-        assert config['vms'][0]['bridge'] == 'vmbr0'
-        assert config['vms'][0]['gateway'] == '10.0.12.1'
-
-    def test_resolve_env_missing_node_raises(self, site_config_dir):
-        """Missing node config should raise ConfigError."""
-        resolver = ConfigResolver(str(site_config_dir))
-
-        with pytest.raises(ConfigError) as exc_info:
-            resolver.resolve_env('test', 'nonexistent-node')
-
-        assert 'nonexistent-node' in str(exc_info.value)
-
-    def test_resolve_env_missing_datastore_raises(self, site_config_without_datastore):
-        """Missing datastore in node config should raise ConfigError."""
-        resolver = ConfigResolver(str(site_config_without_datastore))
-
-        with pytest.raises(ConfigError) as exc_info:
-            resolver.resolve_env('test', 'bad-node')
-
-        assert "missing required 'datastore'" in str(exc_info.value)
-        assert "make node-config FORCE=1" in str(exc_info.value)
-
 
 class TestIPValidation:
     """Test IP format validation."""
@@ -153,16 +79,18 @@ class TestWriteTfvars:
         """write_tfvars should create valid JSON file."""
         # Create minimal site-config
         (tmp_path / 'nodes').mkdir()
-        (tmp_path / 'envs').mkdir()
         (tmp_path / 'vms').mkdir()
         (tmp_path / 'presets').mkdir()
         (tmp_path / 'site.yaml').write_text('defaults: {}')
         (tmp_path / 'secrets.yaml').write_text('api_tokens: {}\npasswords: {}')
         (tmp_path / 'nodes/test.yaml').write_text('node: test\napi_endpoint: https://localhost:8006\ndatastore: local')
-        (tmp_path / 'envs/minimal.yaml').write_text('vms: []')
+        (tmp_path / 'presets/vm-small.yaml').write_text('cores: 1\nmemory: 2048\ndisk: 10')
 
         resolver = ConfigResolver(str(tmp_path))
-        config = resolver.resolve_env('minimal', 'test')
+        config = resolver.resolve_inline_vm(
+            node='test', vm_name='test-vm', vmid=99900,
+            vm_preset='vm-small', image='debian-12'
+        )
 
         output_path = tmp_path / 'tfvars.json'
         resolver.write_tfvars(config, str(output_path))
@@ -230,16 +158,15 @@ class TestResolveAnsibleVars:
     def test_applies_posture_ssh_settings(self, site_config_dir):
         """SSH settings should come from posture."""
         resolver = ConfigResolver(str(site_config_dir))
-        config = resolver.resolve_ansible_vars('test')
+        config = resolver.resolve_ansible_vars('dev')
 
-        # test env uses dev posture
         assert config['ssh_permit_root_login'] == 'yes'
         assert config['ssh_password_authentication'] == 'yes'
 
     def test_applies_posture_sudo_settings(self, site_config_dir):
         """Sudo settings should come from posture."""
         resolver = ConfigResolver(str(site_config_dir))
-        config = resolver.resolve_ansible_vars('test')
+        config = resolver.resolve_ansible_vars('dev')
 
         # dev posture has sudo_nopasswd: true
         assert config['sudo_nopasswd'] is True
@@ -247,14 +174,14 @@ class TestResolveAnsibleVars:
     def test_applies_site_timezone(self, site_config_dir):
         """Timezone should come from site defaults."""
         resolver = ConfigResolver(str(site_config_dir))
-        config = resolver.resolve_ansible_vars('test')
+        config = resolver.resolve_ansible_vars('dev')
 
         assert config['timezone'] == 'America/Denver'
 
     def test_merges_site_and_posture_packages(self, site_config_dir):
         """Packages should be merged from site and posture."""
         resolver = ConfigResolver(str(site_config_dir))
-        config = resolver.resolve_ansible_vars('test')
+        config = resolver.resolve_ansible_vars('dev')
 
         packages = config['packages']
         # Site packages
@@ -267,31 +194,30 @@ class TestResolveAnsibleVars:
     def test_deduplicates_merged_packages(self, site_config_dir):
         """Merged packages should have no duplicates."""
         resolver = ConfigResolver(str(site_config_dir))
-        config = resolver.resolve_ansible_vars('test')
+        config = resolver.resolve_ansible_vars('dev')
 
         packages = config['packages']
         assert len(packages) == len(set(packages))
 
-    def test_includes_env_metadata(self, site_config_dir):
-        """Result should include env and posture names."""
+    def test_includes_posture_metadata(self, site_config_dir):
+        """Result should include posture name."""
         resolver = ConfigResolver(str(site_config_dir))
-        config = resolver.resolve_ansible_vars('test')
+        config = resolver.resolve_ansible_vars('dev')
 
-        assert config['env_name'] == 'test'
         assert config['posture_name'] == 'dev'
 
     def test_resolves_ssh_keys(self, site_config_dir):
         """SSH keys should be resolved from secrets."""
         resolver = ConfigResolver(str(site_config_dir))
-        config = resolver.resolve_ansible_vars('test')
+        config = resolver.resolve_ansible_vars('dev')
 
         assert 'ssh_authorized_keys' in config
         assert len(config['ssh_authorized_keys']) == 2
 
-    def test_missing_posture_defaults_to_dev(self, site_config_without_posture):
-        """Missing posture should fall back to dev."""
-        resolver = ConfigResolver(str(site_config_without_posture))
-        config = resolver.resolve_ansible_vars('no-posture')
+    def test_default_posture_is_dev(self, site_config_dir):
+        """Default posture should be dev when not specified."""
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_ansible_vars()
 
         assert config['posture_name'] == 'dev'
         assert config['sudo_nopasswd'] is True  # from dev posture
@@ -303,7 +229,7 @@ class TestWriteAnsibleVars:
     def test_write_ansible_vars_creates_valid_json(self, site_config_dir, tmp_path):
         """write_ansible_vars should create valid JSON file."""
         resolver = ConfigResolver(str(site_config_dir))
-        config = resolver.resolve_ansible_vars('test')
+        config = resolver.resolve_ansible_vars('dev')
 
         output_path = tmp_path / 'ansible-vars.json'
         resolver.write_ansible_vars(config, str(output_path))
@@ -327,32 +253,6 @@ class TestListPostures:
 
 class TestSpecServerResolution:
     """Test spec_server resolution for Create → Specify flow (v0.45+)."""
-
-    def test_resolve_env_includes_spec_server(self, site_config_dir):
-        """resolve_env should include spec_server from site.yaml defaults."""
-        resolver = ConfigResolver(str(site_config_dir))
-        config = resolver.resolve_env('test', 'test-node')
-
-        assert 'spec_server' in config
-        assert config['spec_server'] == 'https://controller:44443'
-
-    def test_resolve_env_spec_server_empty_if_not_set(self, tmp_path):
-        """spec_server should be empty string if not configured."""
-        # Create minimal site-config without spec_server
-        for d in ['nodes', 'envs', 'vms', 'presets', 'postures']:
-            (tmp_path / d).mkdir(parents=True, exist_ok=True)
-
-        (tmp_path / 'site.yaml').write_text('defaults: {}')
-        (tmp_path / 'secrets.yaml').write_text('api_tokens: {}\npasswords: {}')
-        (tmp_path / 'nodes/test.yaml').write_text(
-            'node: test\napi_endpoint: https://localhost:8006\ndatastore: local'
-        )
-        (tmp_path / 'envs/minimal.yaml').write_text('vms: []')
-
-        resolver = ConfigResolver(str(tmp_path))
-        config = resolver.resolve_env('minimal', 'test')
-
-        assert config['spec_server'] == ''
 
     def test_resolve_inline_vm_includes_spec_server(self, site_config_dir):
         """resolve_inline_vm should include spec_server from site.yaml defaults."""
@@ -413,52 +313,6 @@ auth:
         # 'nonexistent' posture doesn't exist
         token = resolver._resolve_auth_token('nonexistent', 'test-vm')
         assert token == ''
-
-    def test_resolve_env_includes_auth_token_per_vm(self, site_config_dir):
-        """Each VM in resolve_env should have auth_token based on posture."""
-        resolver = ConfigResolver(str(site_config_dir))
-        config = resolver.resolve_env('test', 'test-node')
-
-        # test env uses dev posture (network auth = empty token)
-        for vm in config['vms']:
-            assert 'auth_token' in vm
-            assert vm['auth_token'] == ''
-
-    def test_resolve_env_with_stage_posture(self, site_config_dir):
-        """VMs in env with stage posture should get shared token."""
-        # Create env with stage posture
-        (site_config_dir / 'envs/staging.yaml').write_text("""
-posture: stage
-vmid_base: 88800
-vms:
-  - name: stage1
-    template: debian-12
-""")
-        resolver = ConfigResolver(str(site_config_dir))
-        config = resolver.resolve_env('staging', 'test-node')
-
-        assert config['vms'][0]['auth_token'] == 'shared-staging-token'
-
-    def test_resolve_env_with_prod_posture(self, site_config_dir):
-        """VMs in env with prod posture should get per-VM token."""
-        # Create env with prod posture using VMs that have tokens
-        (site_config_dir / 'envs/production.yaml').write_text("""
-posture: prod
-vmid_base: 77700
-vms:
-  - name: test1
-    template: debian-12
-  - name: test2
-    template: debian-12
-  - name: unknown
-    template: debian-12
-""")
-        resolver = ConfigResolver(str(site_config_dir))
-        config = resolver.resolve_env('production', 'test-node')
-
-        assert config['vms'][0]['auth_token'] == 'unique-test1-token'
-        assert config['vms'][1]['auth_token'] == 'unique-test2-token'
-        assert config['vms'][2]['auth_token'] == ''  # No token for 'unknown'
 
     def test_resolve_inline_vm_includes_auth_token(self, site_config_dir):
         """resolve_inline_vm should include auth_token in VM."""

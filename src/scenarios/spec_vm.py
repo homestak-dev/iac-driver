@@ -417,7 +417,10 @@ class SpecVMPushRoundtrip:
 
             ('provision', TofuApplyAction(
                 name='provision-vm',
-                env_name='test',
+                vm_name='test',
+                vmid=99900,
+                vm_preset='vm-small',
+                image='debian-12',
             ), 'Provision VM(s)'),
 
             ('start', StartProvisionedVMsAction(
@@ -451,7 +454,10 @@ class SpecVMPushRoundtrip:
             # Cleanup
             ('destroy', TofuDestroyAction(
                 name='destroy-vm',
-                env_name='test',
+                vm_name='test',
+                vmid=99900,
+                vm_preset='vm-small',
+                image='debian-12',
             ), 'Destroy VM(s)'),
 
             ('stop_server', StopSpecServerAction(
@@ -489,7 +495,10 @@ class SpecVMPullRoundtrip:
 
             ('provision', TofuApplyAction(
                 name='provision-vm',
-                env_name='pull-test',
+                vm_name='edge',
+                vmid=99950,
+                vm_preset='vm-small',
+                image='debian-12',
             ), 'Provision VM(s)'),
 
             ('start', StartProvisionedVMsAction(
@@ -542,7 +551,10 @@ class SpecVMPullRoundtrip:
             # Cleanup
             ('destroy', TofuDestroyAction(
                 name='destroy-vm',
-                env_name='pull-test',
+                vm_name='edge',
+                vmid=99950,
+                vm_preset='vm-small',
+                image='debian-12',
             ), 'Destroy VM(s)'),
 
             ('stop_server', StopSpecServerAction(

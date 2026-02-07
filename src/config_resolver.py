@@ -110,86 +110,6 @@ class ConfigResolver:
             # Unknown method, default to no token
             return ""
 
-    def resolve_env(self, env: str, node: str) -> dict:
-        """Resolve environment to flat tofu variables.
-
-        Args:
-            env: Environment name (matches envs/{env}.yaml)
-            node: Target PVE node name (matches nodes/{node}.yaml)
-
-        Returns:
-            Dict with all resolved config ready for tfvars.json
-        """
-        env_config = self._load_yaml(f"envs/{env}.yaml")
-        node_config = self._load_yaml(f"nodes/{node}.yaml")
-
-        if not node_config:
-            raise ConfigError(f"Node config not found: nodes/{node}.yaml")
-
-        # Require datastore from node config (v0.13+)
-        if 'datastore' not in node_config:
-            raise ConfigError(
-                f"Node '{node}' missing required 'datastore' in nodes/{node}.yaml. "
-                f"Run 'make node-config FORCE=1' in site-config to regenerate."
-            )
-
-        # Resolve API token from secrets
-        api_token_key = node_config.get("api_token", node)
-        api_token = self.secrets.get("api_tokens", {}).get(api_token_key, "")
-
-        # Site defaults
-        defaults = self.site.get("defaults", {})
-
-        # Spec server for Create → Specify flow (v0.45+)
-        spec_server = defaults.get("spec_server", "")
-
-        # vmid_base: None = let PVE auto-assign
-        vmid_base = env_config.get("vmid_base")
-
-        # Get posture for auth token resolution
-        posture_name = env_config.get("posture", "dev")
-
-        # Resolve VMs
-        vms = []
-        for idx, vm_instance in enumerate(env_config.get("vms", [])):
-            default_vmid = vmid_base + idx if vmid_base is not None else None
-            resolved = self._resolve_vm(vm_instance, default_vmid, defaults)
-            # Add auth token based on posture (v0.45+)
-            vm_name = resolved.get("name", "")
-            resolved["auth_token"] = self._resolve_auth_token(posture_name, vm_name)
-            vms.append(resolved)
-
-        # Resolve passwords and SSH keys from secrets
-        passwords = self.secrets.get("passwords", {})
-        ssh_keys_dict = self.secrets.get("ssh_keys", {})
-        ssh_keys_list = list(ssh_keys_dict.values())
-
-        # Determine SSH host for file uploads
-        # If api_endpoint is localhost, use 127.0.0.1 for SSH
-        # Otherwise use explicit ip from node config
-        api_endpoint = node_config.get("api_endpoint", "")
-        if "localhost" in api_endpoint or "127.0.0.1" in api_endpoint:
-            ssh_host = "127.0.0.1"
-        else:
-            ssh_host = node_config.get("ip", "")
-
-        return {
-            "node": node_config.get("node", node),
-            "api_endpoint": api_endpoint,
-            "api_token": api_token,
-            # ssh_user: For provider SSH to PVE host (default: root)
-            "ssh_user": node_config.get("ssh_user", defaults.get("ssh_user", "root")),
-            # automation_user: For cloud-init VM user creation (default: homestak)
-            "automation_user": defaults.get("automation_user", "homestak"),
-            "ssh_host": ssh_host,  # For proxmox provider SSH file uploads
-            "datastore": node_config["datastore"],  # Required from node config (v0.13+)
-            "root_password": passwords.get("vm_root", ""),
-            "ssh_keys": ssh_keys_list,
-            # Spec server for Create → Specify flow (v0.45+)
-            "spec_server": spec_server,
-            "vms": vms,
-        }
-
     def resolve_inline_vm(
         self,
         node: str,
@@ -200,10 +120,10 @@ class ConfigResolver:
         image: Optional[str] = None,
         posture: Optional[str] = None
     ) -> dict:
-        """Resolve inline VM definition (no env file needed).
+        """Resolve inline VM definition.
 
-        For manifest-driven scenarios where VM is defined inline in the manifest
-        rather than via an env file. Returns same format as resolve_env().
+        VM is defined by direct parameters (vm_name, vmid, preset/template)
+        rather than via an env file.
 
         Supports two modes:
         1. Template mode: template references vms/{template}.yaml
@@ -400,23 +320,19 @@ class ConfigResolver:
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
 
-    def resolve_ansible_vars(self, env: str) -> dict:
-        """Resolve environment to ansible variables.
+    def resolve_ansible_vars(self, posture_name: str = 'dev') -> dict:
+        """Resolve ansible variables from site defaults and posture.
 
-        Merges site defaults with security posture from the environment's
-        posture FK. Packages are merged (union of site + posture, deduplicated).
+        Merges site defaults with security posture settings.
+        Packages are merged (union of site + posture, deduplicated).
 
         Args:
-            env: Environment name (matches envs/{env}.yaml)
+            posture_name: Posture name (matches postures/{posture}.yaml, default: dev)
 
         Returns:
             Dict with all resolved ansible variables
         """
-        env_config = self._load_yaml(f"envs/{env}.yaml")
         defaults = self.site.get("defaults", {})
-
-        # Load posture (default to dev if not specified)
-        posture_name = env_config.get("posture", "dev")
         posture = self.postures.get(posture_name, {})
 
         # Merge packages: site defaults + posture additions (deduplicated)
@@ -449,7 +365,6 @@ class ConfigResolver:
             "fail2ban_enabled": fail2ban_config.get("enabled", False),
 
             # Metadata
-            "env_name": env,
             "posture_name": posture_name,
 
             # SSH keys for authorized_keys

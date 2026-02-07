@@ -234,7 +234,7 @@ class NodeExecutor:
 
         Returns ActionResult with context_updates containing {name}_vm_id and {name}_ip.
         """
-        from actions.tofu import TofuApplyInlineAction
+        from actions.tofu import TofuApplyAction
         from actions.proxmox import StartVMAction, WaitForGuestAgentAction
         from actions.ssh import WaitForSSHAction
 
@@ -257,7 +257,7 @@ class NodeExecutor:
         logger.info(f"[create] Provisioning node '{mn.name}' on {pve_host}")
 
         # 1. Tofu apply
-        apply_action = TofuApplyInlineAction(
+        apply_action = TofuApplyAction(
             name=f'provision-{mn.name}',
             vm_name=mn.name,
             vmid=mn.vmid,
@@ -706,14 +706,14 @@ class NodeExecutor:
 
     def _destroy_node(self, exec_node: ExecutionNode, context: dict) -> ActionResult:
         """Destroy a single node via tofu destroy."""
-        from actions.tofu import TofuDestroyInlineAction
+        from actions.tofu import TofuDestroyAction
 
         mn = exec_node.manifest_node
         start = time.time()
 
         logger.info(f"[destroy] Destroying node '{mn.name}'")
 
-        destroy_action = TofuDestroyInlineAction(
+        destroy_action = TofuDestroyAction(
             name=f'destroy-{mn.name}',
             vm_name=mn.name,
             vmid=mn.vmid,
