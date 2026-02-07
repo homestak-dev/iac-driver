@@ -42,6 +42,9 @@ Validates all unreleased work since v0.45 on live PVE infrastructure. Fixes 7 bu
   - Fix `--repo-token ''` passthrough in controller CLI (empty string no longer triggers auto-generate)
   - Add `serve_repos` and `repo_token` parameters to `StartSpecServerAction`
   - Enable repo serving with disabled auth in `spec-vm-pull-roundtrip` scenario
+  - Fix bare repo HEAD to point at `_working` branch (VMs were cloning `master` without uncommitted changes)
+  - Set `ANSIBLE_CONFIG` explicitly in `config_apply.py` for cloud-init environments
+  - Increase `wait_spec` timeout from 90s to 150s (bootstrap takes ~100s from boot)
 - Fix operator context propagation after tofu apply (VM IDs not reaching downstream actions)
 - Fix WaitForGuestAgentAction using wrong IP context key for named nodes
 - Fix subtree delegation passing `--skip-preflight` (inner PVE needs preflight for lockfile cleanup)
