@@ -172,6 +172,7 @@ class TestRetiredScenarios:
 class TestScenarioVerb:
     """Test 'scenario' verb command."""
 
+    @requires_infrastructure
     def test_scenario_verb_lists_phases(self):
         """scenario verb should list phases like legacy --scenario."""
         result = subprocess.run(
