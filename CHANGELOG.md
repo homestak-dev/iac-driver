@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Theme: Site-Config/IAC-Driver Cleanup, Pt.2 (#212)
+
+Complete v1→v2 config path migration and retire legacy entities.
+
+### Bug Fixes
+- Fix stale controller detection in spec-vm scenarios — health check before declaring running (#176)
+
 ### Theme: Site-Config/IAC-Driver Cleanup (#209)
 
 Unify resolver paths after site-config v2/ consolidation.

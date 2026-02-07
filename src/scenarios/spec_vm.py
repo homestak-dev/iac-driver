@@ -97,12 +97,25 @@ class StartSpecServerAction:
         check_cmd = f'ss -tlnp | grep ":{self.server_port} " || true'
         rc, out, err = run_ssh(pve_host, check_cmd, user=ssh_user, timeout=10)
         if out.strip():
-            logger.info(f"[{self.name}] Controller already running on port {self.server_port}")
-            return ActionResult(
-                success=True,
-                message=f"Controller already running on port {self.server_port}",
-                duration=time.time() - start,
-            )
+            # Port is bound — verify the controller is actually healthy (#176)
+            health_cmd = f'curl -sk --connect-timeout 5 --max-time 5 https://localhost:{self.server_port}/health 2>&1 || echo HEALTH_FAILED'
+            rc, health_out, _ = run_ssh(pve_host, health_cmd, user=ssh_user, timeout=10)
+            if '"status"' in health_out and 'ok' in health_out.lower():
+                logger.info(f"[{self.name}] Controller already running and healthy on port {self.server_port}")
+                return ActionResult(
+                    success=True,
+                    message=f"Controller already running on port {self.server_port}",
+                    duration=time.time() - start,
+                )
+
+            # Stale/hung controller — kill it and start fresh
+            logger.warning(f"[{self.name}] Controller on port {self.server_port} is unresponsive, killing stale process")
+            kill_cmd = f'ss -tlnp | grep ":{self.server_port} " | grep -oP "pid=\\K[0-9]+" | head -1'
+            rc, pid_out, _ = run_ssh(pve_host, kill_cmd, user=ssh_user, timeout=10)
+            stale_pid = pid_out.strip()
+            if stale_pid:
+                run_ssh(pve_host, f'kill -9 {stale_pid} 2>/dev/null; sleep 1', user=ssh_user, timeout=10)
+                logger.info(f"[{self.name}] Killed stale controller (PID: {stale_pid})")
 
         # Start controller in background via iac-driver.
         # Close all inherited FDs > 2 before exec to prevent SSH from
