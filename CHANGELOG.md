@@ -13,6 +13,11 @@ Unify resolver paths after site-config v2/ consolidation.
 - Update SpecResolver to load specs from `specs/` instead of `v2/specs/` (#161)
 - Update ResolverBase `_load_posture()` to use `postures/` instead of `v2/postures/` (#161)
 
+### Fixed
+- Fix controller startup 60s timeout caused by SSH FD inheritance (#166)
+  - Close inherited FDs > 2 before exec'ing background controller process
+  - Reduces `StartSpecServerAction` default timeout from 60s to 10s
+
 ### Removed
 - Remove `v2_postures` secondary loader from ConfigResolver (#161)
 - Remove vm- prefix stripping shim from manifest v2→v1 conversion (#161)
