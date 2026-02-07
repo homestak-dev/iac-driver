@@ -254,11 +254,6 @@ class NodeExecutor:
                 )
             pve_host = parent_ip
 
-        # Strip vm- prefix from preset for v1 compat
-        vm_preset = mn.preset
-        if vm_preset and vm_preset.startswith('vm-'):
-            vm_preset = vm_preset[3:]
-
         logger.info(f"[create] Provisioning node '{mn.name}' on {pve_host}")
 
         # 1. Tofu apply
@@ -266,7 +261,7 @@ class NodeExecutor:
             name=f'provision-{mn.name}',
             vm_name=mn.name,
             vmid=mn.vmid,
-            vm_preset=vm_preset,
+            vm_preset=mn.preset,
             image=mn.image,
         )
         result = apply_action.run(self.config, context)
@@ -716,18 +711,13 @@ class NodeExecutor:
         mn = exec_node.manifest_node
         start = time.time()
 
-        # Strip vm- prefix from preset
-        vm_preset = mn.preset
-        if vm_preset and vm_preset.startswith('vm-'):
-            vm_preset = vm_preset[3:]
-
         logger.info(f"[destroy] Destroying node '{mn.name}'")
 
         destroy_action = TofuDestroyInlineAction(
             name=f'destroy-{mn.name}',
             vm_name=mn.name,
             vmid=mn.vmid,
-            vm_preset=vm_preset,
+            vm_preset=mn.preset,
             image=mn.image,
         )
         return destroy_action.run(self.config, context)
