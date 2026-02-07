@@ -814,7 +814,7 @@ Outer PVE Host (pve)
 
 ### CLI
 
-The orchestrator supports two command styles: verb commands for manifest-based orchestration, and `--scenario` for standalone workflows.
+The orchestrator uses verb commands for all operations. Run `./run.sh` with no arguments for top-level usage.
 
 ```bash
 # Verb commands (manifest-based)
@@ -827,25 +827,30 @@ The orchestrator supports two command styles: verb commands for manifest-based o
 ./run.sh config --fetch --insecure                      # Fetch spec from server + apply
 ./run.sh config --spec /path/to/spec.yaml --dry-run     # Preview with custom spec
 
-# Scenarios (standalone workflows)
-./run.sh --scenario pve-setup --local                   # Install + configure PVE
-./run.sh --scenario pve-setup --remote 10.0.12.x        # Remote PVE setup
-./run.sh --scenario user-setup --local                  # Create homestak user
-./run.sh --scenario bootstrap-install --vm-ip 10.0.12.x # Test bootstrap
-./run.sh --list-scenarios                                # List available scenarios
+# Scenario verb (standalone workflows)
+./run.sh scenario pve-setup --local                   # Install + configure PVE
+./run.sh scenario pve-setup --remote 10.0.12.x        # Remote PVE setup
+./run.sh scenario user-setup --local                  # Create homestak user
+./run.sh scenario bootstrap-install --vm-ip 10.0.12.x # Test bootstrap
+./run.sh scenario --help                              # List available scenarios
+
+# Top-level help
+./run.sh                                              # Show all commands
 ```
+
+**Note:** The legacy `--scenario` flag is deprecated. Use `./run.sh scenario <name>` instead.
 
 **CLI Options:**
 | Option | Description |
 |--------|-------------|
 | `--version` | Show CLI version |
-| `--scenario`, `-S` | Scenario to run (required) |
+| `--scenario`, `-S` | Scenario to run (deprecated, use `scenario` verb) |
 | `--host`, `-H` | Target PVE host (required for most scenarios) |
 | `--env`, `-E` | Environment to deploy (overrides scenario default) |
 | `--context-file`, `-C` | Save/load context for chained runs |
 | `--verbose`, `-v` | Enable verbose logging |
 | `--skip`, `-s` | Phases to skip (repeatable) |
-| `--list-scenarios` | List available scenarios |
+| `--list-scenarios` | List available scenarios (or `scenario --help`) |
 | `--list-phases` | List phases for selected scenario |
 | `--local` | Run locally (for pve-setup, user-setup, packer-build) |
 | `--remote` | Remote host IP (for pve-setup, user-setup, packer-build) |

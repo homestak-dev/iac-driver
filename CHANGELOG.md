@@ -6,7 +6,12 @@
 
 Unify resolver paths after site-config v2/ consolidation.
 
+### Added
+- Add `scenario` verb as first-class command: `./run.sh scenario pve-setup -H father` (#169)
+- Add top-level usage display when running `./run.sh` with no arguments (#169)
+
 ### Changed
+- Deprecate `--scenario` flag with migration hint (still works) (#169)
 - Update ConfigResolver to load presets from `presets/` instead of `vms/presets/` (#161)
 - Update ConfigResolver to use unified `postures/` (nested format) instead of dual v1/v2 loading (#161)
 - Update `resolve_ansible_vars()` to read nested posture keys (`ssh.port`, `sudo.nopasswd`, etc.) (#161)

@@ -143,12 +143,64 @@ def create_local_config():
     return config
 
 
+def print_usage():
+    """Print top-level usage showing verbs and scenario command."""
+    print(f"iac-driver {get_version()}")
+    print()
+    print("Usage: ./run.sh <command> [options]")
+    print()
+    print("Commands:")
+    print(f"  {'scenario':<12} Run a standalone scenario workflow")
+    for verb, desc in VERB_COMMANDS.items():
+        print(f"  {verb:<12} {desc}")
+    print()
+    print("Run './run.sh <command> --help' for command-specific options.")
+    print()
+    print("Examples:")
+    print("  ./run.sh scenario pve-setup -H father")
+    print("  ./run.sh create -M n1-basic -H father")
+    print("  ./run.sh test -M n2-quick -H father")
+    print("  ./run.sh serve --port 44443")
+    print("  ./run.sh config --fetch --insecure")
+
+
 def main():
-    # Check for verb commands first (before argparse)
-    # Verbs are top-level subcommands like "serve", "create", "config", "destroy"
-    if len(sys.argv) > 1 and sys.argv[1] in VERB_COMMANDS:
-        verb = sys.argv[1]
-        return dispatch_verb(verb, sys.argv[2:])
+    from_verb = False
+
+    if len(sys.argv) > 1:
+        first_arg = sys.argv[1]
+
+        # Handle 'scenario' verb: rewrite to legacy --scenario format
+        if first_arg == 'scenario':
+            from_verb = True
+            if len(sys.argv) < 3 or sys.argv[2].startswith('-'):
+                # Show scenario list or help
+                if '--help' in sys.argv or '-h' in sys.argv:
+                    # Rewrite as --list-scenarios for help
+                    sys.argv = [sys.argv[0], '--list-scenarios']
+                else:
+                    print("Usage: ./run.sh scenario <name> [options]")
+                    print("\nRun './run.sh scenario --help' to list available scenarios.")
+                    return 1 if len(sys.argv) < 3 else 0
+            else:
+                # Transform: "scenario pve-setup -H father" -> "--scenario pve-setup -H father"
+                sys.argv = [sys.argv[0], '--scenario', sys.argv[2]] + sys.argv[3:]
+            # Fall through to legacy scenario parser below
+
+        # Handle other verbs (serve, create, destroy, test, config)
+        elif first_arg in VERB_COMMANDS:
+            return dispatch_verb(first_arg, sys.argv[2:])
+
+        # Show usage when no recognized command
+        elif not first_arg.startswith('-'):
+            print(f"Error: Unknown command '{first_arg}'")
+            print_usage()
+            return 1
+
+    # Show top-level usage when no arguments
+    if len(sys.argv) == 1:
+        print_usage()
+        return 0
 
     # Check for retired scenarios and print migration hint
     for i, arg in enumerate(sys.argv[1:], 1):
@@ -161,7 +213,11 @@ def main():
                 print(f"\nSee: ./run.sh create --help")
                 return 1
 
-    # Legacy scenario-based CLI continues below
+    # Deprecation notice for legacy --scenario flag (skip if invoked via verb)
+    if not from_verb and any(arg in ('--scenario', '-S') for arg in sys.argv[1:]):
+        logger.warning("--scenario is deprecated. Use: ./run.sh scenario <name> [options]")
+
+    # Scenario-based CLI continues below
     available_hosts = list_hosts()
     available_envs = list_envs()
     available_scenarios = list_scenarios()
