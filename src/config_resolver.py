@@ -1,14 +1,13 @@
 """Config resolution for site-config YAML files.
 
-Resolves site-config entities (site, secrets, nodes, envs, vms, postures) into
-flat configurations suitable for tofu and ansible. All template and vm_preset
+Resolves site-config entities (site, secrets, nodes, presets, postures) into
+flat configurations suitable for tofu and ansible. All preset
 inheritance is resolved here, so consumers receive fully-computed values.
 
 Resolution order (tofu):
-1. presets/{vm_preset}.yaml (if template uses preset:)
-2. vms/{template}.yaml (template definition)
-3. envs/{env}.yaml instance overrides (name, ip, vmid)
-4. postures/{posture}.yaml for auth.method (v0.45+)
+1. presets/{vm_preset}.yaml (VM size: cores, memory, disk)
+2. Inline VM overrides (name, vmid, image) from manifest nodes or CLI
+3. postures/{posture}.yaml for auth.method (v0.45+)
 
 Resolution order (ansible):
 1. site.yaml defaults (timezone, packages, pve settings)
@@ -123,10 +122,10 @@ class ConfigResolver:
         """Resolve inline VM definition.
 
         VM is defined by direct parameters (vm_name, vmid, preset/template)
-        rather than via an env file.
+        from manifest nodes or CLI flags.
 
         Supports two modes:
-        1. Template mode: template references vms/{template}.yaml
+        1. Template mode: template references vms/{template}.yaml (legacy, deprecated)
         2. Preset mode: vm_preset references presets/{vm_preset}.yaml (requires image)
 
         Args:
@@ -220,7 +219,7 @@ class ConfigResolver:
         - Preset mode: vm_preset → instance overrides (no template)
 
         Args:
-            vm_instance: VM instance from envs/{env}.yaml vms[] list or manifest
+            vm_instance: VM instance from manifest nodes[] or CLI parameters
             default_vmid: Auto-computed vmid (base + index), or None for PVE auto-assign
             defaults: Site defaults from site.yaml
 
