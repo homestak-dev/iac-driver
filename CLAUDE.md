@@ -829,9 +829,9 @@ The orchestrator uses verb commands for all operations. Run `./run.sh` with no a
 
 # Scenario verb (standalone workflows)
 ./run.sh scenario pve-setup --local                   # Install + configure PVE
-./run.sh scenario pve-setup --remote 10.0.12.x        # Remote PVE setup
+./run.sh scenario pve-setup --remote 192.0.2.10       # Remote PVE setup
 ./run.sh scenario user-setup --local                  # Create homestak user
-./run.sh scenario bootstrap-install --vm-ip 10.0.12.x # Test bootstrap
+./run.sh scenario bootstrap-install --vm-ip 192.0.2.20 # Test bootstrap
 ./run.sh scenario --help                              # List available scenarios
 
 # Top-level help
