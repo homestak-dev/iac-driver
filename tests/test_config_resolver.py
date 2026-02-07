@@ -102,41 +102,21 @@ class TestWriteTfvars:
 
 
 class TestListMethods:
-    """Test list_envs, list_templates, list_presets."""
+    """Test list_presets."""
 
     @pytest.fixture
     def resolver(self, tmp_path):
-        """Create resolver with multiple envs/templates/presets."""
+        """Create resolver with presets."""
         (tmp_path / 'nodes').mkdir()
-        (tmp_path / 'envs').mkdir()
-        (tmp_path / 'vms').mkdir()
         (tmp_path / 'presets').mkdir()
         (tmp_path / 'site.yaml').write_text('defaults: {}')
         (tmp_path / 'secrets.yaml').write_text('api_tokens: {}')
-
-        # Create multiple envs
-        for env in ['dev', 'test', 'prod']:
-            (tmp_path / f'envs/{env}.yaml').write_text('vms: []')
-
-        # Create templates
-        for tmpl in ['debian-12', 'debian-13']:
-            (tmp_path / f'vms/{tmpl}.yaml').write_text('cores: 1')
 
         # Create presets
         for preset in ['small', 'medium', 'large']:
             (tmp_path / f'presets/vm-{preset}.yaml').write_text('cores: 1')
 
         return ConfigResolver(str(tmp_path))
-
-    def test_list_envs(self, resolver):
-        """list_envs should return sorted environment names."""
-        envs = resolver.list_envs()
-        assert envs == ['dev', 'prod', 'test']
-
-    def test_list_templates(self, resolver):
-        """list_templates should return sorted template names."""
-        templates = resolver.list_templates()
-        assert templates == ['debian-12', 'debian-13']
 
     def test_list_presets(self, resolver):
         """list_presets should return sorted preset names."""

@@ -277,19 +277,6 @@ def get_site_config_dir() -> Path:
     )
 
 
-def list_envs() -> list[str]:
-    """List available environments from site-config/envs/*.yaml."""
-    try:
-        site_config = get_site_config_dir()
-    except ConfigError:
-        return []
-
-    envs_dir = site_config / 'envs'
-    if envs_dir.exists():
-        return sorted([f.stem for f in envs_dir.glob('*.yaml') if f.is_file()])
-
-    return []
-
 
 def list_hosts() -> list[str]:
     """List available hosts/nodes from site-config.

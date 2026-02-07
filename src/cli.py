@@ -22,7 +22,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from config import list_hosts, list_envs, load_host_config, get_base_dir
+import re
+
+from config import list_hosts, load_host_config, get_base_dir
 from scenarios import Orchestrator, get_scenario, list_scenarios
 from validation import validate_readiness, run_preflight_checks, format_preflight_results
 
@@ -48,6 +50,21 @@ RETIRED_SCENARIOS = {
     "recursive-pve-destructor": "Use: ./run.sh destroy -M <manifest> -H <host>",
     "recursive-pve-roundtrip": "Use: ./run.sh test -M <manifest> -H <host>",
 }
+
+
+def _is_ip_address(value: str) -> bool:
+    """Check if value looks like an IPv4 address."""
+    return bool(re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', value))
+
+
+def _create_ip_config(ip: str):
+    """Create a HostConfig for a raw IP address (no site-config lookup)."""
+    from config import HostConfig
+    config = HostConfig(name=ip, config_file=Path('/dev/null'))
+    config.ssh_host = ip
+    config.ssh_user = 'root'
+    config.is_host_only = True
+    return config
 
 
 def dispatch_verb(verb: str, argv: list) -> int:
@@ -219,7 +236,6 @@ def main():
 
     # Scenario-based CLI continues below
     available_hosts = list_hosts()
-    available_envs = list_envs()
     available_scenarios = list_scenarios()
 
     parser = argparse.ArgumentParser(
@@ -237,12 +253,7 @@ def main():
     )
     parser.add_argument(
         '--host', '-H',
-        help=f'Target PVE host (required for most scenarios). Available: {", ".join(available_hosts) if available_hosts else "none configured"}'
-    )
-    parser.add_argument(
-        '--env', '-E',
-        choices=available_envs,
-        help=f'Environment to deploy (overrides scenario default)'
+        help=f'Target host: named host from site-config or raw IP. Available: {", ".join(available_hosts) if available_hosts else "none configured"}'
     )
     parser.add_argument(
         '--report-dir', '-r',
@@ -282,7 +293,7 @@ def main():
     )
     parser.add_argument(
         '--remote',
-        help='Target host IP for remote execution (for pve-setup, packer-build)'
+        help='[Deprecated: use -H <ip>] Target host IP for remote execution'
     )
     parser.add_argument(
         '--templates',
@@ -290,7 +301,7 @@ def main():
     )
     parser.add_argument(
         '--vm-ip',
-        help='Target VM IP (for bootstrap-install scenario)'
+        help='[Deprecated: use -H <ip>] Target VM IP (for bootstrap-install scenario)'
     )
     parser.add_argument(
         '--homestak-user',
@@ -462,13 +473,23 @@ def main():
         return 1
 
     # Validate --host value if provided
-    if host and host not in available_hosts:
+    is_raw_ip = host and _is_ip_address(host)
+    if host and not is_raw_ip and host not in available_hosts:
         print(f"Error: Unknown host '{host}'")
         print(f"Available hosts: {', '.join(available_hosts) if available_hosts else 'none configured'}")
         return 1
 
+    # Deprecation warnings for --remote and --vm-ip
+    if args.remote:
+        logger.warning("--remote is deprecated. Use: -H %s", args.remote)
+    if args.vm_ip:
+        logger.warning("--vm-ip is deprecated. Use: -H %s", args.vm_ip)
+
     # Load config (use local config with auto-derived values for --local)
-    if host:
+    if is_raw_ip:
+        config = _create_ip_config(host)
+        logger.info(f"Using raw IP: {host} (no site-config lookup)")
+    elif host:
         config = load_host_config(host)
     else:
         # Create local config with auto-derived API endpoint and token
@@ -553,10 +574,6 @@ def main():
     if args.inner_ip:
         orchestrator.context['inner_ip'] = args.inner_ip
 
-    # Pre-populate context with env override
-    if args.env:
-        orchestrator.context['env_name'] = args.env
-
     # Pre-populate context for pve-setup and packer-build scenarios
     if args.local:
         orchestrator.context['local_mode'] = True
@@ -595,8 +612,6 @@ def main():
     if getattr(scenario, 'requires_confirmation', False) and not args.yes:
         print(f"\nWARNING: '{args.scenario}' is a destructive scenario.")
         print(f"Target: {config.name}")
-        if args.env:
-            print(f"Environment: {args.env}")
         print("\nThis action cannot be undone.")
         response = input("Continue? [y/N] ").strip().lower()
         if response != 'y':

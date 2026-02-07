@@ -385,17 +385,6 @@ class ConfigResolver:
         """List available posture names."""
         return sorted(self.postures.keys())
 
-    def list_envs(self) -> list[str]:
-        """List available environment names."""
-        envs_dir = self.path / "envs"
-        if not envs_dir.exists():
-            return []
-        return sorted([f.stem for f in envs_dir.glob("*.yaml") if f.is_file()])
-
-    def list_templates(self) -> list[str]:
-        """List available VM template names."""
-        return sorted(self.templates.keys())
-
     def list_vm_presets(self) -> list[str]:
         """List available vm_preset names."""
         return sorted(self.vm_presets.keys())
