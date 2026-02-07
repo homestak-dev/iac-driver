@@ -7,6 +7,7 @@ Includes push (verify env vars) and pull (verify autonomous config) modes.
 """
 
 import logging
+import subprocess
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -71,7 +72,7 @@ class StartSpecServerAction:
     """Start spec server on controller host."""
     name: str
     server_port: int = 44443
-    timeout: int = 10
+    timeout: int = 30
     serve_repos: bool = False
     repo_token: str | None = None  # None = don't pass flag, "" = disable auth
 
@@ -118,35 +119,49 @@ class StartSpecServerAction:
                 logger.info(f"[{self.name}] Killed stale controller (PID: {stale_pid})")
 
         # Start controller in background via iac-driver.
-        # Close all inherited FDs > 2 before exec to prevent SSH from
-        # blocking until the background process exits (#166).
+        # Write PID to file — SSH with capture_output blocks until all
+        # inherited FDs close, even with & (#166). Use Popen to avoid
+        # waiting for the SSH process to complete.
         serve_flags = f'--port {self.server_port}'
         if self.serve_repos:
             serve_flags += ' --repos'
             if self.repo_token is not None:
                 serve_flags += f" --repo-token '{self.repo_token}'"
+        pid_file = '/tmp/homestak-controller.pid'
         start_cmd = (
             f'cd {iac_dir} && '
-            f'( for fd in $(ls /proc/self/fd 2>/dev/null); do '
-            f'[ "$fd" -gt 2 ] && eval "exec $fd>&-" 2>/dev/null; done; '
-            f'exec ./run.sh serve {serve_flags} '
-            f'> /tmp/homestak-controller.log 2>&1 </dev/null '
-            f') & echo $!'
+            f'nohup ./run.sh serve {serve_flags} '
+            f'> /tmp/homestak-controller.log 2>&1 </dev/null & '
+            f'echo $! > {pid_file}'
         )
         logger.info(f"[{self.name}] Starting controller on {pve_host}:{self.server_port}...")
-        rc, out, err = run_ssh(pve_host, start_cmd, user=ssh_user, timeout=self.timeout)
+        ssh_opts = [
+            '-o', 'StrictHostKeyChecking=no',
+            '-o', 'UserKnownHostsFile=/dev/null',
+            '-o', 'LogLevel=ERROR',
+            '-o', 'ConnectTimeout=10',
+        ]
+        subprocess.Popen(
+            ['ssh'] + ssh_opts + [f'{ssh_user}@{pve_host}', start_cmd],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+        )
 
-        if rc != 0:
+        # Wait for controller to start and read PID
+        time.sleep(3)
+        rc, pid_out, _ = run_ssh(pve_host, f'cat {pid_file} 2>/dev/null', user=ssh_user, timeout=10)
+        pid = pid_out.strip()
+        if not pid:
+            log_cmd = 'tail -20 /tmp/homestak-controller.log 2>/dev/null || true'
+            _, log_out, _ = run_ssh(pve_host, log_cmd, user=ssh_user, timeout=10)
             return ActionResult(
                 success=False,
-                message=f"Failed to start controller: {err}",
+                message=f"Controller PID file not written. Log: {log_out}",
                 duration=time.time() - start
             )
 
-        pid = out.strip()
-
-        # Give it a moment to start and verify
-        time.sleep(2)
+        # Verify process is running
         verify_cmd = f'kill -0 {pid} 2>/dev/null && echo running || echo stopped'
         rc, out, err = run_ssh(pve_host, verify_cmd, user=ssh_user, timeout=10)
 
