@@ -6,6 +6,9 @@
 
 Complete v1→v2 config path migration and retire legacy entities.
 
+### Docs
+- Update CLAUDE.md: remove stale `resolve_env()`, `list_envs()`, `list_templates()` references; update resolution order, CLI options table (#211)
+
 ### Changed
 - Migrate spec-vm scenarios from v1 env-based actions to inline actions (#173)
 - Rename `TofuApplyInlineAction` → `TofuApplyAction`, `TofuDestroyInlineAction` → `TofuDestroyAction` (#173)

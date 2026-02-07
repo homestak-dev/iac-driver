@@ -120,27 +120,27 @@ resolver = ConfigResolver()
 # Or specify path explicitly
 resolver = ConfigResolver('/path/to/site-config')
 
-# Resolve environment for tofu
-config = resolver.resolve_env(env='dev', node='pve')
+# Resolve inline VM for tofu
+config = resolver.resolve_inline_vm(
+    node='father', vm_name='test', vmid=99900,
+    vm_preset='vm-small', image='debian-12'
+)
 resolver.write_tfvars(config, '/tmp/tfvars.json')
 
-# Resolve environment for ansible (v0.13+)
-ansible_vars = resolver.resolve_ansible_vars(env='dev')
+# Resolve ansible vars from posture
+ansible_vars = resolver.resolve_ansible_vars('dev')
 resolver.write_ansible_vars(ansible_vars, '/tmp/ansible-vars.json')
 
 # List available entities
-resolver.list_envs()      # ['dev', 'test', 'nested-pve']
-resolver.list_postures()  # ['dev', 'prod', 'local']
-resolver.list_templates() # ['debian-12-custom', 'nested-pve', ...]
-resolver.list_presets()   # ['small', 'medium', 'large', ...]
+resolver.list_postures()  # ['dev', 'prod', 'stage']
+resolver.list_presets()   # ['vm-large', 'vm-medium', 'vm-small', ...]
 ```
 
 ### Resolution Order (Tofu)
 
-1. `presets/{preset}.yaml` - Size presets (if template uses `preset:`)
-2. `vms/{template}.yaml` - Template definition
-3. `envs/{env}.yaml` - Instance overrides (name, ip, vmid)
-4. `postures/{posture}.yaml` - Auth method for spec discovery
+1. `presets/{vm_preset}.yaml` - VM size presets (cores, memory, disk)
+2. Inline VM overrides (name, vmid, image) from manifest nodes or CLI
+3. `postures/{posture}.yaml` - Auth method for spec discovery
 
 ### Resolution Order (Ansible)
 
@@ -845,17 +845,16 @@ The orchestrator uses verb commands for all operations. Run `./run.sh` with no a
 |--------|-------------|
 | `--version` | Show CLI version |
 | `--scenario`, `-S` | Scenario to run (deprecated, use `scenario` verb) |
-| `--host`, `-H` | Target PVE host (required for most scenarios) |
-| `--env`, `-E` | Environment to deploy (overrides scenario default) |
+| `--host`, `-H` | Target host: named host from site-config or raw IP |
 | `--context-file`, `-C` | Save/load context for chained runs |
 | `--verbose`, `-v` | Enable verbose logging |
 | `--skip`, `-s` | Phases to skip (repeatable) |
 | `--list-scenarios` | List available scenarios (or `scenario --help`) |
 | `--list-phases` | List phases for selected scenario |
 | `--local` | Run locally (for pve-setup, user-setup, packer-build) |
-| `--remote` | Remote host IP (for pve-setup, user-setup, packer-build) |
+| `--remote` | [Deprecated: use `-H <ip>`] Remote host IP |
 | `--templates` | Comma-separated packer templates (for packer-build) |
-| `--vm-ip` | Target VM IP (for bootstrap-install) |
+| `--vm-ip` | [Deprecated: use `-H <ip>`] Target VM IP |
 | `--homestak-user` | User to create during bootstrap |
 | `--packer-release` | Packer release tag (e.g., v0.8.0-rc1, default: latest) |
 | `--timeout`, `-t` | Overall scenario timeout in seconds (checked between phases) |
@@ -994,7 +993,7 @@ cd ../tofu/envs/test && tofu apply
 tofu apply -var="node=nested-pve"
 ```
 
-Configuration is loaded from `site-config/nodes/{node}.yaml` and `site-config/envs/test.yaml`.
+Configuration is loaded from `site-config/nodes/{node}.yaml` via ConfigResolver.
 
 ### Ansible Collections
 
