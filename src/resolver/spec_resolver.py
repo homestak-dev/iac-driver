@@ -1,6 +1,6 @@
 """Spec resolver for the controller.
 
-Loads specs from site-config/v2/specs/ and resolves foreign key references
+Loads specs from site-config/specs/ and resolves foreign key references
 to postures and secrets. Migrated from bootstrap/lib/spec_resolver.py for
 unified controller architecture.
 """
@@ -37,7 +37,7 @@ class SpecResolver(ResolverBase):
     """Resolves specs from site-config with FK expansion.
 
     Extends ResolverBase with spec-specific functionality:
-    - Spec loading from v2/specs/
+    - Spec loading from specs/
     - Site defaults application
     - Identity/hostname defaulting
     - Posture FK expansion
@@ -70,7 +70,7 @@ class SpecResolver(ResolverBase):
         Raises:
             SpecNotFoundError: If spec file not found
         """
-        spec_path = self.etc_path / "v2" / "specs" / f"{identity}.yaml"
+        spec_path = self.etc_path / "specs" / f"{identity}.yaml"
         if not spec_path.exists():
             raise SpecNotFoundError(identity)
         return self._load_yaml(spec_path)
@@ -108,7 +108,7 @@ class SpecResolver(ResolverBase):
         """Resolve spec by identity with all FK expansion.
 
         Resolution includes:
-        1. Load raw spec from v2/specs/{identity}.yaml
+        1. Load raw spec from specs/{identity}.yaml
         2. Apply site.yaml defaults
         3. Set identity.hostname if not specified
         4. Load and merge posture from access.posture FK
@@ -143,7 +143,7 @@ class SpecResolver(ResolverBase):
 
         # Resolve posture FK
         posture_name = spec.get("access", {}).get("posture", "dev")
-        posture = self._load_posture(posture_name, version="v2")
+        posture = self._load_posture(posture_name)
 
         # Merge posture settings into access (posture values as defaults)
         if "access" not in spec:
@@ -179,7 +179,7 @@ class SpecResolver(ResolverBase):
         Returns:
             List of spec names (filenames without .yaml)
         """
-        specs_dir = self.etc_path / "v2" / "specs"
+        specs_dir = self.etc_path / "specs"
         if not specs_dir.exists():
             return []
         return sorted([p.stem for p in specs_dir.glob("*.yaml")])

@@ -106,7 +106,7 @@ class TestIPValidation:
         (tmp_path / 'nodes').mkdir()
         (tmp_path / 'envs').mkdir()
         (tmp_path / 'vms').mkdir()
-        (tmp_path / 'vms/presets').mkdir()
+        (tmp_path / 'presets').mkdir()
         (tmp_path / 'site.yaml').write_text('defaults: {}')
         (tmp_path / 'secrets.yaml').write_text('api_tokens: {}')
         (tmp_path / 'nodes/test.yaml').write_text('node: test\napi_endpoint: https://localhost:8006\ndatastore: local')
@@ -155,7 +155,7 @@ class TestWriteTfvars:
         (tmp_path / 'nodes').mkdir()
         (tmp_path / 'envs').mkdir()
         (tmp_path / 'vms').mkdir()
-        (tmp_path / 'vms/presets').mkdir()
+        (tmp_path / 'presets').mkdir()
         (tmp_path / 'site.yaml').write_text('defaults: {}')
         (tmp_path / 'secrets.yaml').write_text('api_tokens: {}\npasswords: {}')
         (tmp_path / 'nodes/test.yaml').write_text('node: test\napi_endpoint: https://localhost:8006\ndatastore: local')
@@ -182,7 +182,7 @@ class TestListMethods:
         (tmp_path / 'nodes').mkdir()
         (tmp_path / 'envs').mkdir()
         (tmp_path / 'vms').mkdir()
-        (tmp_path / 'vms/presets').mkdir()
+        (tmp_path / 'presets').mkdir()
         (tmp_path / 'site.yaml').write_text('defaults: {}')
         (tmp_path / 'secrets.yaml').write_text('api_tokens: {}')
 
@@ -196,7 +196,7 @@ class TestListMethods:
 
         # Create presets
         for preset in ['small', 'medium', 'large']:
-            (tmp_path / f'vms/presets/{preset}.yaml').write_text('cores: 1')
+            (tmp_path / f'presets/vm-{preset}.yaml').write_text('cores: 1')
 
         return ConfigResolver(str(tmp_path))
 
@@ -213,7 +213,7 @@ class TestListMethods:
     def test_list_presets(self, resolver):
         """list_presets should return sorted preset names."""
         presets = resolver.list_presets()
-        assert presets == ['large', 'medium', 'small']
+        assert presets == ['vm-large', 'vm-medium', 'vm-small']
 
 
 class TestResolveAnsibleVars:
@@ -322,7 +322,7 @@ class TestListPostures:
         """list_postures should return sorted posture names."""
         resolver = ConfigResolver(str(site_config_dir))
         postures = resolver.list_postures()
-        assert postures == ['dev', 'prod']
+        assert postures == ['dev', 'prod', 'stage']
 
 
 class TestSpecServerResolution:
@@ -339,7 +339,7 @@ class TestSpecServerResolution:
     def test_resolve_env_spec_server_empty_if_not_set(self, tmp_path):
         """spec_server should be empty string if not configured."""
         # Create minimal site-config without spec_server
-        for d in ['nodes', 'envs', 'vms', 'vms/presets', 'postures', 'v2/postures']:
+        for d in ['nodes', 'envs', 'vms', 'presets', 'postures']:
             (tmp_path / d).mkdir(parents=True, exist_ok=True)
 
         (tmp_path / 'site.yaml').write_text('defaults: {}')
@@ -361,7 +361,7 @@ class TestSpecServerResolution:
             node='test-node',
             vm_name='inline-vm',
             vmid=99900,
-            vm_preset='small',
+            vm_preset='vm-small',
             image='debian-12-custom.img'
         )
 
@@ -399,7 +399,7 @@ class TestAuthTokenResolution:
     def test_resolve_auth_token_unknown_method_returns_empty(self, site_config_dir):
         """Unknown auth method should default to empty token."""
         # Add a posture with unknown auth method
-        (site_config_dir / 'v2/postures/custom.yaml').write_text("""
+        (site_config_dir / 'postures/custom.yaml').write_text("""
 auth:
   method: unknown_method
 """)
@@ -407,8 +407,8 @@ auth:
         token = resolver._resolve_auth_token('custom', 'test-vm')
         assert token == ''
 
-    def test_resolve_auth_token_missing_v2_posture_returns_empty(self, site_config_dir):
-        """Missing v2 posture should default to network (empty token)."""
+    def test_resolve_auth_token_missing_posture_returns_empty(self, site_config_dir):
+        """Missing posture should default to network (empty token)."""
         resolver = ConfigResolver(str(site_config_dir))
         # 'nonexistent' posture doesn't exist
         token = resolver._resolve_auth_token('nonexistent', 'test-vm')
@@ -467,7 +467,7 @@ vms:
             node='test-node',
             vm_name='inline-vm',
             vmid=99900,
-            vm_preset='small',
+            vm_preset='vm-small',
             image='debian-12-custom.img',
             posture='stage'
         )
@@ -481,7 +481,7 @@ vms:
             node='test-node',
             vm_name='inline-vm',
             vmid=99900,
-            vm_preset='small',
+            vm_preset='vm-small',
             image='debian-12-custom.img'
             # No posture specified
         )
@@ -490,19 +490,19 @@ vms:
         assert config['vms'][0]['auth_token'] == ''
 
 
-class TestV2PosturesLoading:
-    """Test v2/postures loading (v0.45+)."""
+class TestPosturesAuthModel:
+    """Test posture auth model loading."""
 
-    def test_v2_postures_loaded_on_init(self, site_config_dir):
-        """v2_postures should be loaded from v2/postures/ directory."""
+    def test_postures_loaded_with_auth(self, site_config_dir):
+        """Postures should include auth model from nested format."""
         resolver = ConfigResolver(str(site_config_dir))
-        assert 'dev' in resolver.v2_postures
-        assert 'stage' in resolver.v2_postures
-        assert 'prod' in resolver.v2_postures
+        assert 'dev' in resolver.postures
+        assert 'stage' in resolver.postures
+        assert 'prod' in resolver.postures
 
-    def test_v2_postures_has_auth_method(self, site_config_dir):
-        """v2 postures should have auth.method field."""
+    def test_postures_has_auth_method(self, site_config_dir):
+        """Postures should have auth.method field."""
         resolver = ConfigResolver(str(site_config_dir))
-        assert resolver.v2_postures['dev']['auth']['method'] == 'network'
-        assert resolver.v2_postures['stage']['auth']['method'] == 'site_token'
-        assert resolver.v2_postures['prod']['auth']['method'] == 'node_token'
+        assert resolver.postures['dev']['auth']['method'] == 'network'
+        assert resolver.postures['stage']['auth']['method'] == 'site_token'
+        assert resolver.postures['prod']['auth']['method'] == 'node_token'

@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Theme: Site-Config/IAC-Driver Cleanup (#209)
+
+Unify resolver paths after site-config v2/ consolidation.
+
+### Changed
+- Update ConfigResolver to load presets from `presets/` instead of `vms/presets/` (#161)
+- Update ConfigResolver to use unified `postures/` (nested format) instead of dual v1/v2 loading (#161)
+- Update `resolve_ansible_vars()` to read nested posture keys (`ssh.port`, `sudo.nopasswd`, etc.) (#161)
+- Update SpecResolver to load specs from `specs/` instead of `v2/specs/` (#161)
+- Update ResolverBase `_load_posture()` to use `postures/` instead of `v2/postures/` (#161)
+
+### Removed
+- Remove `v2_postures` secondary loader from ConfigResolver (#161)
+- Remove vm- prefix stripping shim from manifest v2→v1 conversion (#161)
+
 ### Theme: Config Phase + Pull Execution Mode (#147)
 
 Adds the config phase (`./run.sh config`) and pull execution mode for the node lifecycle. VMs can now self-configure via cloud-init instead of requiring SSH-based push from the driver.

@@ -42,8 +42,8 @@ class TestSpecResolver:
     def site_config(self, tmp_path):
         """Create a minimal site-config structure for spec resolution."""
         # Create directories
-        (tmp_path / "v2" / "specs").mkdir(parents=True)
-        (tmp_path / "v2" / "postures").mkdir(parents=True)
+        (tmp_path / "specs").mkdir(parents=True)
+        (tmp_path / "postures").mkdir(parents=True)
 
         # Create site.yaml
         site_yaml = {
@@ -70,26 +70,26 @@ class TestSpecResolver:
         }
         (tmp_path / "secrets.yaml").write_text(yaml.dump(secrets_yaml))
 
-        # Create v2 postures
+        # Create postures
         dev_posture = {
             "auth": {"method": "network"},
             "ssh": {"port": 22},
         }
-        (tmp_path / "v2" / "postures" / "dev.yaml").write_text(yaml.dump(dev_posture))
+        (tmp_path / "postures" / "dev.yaml").write_text(yaml.dump(dev_posture))
 
         stage_posture = {
             "auth": {"method": "site_token"},
             "ssh": {"port": 22},
         }
-        (tmp_path / "v2" / "postures" / "stage.yaml").write_text(yaml.dump(stage_posture))
+        (tmp_path / "postures" / "stage.yaml").write_text(yaml.dump(stage_posture))
 
         prod_posture = {
             "auth": {"method": "node_token"},
             "ssh": {"port": 22},
         }
-        (tmp_path / "v2" / "postures" / "prod.yaml").write_text(yaml.dump(prod_posture))
+        (tmp_path / "postures" / "prod.yaml").write_text(yaml.dump(prod_posture))
 
-        # Create v2 specs
+        # Create specs
         base_spec = {
             "schema_version": 1,
             "access": {
@@ -102,7 +102,7 @@ class TestSpecResolver:
                 "packages": ["htop", "vim"],
             },
         }
-        (tmp_path / "v2" / "specs" / "base.yaml").write_text(yaml.dump(base_spec))
+        (tmp_path / "specs" / "base.yaml").write_text(yaml.dump(base_spec))
 
         pve_spec = {
             "schema_version": 1,
@@ -119,7 +119,7 @@ class TestSpecResolver:
                 "pve": {"remove_subscription_nag": True},
             },
         }
-        (tmp_path / "v2" / "specs" / "pve.yaml").write_text(yaml.dump(pve_spec))
+        (tmp_path / "specs" / "pve.yaml").write_text(yaml.dump(pve_spec))
 
         prod_spec = {
             "schema_version": 1,
@@ -127,7 +127,7 @@ class TestSpecResolver:
                 "posture": "prod",
             },
         }
-        (tmp_path / "v2" / "specs" / "prod-vm.yaml").write_text(yaml.dump(prod_spec))
+        (tmp_path / "specs" / "prod-vm.yaml").write_text(yaml.dump(prod_spec))
 
         return tmp_path
 
@@ -233,7 +233,7 @@ class TestSpecResolver:
             "schema_version": 1,
             "access": {"posture": "nonexistent"},
         }
-        (site_config / "v2" / "specs" / "bad-posture.yaml").write_text(
+        (site_config / "specs" / "bad-posture.yaml").write_text(
             yaml.dump(bad_spec)
         )
 
@@ -252,7 +252,7 @@ class TestSpecResolver:
                 "users": [{"name": "root", "ssh_keys": ["nonexistent"]}],
             },
         }
-        (site_config / "v2" / "specs" / "bad-ssh.yaml").write_text(
+        (site_config / "specs" / "bad-ssh.yaml").write_text(
             yaml.dump(bad_spec)
         )
 

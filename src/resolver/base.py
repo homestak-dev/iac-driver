@@ -172,12 +172,11 @@ class ResolverBase:
             self._site = self._load_yaml(site_path)
         return self._site
 
-    def _load_posture(self, name: str, version: str = "v2") -> dict:
+    def _load_posture(self, name: str) -> dict:
         """Load posture by name (cached).
 
         Args:
             name: Posture name (e.g., "dev", "prod", "local")
-            version: Posture version directory ("v1" for legacy, "v2" for current)
 
         Returns:
             Posture config dict
@@ -185,17 +184,13 @@ class ResolverBase:
         Raises:
             PostureNotFoundError: If posture file not found
         """
-        cache_key = f"{version}:{name}"
-        if cache_key not in self._posture_cache:
-            if version == "v2":
-                posture_path = self.etc_path / "v2" / "postures" / f"{name}.yaml"
-            else:
-                posture_path = self.etc_path / "postures" / f"{name}.yaml"
+        if name not in self._posture_cache:
+            posture_path = self.etc_path / "postures" / f"{name}.yaml"
 
             if not posture_path.exists():
                 raise PostureNotFoundError(name)
-            self._posture_cache[cache_key] = self._load_yaml(posture_path)
-        return self._posture_cache[cache_key]
+            self._posture_cache[name] = self._load_yaml(posture_path)
+        return self._posture_cache[name]
 
     def _resolve_ssh_keys(self, key_refs: list) -> list:
         """Resolve SSH key references to actual public keys.
@@ -250,7 +245,7 @@ class ResolverBase:
             Auth token string, or empty string for network trust
         """
         try:
-            posture = self._load_posture(posture_name, version="v2")
+            posture = self._load_posture(posture_name)
         except PostureNotFoundError:
             # Fall back to network trust if posture not found
             return ""

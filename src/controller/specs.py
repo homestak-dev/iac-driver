@@ -1,6 +1,6 @@
 """Spec endpoint handler for the controller.
 
-Serves resolved specs from site-config/v2/specs/ with posture-based auth.
+Serves resolved specs from site-config/specs/ with posture-based auth.
 """
 
 import json

@@ -31,8 +31,8 @@ class TestHandleSpecRequest:
     def site_config(self, tmp_path):
         """Create a minimal site-config for spec testing."""
         # Create directories
-        (tmp_path / "v2" / "specs").mkdir(parents=True)
-        (tmp_path / "v2" / "postures").mkdir(parents=True)
+        (tmp_path / "specs").mkdir(parents=True)
+        (tmp_path / "postures").mkdir(parents=True)
 
         # Create site.yaml
         site_yaml = {
@@ -54,12 +54,12 @@ class TestHandleSpecRequest:
         }
         (tmp_path / "secrets.yaml").write_text(yaml.dump(secrets_yaml))
 
-        # Create v2 postures
+        # Create postures
         dev_posture = {"auth": {"method": "network"}, "ssh": {"port": 22}}
-        (tmp_path / "v2" / "postures" / "dev.yaml").write_text(yaml.dump(dev_posture))
+        (tmp_path / "postures" / "dev.yaml").write_text(yaml.dump(dev_posture))
 
         stage_posture = {"auth": {"method": "site_token"}}
-        (tmp_path / "v2" / "postures" / "stage.yaml").write_text(yaml.dump(stage_posture))
+        (tmp_path / "postures" / "stage.yaml").write_text(yaml.dump(stage_posture))
 
         # Create specs
         base_spec = {
@@ -70,13 +70,13 @@ class TestHandleSpecRequest:
             },
             "platform": {"packages": ["htop"]},
         }
-        (tmp_path / "v2" / "specs" / "base.yaml").write_text(yaml.dump(base_spec))
+        (tmp_path / "specs" / "base.yaml").write_text(yaml.dump(base_spec))
 
         protected_spec = {
             "schema_version": 1,
             "access": {"posture": "stage"},
         }
-        (tmp_path / "v2" / "specs" / "protected.yaml").write_text(yaml.dump(protected_spec))
+        (tmp_path / "specs" / "protected.yaml").write_text(yaml.dump(protected_spec))
 
         return tmp_path
 
@@ -139,7 +139,7 @@ class TestHandleSpecRequest:
         """Bad posture FK returns 500 (server config error)."""
         # Create spec with bad posture - this is a server-side config error
         bad_spec = {"schema_version": 1, "access": {"posture": "nonexistent"}}
-        (site_config / "v2" / "specs" / "bad.yaml").write_text(yaml.dump(bad_spec))
+        (site_config / "specs" / "bad.yaml").write_text(yaml.dump(bad_spec))
 
         resolver = SpecResolver(etc_path=site_config)
         response, status = handle_spec_request("bad", "", resolver)
@@ -159,7 +159,7 @@ class TestHandleSpecRequest:
                 "users": [{"name": "root", "ssh_keys": ["nonexistent"]}],
             },
         }
-        (site_config / "v2" / "specs" / "bad-ssh.yaml").write_text(yaml.dump(bad_spec))
+        (site_config / "specs" / "bad-ssh.yaml").write_text(yaml.dump(bad_spec))
 
         resolver = SpecResolver(etc_path=site_config)
         response, status = handle_spec_request("bad-ssh", "", resolver)
@@ -186,20 +186,20 @@ class TestHandleSpecsList:
     @pytest.fixture
     def site_config(self, tmp_path):
         """Create a minimal site-config with multiple specs."""
-        (tmp_path / "v2" / "specs").mkdir(parents=True)
-        (tmp_path / "v2" / "postures").mkdir(parents=True)
+        (tmp_path / "specs").mkdir(parents=True)
+        (tmp_path / "postures").mkdir(parents=True)
         (tmp_path / "site.yaml").write_text(yaml.dump({"defaults": {}}))
         (tmp_path / "secrets.yaml").write_text(yaml.dump({}))
 
         # Create postures
-        (tmp_path / "v2" / "postures" / "dev.yaml").write_text(
+        (tmp_path / "postures" / "dev.yaml").write_text(
             yaml.dump({"auth": {"method": "network"}})
         )
 
         # Create multiple specs
         for name in ["base", "pve", "k8s", "staging"]:
             spec = {"schema_version": 1, "access": {"posture": "dev"}}
-            (tmp_path / "v2" / "specs" / f"{name}.yaml").write_text(yaml.dump(spec))
+            (tmp_path / "specs" / f"{name}.yaml").write_text(yaml.dump(spec))
 
         return tmp_path
 

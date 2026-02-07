@@ -18,13 +18,13 @@ def site_config_dir(tmp_path):
     - secrets.yaml (mock secrets)
     - nodes/test-node.yaml
     - envs/test.yaml
-    - vms/presets/small.yaml
+    - presets/vm-small.yaml
     - vms/debian-12.yaml
     - postures/dev.yaml
     - postures/prod.yaml
     """
     # Create directories
-    for d in ['nodes', 'envs', 'vms', 'vms/presets', 'postures', 'hosts', 'v2/postures']:
+    for d in ['nodes', 'envs', 'vms', 'presets', 'postures', 'hosts']:
         (tmp_path / d).mkdir(parents=True, exist_ok=True)
 
     # Create site.yaml (v0.13: packages and pve settings, v0.45: spec_server)
@@ -66,52 +66,53 @@ api_token: test-node
 datastore: local-zfs
 """)
 
-    # Create postures
+    # Create postures (nested format with auth model)
     (tmp_path / 'postures/dev.yaml').write_text("""
-ssh_port: 22
-ssh_permit_root_login: "yes"
-ssh_password_authentication: "yes"
-sudo_nopasswd: true
-fail2ban_enabled: false
+auth:
+  method: network
+ssh:
+  port: 22
+  permit_root_login: "yes"
+  password_authentication: "yes"
+sudo:
+  nopasswd: true
+fail2ban:
+  enabled: false
 packages:
   - net-tools
   - strace
 """)
 
     (tmp_path / 'postures/prod.yaml').write_text("""
-ssh_port: 22
-ssh_permit_root_login: "no"
-ssh_password_authentication: "no"
-sudo_nopasswd: false
-fail2ban_enabled: true
-packages: []
-""")
-
-    # Create v2 postures (with auth.method for spec discovery)
-    (tmp_path / 'v2/postures/dev.yaml').write_text("""
-auth:
-  method: network
-ssh:
-  port: 22
-  permit_root_login: "yes"
-""")
-
-    (tmp_path / 'v2/postures/stage.yaml').write_text("""
-auth:
-  method: site_token
-ssh:
-  port: 22
-""")
-
-    (tmp_path / 'v2/postures/prod.yaml').write_text("""
 auth:
   method: node_token
 ssh:
   port: 22
+  permit_root_login: "no"
+  password_authentication: "no"
+sudo:
+  nopasswd: false
+fail2ban:
+  enabled: true
+packages: []
+""")
+
+    (tmp_path / 'postures/stage.yaml').write_text("""
+auth:
+  method: site_token
+ssh:
+  port: 22
+  permit_root_login: "prohibit-password"
+  password_authentication: "no"
+sudo:
+  nopasswd: false
+fail2ban:
+  enabled: true
+packages: []
 """)
 
     # Create preset
-    (tmp_path / 'vms/presets/small.yaml').write_text("""
+    (tmp_path / 'presets/vm-small.yaml').write_text("""
 cores: 1
 memory: 2048
 disk: 20
@@ -119,7 +120,7 @@ disk: 20
 
     # Create template
     (tmp_path / 'vms/debian-12.yaml').write_text("""
-preset: small
+preset: vm-small
 image: debian-12-custom.img
 packages:
   - qemu-guest-agent
@@ -198,10 +199,14 @@ api_endpoint: https://10.0.12.100:8006
 datastore: local-zfs
 """)
 
-    # Dev posture for fallback
+    # Dev posture for fallback (nested format)
     (tmp_path / 'postures/dev.yaml').write_text("""
-ssh_port: 22
-sudo_nopasswd: true
+auth:
+  method: network
+ssh:
+  port: 22
+sudo:
+  nopasswd: true
 packages: []
 """)
 

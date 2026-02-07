@@ -73,8 +73,8 @@ class TestValidateSpecAuth:
     def site_config(self, tmp_path):
         """Create a minimal site-config for auth testing."""
         # Create directories
-        (tmp_path / "v2" / "specs").mkdir(parents=True)
-        (tmp_path / "v2" / "postures").mkdir(parents=True)
+        (tmp_path / "specs").mkdir(parents=True)
+        (tmp_path / "postures").mkdir(parents=True)
 
         # Create site.yaml
         site_yaml = {"defaults": {"domain": "test.local"}}
@@ -93,26 +93,26 @@ class TestValidateSpecAuth:
         }
         (tmp_path / "secrets.yaml").write_text(yaml.dump(secrets_yaml))
 
-        # Create v2 postures
+        # Create postures
         dev_posture = {"auth": {"method": "network"}}
-        (tmp_path / "v2" / "postures" / "dev.yaml").write_text(yaml.dump(dev_posture))
+        (tmp_path / "postures" / "dev.yaml").write_text(yaml.dump(dev_posture))
 
         stage_posture = {"auth": {"method": "site_token"}}
-        (tmp_path / "v2" / "postures" / "stage.yaml").write_text(yaml.dump(stage_posture))
+        (tmp_path / "postures" / "stage.yaml").write_text(yaml.dump(stage_posture))
 
         prod_posture = {"auth": {"method": "node_token"}}
-        (tmp_path / "v2" / "postures" / "prod.yaml").write_text(yaml.dump(prod_posture))
+        (tmp_path / "postures" / "prod.yaml").write_text(yaml.dump(prod_posture))
 
         # Create specs with different postures
         dev_spec = {"schema_version": 1, "access": {"posture": "dev"}}
-        (tmp_path / "v2" / "specs" / "dev-vm.yaml").write_text(yaml.dump(dev_spec))
+        (tmp_path / "specs" / "dev-vm.yaml").write_text(yaml.dump(dev_spec))
 
         stage_spec = {"schema_version": 1, "access": {"posture": "stage"}}
-        (tmp_path / "v2" / "specs" / "stage-vm.yaml").write_text(yaml.dump(stage_spec))
+        (tmp_path / "specs" / "stage-vm.yaml").write_text(yaml.dump(stage_spec))
 
         prod_spec = {"schema_version": 1, "access": {"posture": "prod"}}
-        (tmp_path / "v2" / "specs" / "prod1.yaml").write_text(yaml.dump(prod_spec))
-        (tmp_path / "v2" / "specs" / "prod2.yaml").write_text(yaml.dump(prod_spec))
+        (tmp_path / "specs" / "prod1.yaml").write_text(yaml.dump(prod_spec))
+        (tmp_path / "specs" / "prod2.yaml").write_text(yaml.dump(prod_spec))
 
         return tmp_path
 
@@ -157,16 +157,16 @@ class TestValidateSpecAuth:
     def test_site_token_auth_not_configured(self, tmp_path):
         """Site token auth fails when site_token not in secrets."""
         # Create site-config without site_token
-        (tmp_path / "v2" / "specs").mkdir(parents=True)
-        (tmp_path / "v2" / "postures").mkdir(parents=True)
+        (tmp_path / "specs").mkdir(parents=True)
+        (tmp_path / "postures").mkdir(parents=True)
         (tmp_path / "site.yaml").write_text(yaml.dump({"defaults": {}}))
         (tmp_path / "secrets.yaml").write_text(yaml.dump({"auth": {}}))
 
         stage_posture = {"auth": {"method": "site_token"}}
-        (tmp_path / "v2" / "postures" / "stage.yaml").write_text(yaml.dump(stage_posture))
+        (tmp_path / "postures" / "stage.yaml").write_text(yaml.dump(stage_posture))
 
         spec = {"schema_version": 1, "access": {"posture": "stage"}}
-        (tmp_path / "v2" / "specs" / "test.yaml").write_text(yaml.dump(spec))
+        (tmp_path / "specs" / "test.yaml").write_text(yaml.dump(spec))
 
         resolver = SpecResolver(etc_path=tmp_path)
         error = validate_spec_auth("test", "Bearer some-token", resolver)
@@ -203,16 +203,16 @@ class TestValidateSpecAuth:
 
     def test_node_token_auth_not_configured(self, tmp_path):
         """Node token auth fails when node_token not in secrets."""
-        (tmp_path / "v2" / "specs").mkdir(parents=True)
-        (tmp_path / "v2" / "postures").mkdir(parents=True)
+        (tmp_path / "specs").mkdir(parents=True)
+        (tmp_path / "postures").mkdir(parents=True)
         (tmp_path / "site.yaml").write_text(yaml.dump({"defaults": {}}))
         (tmp_path / "secrets.yaml").write_text(yaml.dump({"auth": {"node_tokens": {}}}))
 
         prod_posture = {"auth": {"method": "node_token"}}
-        (tmp_path / "v2" / "postures" / "prod.yaml").write_text(yaml.dump(prod_posture))
+        (tmp_path / "postures" / "prod.yaml").write_text(yaml.dump(prod_posture))
 
         spec = {"schema_version": 1, "access": {"posture": "prod"}}
-        (tmp_path / "v2" / "specs" / "unknown.yaml").write_text(yaml.dump(spec))
+        (tmp_path / "specs" / "unknown.yaml").write_text(yaml.dump(spec))
 
         resolver = SpecResolver(etc_path=tmp_path)
         error = validate_spec_auth("unknown", "Bearer some-token", resolver)
@@ -232,17 +232,17 @@ class TestValidateSpecAuth:
 
     def test_unknown_auth_method(self, tmp_path):
         """Returns 500 for unknown auth method."""
-        (tmp_path / "v2" / "specs").mkdir(parents=True)
-        (tmp_path / "v2" / "postures").mkdir(parents=True)
+        (tmp_path / "specs").mkdir(parents=True)
+        (tmp_path / "postures").mkdir(parents=True)
         (tmp_path / "site.yaml").write_text(yaml.dump({"defaults": {}}))
         (tmp_path / "secrets.yaml").write_text(yaml.dump({}))
 
         # Create posture with invalid auth method
         bad_posture = {"auth": {"method": "invalid_method"}}
-        (tmp_path / "v2" / "postures" / "bad.yaml").write_text(yaml.dump(bad_posture))
+        (tmp_path / "postures" / "bad.yaml").write_text(yaml.dump(bad_posture))
 
         spec = {"schema_version": 1, "access": {"posture": "bad"}}
-        (tmp_path / "v2" / "specs" / "test.yaml").write_text(yaml.dump(spec))
+        (tmp_path / "specs" / "test.yaml").write_text(yaml.dump(spec))
 
         resolver = SpecResolver(etc_path=tmp_path)
         error = validate_spec_auth("test", "", resolver)

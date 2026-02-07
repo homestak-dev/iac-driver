@@ -35,7 +35,7 @@ class ManifestLevel:
 
     Supports three modes:
     1. Preset mode (simplest): name + vm_preset + vmid + image
-       - vm_preset references vms/presets/*.yaml for resources (cores/memory/disk)
+       - vm_preset references presets/*.yaml for resources (cores/memory/disk)
        - image specifies the base image
     2. Template mode: name + template + vmid
        - template references vms/*.yaml for resources
@@ -44,7 +44,7 @@ class ManifestLevel:
 
     Attributes:
         name: VM hostname (inline modes) or level identifier (env mode)
-        vm_preset: FK to site-config/vms/presets/*.yaml (vm_preset mode)
+        vm_preset: FK to site-config/presets/*.yaml (vm_preset mode)
         template: FK to site-config/vms/*.yaml (template mode)
         vmid: Explicit VM ID (inline modes)
         env: FK to site-config/envs/*.yaml (env mode, optional)
@@ -112,8 +112,8 @@ class ManifestNode:
     Attributes:
         name: Node identifier (VM hostname and context key prefix)
         type: Node type (vm, ct, pve)
-        spec: FK to v2/specs/{value}.yaml
-        preset: FK to v2/presets/{value}.yaml (vm- prefixed)
+        spec: FK to specs/{value}.yaml
+        preset: FK to presets/{value}.yaml (vm- prefixed)
         image: Cloud image name
         vmid: Explicit VM ID
         disk: Disk size override in GB
@@ -509,11 +509,6 @@ def _nodes_to_levels(nodes: list[ManifestNode]) -> list[ManifestLevel]:
     # Convert to ManifestLevel
     levels = []
     for node in ordered:
-        # Map v2 preset (vm-prefixed) to v1 preset (no prefix)
-        vm_preset = node.preset
-        if vm_preset and vm_preset.startswith('vm-'):
-            vm_preset = vm_preset[3:]  # Strip 'vm-' prefix
-
         # PVE nodes get pve-setup as post_scenario
         post_scenario = None
         post_scenario_args: list[str] = []
@@ -523,7 +518,7 @@ def _nodes_to_levels(nodes: list[ManifestNode]) -> list[ManifestLevel]:
 
         levels.append(ManifestLevel(
             name=node.name,
-            vm_preset=vm_preset,
+            vm_preset=node.preset,
             vmid=node.vmid,
             image=node.image,
             post_scenario=post_scenario,

@@ -137,10 +137,10 @@ resolver.list_presets()   # ['small', 'medium', 'large', ...]
 
 ### Resolution Order (Tofu)
 
-1. `vms/presets/{preset}.yaml` - Size presets (if template uses `preset:`)
+1. `presets/{preset}.yaml` - Size presets (if template uses `preset:`)
 2. `vms/{template}.yaml` - Template definition
 3. `envs/{env}.yaml` - Instance overrides (name, ip, vmid)
-4. `v2/postures/{posture}.yaml` - Auth method for spec discovery (v0.45+)
+4. `postures/{posture}.yaml` - Auth method for spec discovery
 
 ### Resolution Order (Ansible)
 
@@ -185,7 +185,7 @@ Per-VM `auth_token` is resolved based on the environment's posture:
 | stage | `site_token` | `secrets.auth.site_token` |
 | prod | `node_token` | `secrets.auth.node_tokens.{vm_name}` |
 
-The auth method is determined by `v2/postures/{posture}.yaml` (not v1 postures).
+The auth method is determined by `postures/{posture}.yaml`.
 
 ### Output Structure (Ansible)
 
@@ -294,7 +294,7 @@ The unified controller daemon serves both specs and git repos over a single HTTP
 
 ### Spec Authentication
 
-Spec endpoints use posture-based authentication from `v2/postures/{posture}.yaml`:
+Spec endpoints use posture-based authentication from `postures/{posture}.yaml`:
 
 | Method | Description | Token Source |
 |--------|-------------|--------------|
