@@ -6,6 +6,7 @@
 
 ### Removed
 - Remove dead template mode code path from ConfigResolver and tofu actions (#180)
+- Remove v1 manifest schema (levels-based): `ManifestLevel`, `_from_dict_v1()`, `_nodes_to_levels()` (#181)
 
 ### Theme: Site-Config/IAC-Driver Cleanup, Pt.2 (#212)
 

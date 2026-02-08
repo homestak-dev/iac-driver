@@ -1,10 +1,9 @@
 """Manifest loading and validation for infrastructure orchestration.
 
 Manifests define deployment topologies for VM/PVE provisioning.
-They reference site-config entities (envs, vms, presets, specs) via foreign keys.
+They reference site-config entities (presets, specs) via foreign keys.
 
-Schema v1: Linear levels array (v0.39+) - used by recursive-pve scenarios
-Schema v2: Graph-based nodes with parent references (#143) - used by operator engine
+Schema v2: Graph-based nodes with parent references (#143) - used by operator engine.
 """
 
 import json
@@ -26,80 +25,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_MANIFEST = 'n2-quick'
 
 # Supported schema versions
-SUPPORTED_SCHEMA_VERSIONS = {1, 2}
-
-
-@dataclass
-class ManifestLevel:
-    """A single level in the recursion manifest.
-
-    Supports three modes:
-    1. Preset mode (simplest): name + vm_preset + vmid + image
-       - vm_preset references presets/*.yaml for resources (cores/memory/disk)
-       - image specifies the base image
-    2. Template mode: name + template + vmid
-       - template references vms/*.yaml for resources
-    3. Env mode (legacy): name + env
-       - env references envs/*.yaml which contains VM definitions
-
-    Attributes:
-        name: VM hostname (inline modes) or level identifier (env mode)
-        vm_preset: FK to site-config/presets/*.yaml (vm_preset mode)
-        template: FK to site-config/vms/*.yaml (template mode)
-        vmid: Explicit VM ID (inline modes)
-        env: FK to site-config/envs/*.yaml (env mode, optional)
-        image: Image name (required for vm_preset mode, optional override for others)
-        vmid_offset: Offset from env's vmid_base (env mode only, deprecated)
-        post_scenario: Optional scenario to run after bootstrap
-        post_scenario_args: Arguments for post_scenario
-    """
-    name: str
-    vm_preset: Optional[str] = None
-    template: Optional[str] = None
-    vmid: Optional[int] = None
-    env: Optional[str] = None
-    image: Optional[str] = None
-    vmid_offset: int = 0
-    post_scenario: Optional[str] = None
-    post_scenario_args: list[str] = field(default_factory=list)
-
-    @property
-    def is_inline(self) -> bool:
-        """True if using inline mode (vm_preset or template specified, no env)."""
-        return (self.vm_preset is not None or self.template is not None) and self.env is None
-
-    @property
-    def is_vm_preset_mode(self) -> bool:
-        """True if using vm_preset mode (vm_preset specified, no template)."""
-        return self.vm_preset is not None and self.template is None and self.env is None
-
-    @property
-    def vm_name(self) -> str:
-        """Get the VM hostname for this level.
-
-        In inline mode, this is the level name.
-        In env mode, this must be resolved from the env file.
-        """
-        if self.is_inline:
-            return self.name
-        # In env mode, caller must resolve from env file
-        # Return name as fallback (may not match actual VM name)
-        return self.name
-
-    @classmethod
-    def from_dict(cls, data: dict) -> 'ManifestLevel':
-        """Create ManifestLevel from dictionary."""
-        return cls(
-            name=data['name'],
-            vm_preset=data.get('vm_preset'),
-            template=data.get('template'),
-            vmid=data.get('vmid'),
-            env=data.get('env'),
-            image=data.get('image'),
-            vmid_offset=data.get('vmid_offset', 0),
-            post_scenario=data.get('post_scenario'),
-            post_scenario_args=data.get('post_scenario_args', [])
-        )
+SUPPORTED_SCHEMA_VERSIONS = {2}
 
 
 @dataclass
@@ -201,123 +127,50 @@ class ManifestSettings:
 class Manifest:
     """Infrastructure deployment manifest.
 
-    Schema v1: Defines recursion levels for recursive-pve scenarios.
-    Schema v2: Defines a graph of nodes with parent references for the operator engine.
+    Defines a graph of nodes with parent references for the operator engine.
 
     Attributes:
-        schema_version: Manifest schema version (1 or 2)
+        schema_version: Manifest schema version (must be 2)
         name: Human-readable manifest name
         description: Optional description
-        levels: Ordered list of recursion levels (v1, or converted from v2 nodes)
         settings: Optional execution settings
         source_path: Path where manifest was loaded from (for debugging)
-        pattern: Topology shape (v2 only: 'flat' or 'tiered')
-        execution_mode: Default execution mode (v2 only: 'push' or 'pull')
-        nodes: Graph-based node definitions (v2 only)
+        pattern: Topology shape ('flat' or 'tiered')
+        execution_mode: Default execution mode ('push' or 'pull')
+        nodes: Graph-based node definitions
     """
     schema_version: int
     name: str
-    levels: list[ManifestLevel]
     description: str = ''
     settings: ManifestSettings = field(default_factory=ManifestSettings)
     source_path: Optional[Path] = None
     pattern: Optional[str] = None
     execution_mode: str = 'push'
-    nodes: Optional[list[ManifestNode]] = None
+    nodes: list[ManifestNode] = field(default_factory=list)
 
     @property
     def depth(self) -> int:
-        """Number of recursion levels."""
-        return len(self.levels)
-
-    @property
-    def is_leaf(self) -> bool:
-        """True if this manifest has only one level (leaf node)."""
-        return len(self.levels) == 1
-
-    def get_current_level(self) -> ManifestLevel:
-        """Get the first (current) level."""
-        if not self.levels:
-            raise ConfigError("Manifest has no levels")
-        return self.levels[0]
-
-    def get_remaining_manifest(self) -> 'Manifest':
-        """Get manifest with levels[1:] for recursion.
-
-        Returns a new Manifest with the first level removed,
-        suitable for passing to inner recursive execution.
-        """
-        if len(self.levels) <= 1:
-            raise ConfigError("Cannot get remaining manifest: already at leaf level")
-
-        return Manifest(
-            schema_version=self.schema_version,
-            name=f"{self.name}[1:]",
-            description=self.description,
-            levels=[ManifestLevel.from_dict(vars(l)) for l in self.levels[1:]],
-            settings=ManifestSettings(
-                verify_ssh=self.settings.verify_ssh,
-                cleanup_on_failure=self.settings.cleanup_on_failure,
-                timeout_buffer=self.settings.timeout_buffer
-            ),
-            source_path=self.source_path
-        )
+        """Number of nodes in the manifest."""
+        return len(self.nodes)
 
     def to_dict(self) -> dict:
         """Convert manifest to dictionary (for JSON serialization)."""
-        if self.schema_version == 2 and self.nodes is not None:
-            # Serialize as v2 format
-            result: dict[str, Any] = {
-                'schema_version': 2,
-                'name': self.name,
-                'description': self.description,
-                'pattern': self.pattern or 'flat',
-                'nodes': [n.to_dict() for n in self.nodes],
-                'settings': {
-                    'verify_ssh': self.settings.verify_ssh,
-                    'cleanup_on_failure': self.settings.cleanup_on_failure,
-                    'timeout_buffer': self.settings.timeout_buffer,
-                    'on_error': self.settings.on_error,
-                }
-            }
-            if self.execution_mode != 'push':
-                result['execution'] = {'default_mode': self.execution_mode}
-            return result
-
-        # v1 format
-        levels_data = []
-        for level in self.levels:
-            level_dict: dict[str, Any] = {
-                'name': level.name,
-                'post_scenario': level.post_scenario,
-                'post_scenario_args': level.post_scenario_args
-            }
-            # Include mode-specific fields
-            if level.vm_preset is not None:
-                level_dict['vm_preset'] = level.vm_preset
-            if level.template is not None:
-                level_dict['template'] = level.template
-            if level.vmid is not None:
-                level_dict['vmid'] = level.vmid
-            if level.env is not None:
-                level_dict['env'] = level.env
-            if level.image is not None:
-                level_dict['image'] = level.image
-            if level.vmid_offset != 0:
-                level_dict['vmid_offset'] = level.vmid_offset
-            levels_data.append(level_dict)
-
-        return {
-            'schema_version': self.schema_version,
+        result: dict[str, Any] = {
+            'schema_version': 2,
             'name': self.name,
             'description': self.description,
-            'levels': levels_data,
+            'pattern': self.pattern or 'flat',
+            'nodes': [n.to_dict() for n in self.nodes],
             'settings': {
                 'verify_ssh': self.settings.verify_ssh,
                 'cleanup_on_failure': self.settings.cleanup_on_failure,
-                'timeout_buffer': self.settings.timeout_buffer
+                'timeout_buffer': self.settings.timeout_buffer,
+                'on_error': self.settings.on_error,
             }
         }
+        if self.execution_mode != 'push':
+            result['execution'] = {'default_mode': self.execution_mode}
+        return result
 
     def to_json(self) -> str:
         """Serialize manifest to JSON string."""
@@ -338,7 +191,12 @@ class Manifest:
             ConfigError: If manifest is invalid
         """
         # Validate schema version
-        schema_version = data.get('schema_version', 1)
+        schema_version = data.get('schema_version')
+        if schema_version is None:
+            raise ConfigError(
+                "Manifest missing required field: schema_version. "
+                "v1 manifests (levels-based) are no longer supported; use schema_version: 2 with nodes[]."
+            )
         if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
             raise ConfigError(
                 f"Unsupported manifest schema version: {schema_version}. "
@@ -349,42 +207,7 @@ class Manifest:
         if 'name' not in data:
             raise ConfigError("Manifest missing required field: name")
 
-        if schema_version == 2:
-            return cls._from_dict_v2(data, source_path)
-
-        return cls._from_dict_v1(data, source_path)
-
-    @classmethod
-    def _from_dict_v1(cls, data: dict, source_path: Optional[Path] = None) -> 'Manifest':
-        """Parse v1 manifest (linear levels array)."""
-        if 'levels' not in data:
-            raise ConfigError("Manifest missing required field: levels")
-        if not data['levels']:
-            raise ConfigError("Manifest must have at least one level")
-
-        # Parse levels
-        levels = []
-        for i, level_data in enumerate(data['levels']):
-            if 'name' not in level_data:
-                raise ConfigError(f"Level {i} missing required field: name")
-            # Require one of: vm_preset, template (inline modes) or env (legacy mode)
-            has_vm_preset = 'vm_preset' in level_data
-            has_template = 'template' in level_data
-            has_env = 'env' in level_data
-            if not has_vm_preset and not has_template and not has_env:
-                raise ConfigError(
-                    f"Level {i} ({level_data.get('name', 'unnamed')}) requires 'vm_preset', 'template', or 'env'"
-                )
-            levels.append(ManifestLevel.from_dict(level_data))
-
-        return cls(
-            schema_version=1,
-            name=data['name'],
-            description=data.get('description', ''),
-            levels=levels,
-            settings=ManifestSettings.from_dict(data.get('settings')),
-            source_path=source_path
-        )
+        return cls._from_dict_v2(data, source_path)
 
     @classmethod
     def _from_dict_v2(cls, data: dict, source_path: Optional[Path] = None) -> 'Manifest':
@@ -406,16 +229,12 @@ class Manifest:
         # Validate graph structure
         _validate_graph(nodes)
 
-        # Convert nodes to levels via topological sort for backward compat
-        levels = _nodes_to_levels(nodes)
-
         execution = data.get('execution', {})
 
         return cls(
             schema_version=2,
             name=data['name'],
             description=data.get('description', ''),
-            levels=levels,
             settings=ManifestSettings.from_dict(data.get('settings')),
             source_path=source_path,
             pattern=data.get('pattern', 'flat'),
@@ -483,49 +302,6 @@ def _validate_graph(nodes: list[ManifestNode]) -> None:
     for node in nodes:
         if _has_cycle(node.name):
             raise ConfigError(f"Cycle detected in node graph involving '{node.name}'")
-
-
-def _nodes_to_levels(nodes: list[ManifestNode]) -> list[ManifestLevel]:
-    """Convert v2 graph nodes to v1 levels via topological sort.
-
-    Produces parent-before-child ordering suitable for construction.
-    Each ManifestNode is converted to a ManifestLevel with vm_preset mode.
-
-    For PVE-type nodes, post_scenario is set to 'pve-setup'.
-    """
-    # Build parent->children map for topo sort
-    children: dict[Optional[str], list[ManifestNode]] = {}
-    for node in nodes:
-        children.setdefault(node.parent, []).append(node)
-
-    # BFS from roots (parent=None) for stable topological order
-    ordered: list[ManifestNode] = []
-    queue = list(children.get(None, []))
-    while queue:
-        current = queue.pop(0)
-        ordered.append(current)
-        queue.extend(children.get(current.name, []))
-
-    # Convert to ManifestLevel
-    levels = []
-    for node in ordered:
-        # PVE nodes get pve-setup as post_scenario
-        post_scenario = None
-        post_scenario_args: list[str] = []
-        if node.type == 'pve':
-            post_scenario = 'pve-setup'
-            post_scenario_args = ['--local', '--skip-preflight']
-
-        levels.append(ManifestLevel(
-            name=node.name,
-            vm_preset=node.preset,
-            vmid=node.vmid,
-            image=node.image,
-            post_scenario=post_scenario,
-            post_scenario_args=post_scenario_args,
-        ))
-
-    return levels
 
 
 class ManifestLoader:
@@ -644,7 +420,7 @@ def load_manifest(
         name: Manifest name (without .yaml extension)
         file_path: Path to manifest file
         json_str: Inline JSON manifest string
-        depth: Optional depth limit (use first N levels)
+        depth: Optional depth limit (use first N nodes)
 
     Returns:
         Manifest instance
@@ -666,14 +442,16 @@ def load_manifest(
 
     # Apply depth limit if specified
     if depth is not None and depth > 0:
-        if depth < len(manifest.levels):
+        if depth < len(manifest.nodes):
             manifest = Manifest(
                 schema_version=manifest.schema_version,
                 name=f"{manifest.name}[:{depth}]",
                 description=manifest.description,
-                levels=manifest.levels[:depth],
+                nodes=manifest.nodes[:depth],
                 settings=manifest.settings,
-                source_path=manifest.source_path
+                source_path=manifest.source_path,
+                pattern=manifest.pattern,
+                execution_mode=manifest.execution_mode,
             )
 
     return manifest
