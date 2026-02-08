@@ -6,7 +6,7 @@ This module provides common functionality for resolving site-config entities:
 - Secrets and posture loading
 - SSH key FK resolution
 
-Used by both ConfigResolver (tofu/ansible) and SpecResolver (controller).
+Used by both ConfigResolver (tofu/ansible) and SpecResolver (server).
 """
 
 import logging

@@ -3,10 +3,10 @@
 
 Supports both scenario-based workflows and verb-based subcommands:
 - Scenarios: ./run.sh --scenario <name> --host <host>
-- Verbs: ./run.sh serve [options]
+- Verbs: ./run.sh create [options]
 
 Verb commands (4-phase lifecycle):
-- serve: Start the unified controller daemon (specs + repos)
+- server: Server daemon management (start/stop/status)
 - create: Create infrastructure from manifest
 - destroy: Destroy infrastructure from manifest
 - test: Create, verify, and destroy infrastructure
@@ -30,7 +30,7 @@ from validation import validate_readiness, run_preflight_checks, format_prefligh
 
 # Verb commands (subcommands for 4-phase lifecycle)
 VERB_COMMANDS = {
-    "serve": "Start the unified controller daemon",
+    "server": "Server daemon management (start/stop/status)",
     "create": "Create infrastructure from manifest",
     "destroy": "Destroy infrastructure from manifest",
     "test": "Create, verify, and destroy infrastructure from manifest",
@@ -86,15 +86,15 @@ def dispatch_verb(verb: str, argv: list) -> int:
     """Dispatch to verb-specific CLI handler.
 
     Args:
-        verb: The verb command (e.g., "serve")
+        verb: The verb command (e.g., "server")
         argv: Remaining command line arguments
 
     Returns:
         Exit code
     """
-    if verb == "serve":
-        from controller.cli import main as serve_main
-        return serve_main(argv)
+    if verb == "server":
+        from server.cli import main as server_main
+        return server_main(argv)
 
     if verb == "create":
         from manifest_opr.cli import create_main
@@ -191,7 +191,7 @@ def print_usage():
     print("  ./run.sh scenario pve-setup -H father")
     print("  ./run.sh create -M n1-push -H father")
     print("  ./run.sh test -M n2-tiered -H father")
-    print("  ./run.sh serve --port 44443")
+    print("  ./run.sh server start --port 44443")
     print("  ./run.sh config --fetch --insecure")
 
 

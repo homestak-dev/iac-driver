@@ -1,4 +1,4 @@
-"""Spec endpoint handler for the controller.
+"""Spec endpoint handler for the server.
 
 Serves resolved specs from site-config/specs/ with posture-based auth.
 """
@@ -17,7 +17,7 @@ from resolver.base import (
     PostureNotFoundError,
     SSHKeyNotFoundError,
 )
-from controller.auth import validate_spec_auth, AuthError
+from server.auth import validate_spec_auth, AuthError
 
 logger = logging.getLogger(__name__)
 

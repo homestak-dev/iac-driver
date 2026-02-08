@@ -1,11 +1,8 @@
-"""Tests for controller/server.py - unified HTTPS server."""
+"""Tests for server/httpd.py - unified HTTPS server."""
 
 import http.client
 import json
-import signal
 import ssl
-import subprocess
-import tempfile
 import threading
 import time
 from pathlib import Path
@@ -18,25 +15,25 @@ import yaml
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from controller.server import (
-    ControllerHandler,
-    ControllerServer,
+from server.httpd import (
+    ServerHandler,
+    Server,
     create_server,
     DEFAULT_PORT,
     DEFAULT_BIND,
 )
-from controller.tls import generate_self_signed_cert, TLSConfig
-from controller.repos import RepoManager
+from server.tls import generate_self_signed_cert, TLSConfig
+from server.repos import RepoManager
 from resolver.spec_resolver import SpecResolver
 
 
-class TestControllerHandlerRouting:
-    """Tests for ControllerHandler request routing."""
+class TestServerHandlerRouting:
+    """Tests for ServerHandler request routing."""
 
     @pytest.fixture
     def mock_handler(self):
         """Create a mock handler for routing tests."""
-        handler = MagicMock(spec=ControllerHandler)
+        handler = MagicMock(spec=ServerHandler)
         handler.path = "/health"
         handler.headers = {}
         return handler
@@ -62,8 +59,8 @@ class TestControllerHandlerRouting:
         assert "/bootstrap.git".endswith(".git")
 
 
-class TestControllerServer:
-    """Tests for ControllerServer class."""
+class TestServer:
+    """Tests for Server class."""
 
     @pytest.fixture
     def site_config(self, tmp_path):
@@ -93,7 +90,7 @@ class TestControllerServer:
 
     def test_init_defaults(self):
         """Server initializes with default values."""
-        server = ControllerServer()
+        server = Server()
 
         assert server.bind == DEFAULT_BIND
         assert server.port == DEFAULT_PORT
@@ -106,7 +103,7 @@ class TestControllerServer:
         """Server accepts all configuration options."""
         resolver = SpecResolver(etc_path=site_config)
 
-        server = ControllerServer(
+        server = Server(
             bind="127.0.0.1",
             port=8443,
             spec_resolver=resolver,
@@ -120,89 +117,10 @@ class TestControllerServer:
         assert server.repo_token == "test-token"
         assert server.tls_config is tls_config
 
-    @pytest.mark.skip(reason="Server startup hangs in CI - covered by integration tests")
-    def test_start_auto_creates_resolver(self, site_config, tmp_path):
-        """start auto-creates resolver if not provided."""
-        tls_config = generate_self_signed_cert(
-            cert_dir=tmp_path / "certs", hostname="localhost", key_size=2048
-        )
-
-        # Clear any inherited env vars and set our test config
-        with patch.dict("os.environ", {"HOMESTAK_ETC": str(site_config)}, clear=False):
-            server = ControllerServer(
-                bind="127.0.0.1",  # Bind to localhost only
-                port=0,  # Let OS assign port
-                tls_config=tls_config,
-            )
-            try:
-                server.start()
-                assert server.spec_resolver is not None
-                assert server.server is not None
-            finally:
-                server.shutdown()
-
-    @pytest.mark.skip(reason="Server startup hangs in CI - covered by integration tests")
-    def test_start_auto_generates_tls(self, site_config, tmp_path):
-        """start auto-generates TLS cert if not provided."""
-        # Use a temp directory that will be created
-        cert_dir = tmp_path / "auto-certs"
-
-        resolver = SpecResolver(etc_path=site_config)
-
-        with patch("controller.server.generate_self_signed_cert") as mock_gen:
-            mock_config = MagicMock()
-            mock_config.cert_path = cert_dir / "server.crt"
-            mock_config.key_path = cert_dir / "server.key"
-            mock_config.fingerprint = "AA:BB:CC"
-            mock_gen.return_value = mock_config
-
-            # Create the cert files so wrap_socket doesn't fail
-            cert_dir.mkdir(parents=True)
-            subprocess.run(
-                [
-                    "openssl", "req", "-x509", "-nodes",
-                    "-newkey", "rsa:2048",
-                    "-keyout", str(mock_config.key_path),
-                    "-out", str(mock_config.cert_path),
-                    "-days", "1", "-subj", "/CN=test",
-                ],
-                check=True,
-                capture_output=True,
-            )
-
-            server = ControllerServer(
-                bind="127.0.0.1",
-                port=0,  # Let OS assign port
-                spec_resolver=resolver,
-            )
-            try:
-                server.start()
-                mock_gen.assert_called_once()
-            finally:
-                server.shutdown()
-
-    @pytest.mark.skip(reason="Server startup hangs in CI - covered by integration tests")
-    def test_shutdown_cleans_up(self, site_config, tls_config):
-        """shutdown cleans up server and repo manager."""
-        resolver = SpecResolver(etc_path=site_config)
-
-        server = ControllerServer(
-            bind="127.0.0.1",
-            port=0,  # Let OS assign port
-            spec_resolver=resolver,
-            tls_config=tls_config,
-        )
-        try:
-            server.start()
-            assert server.server is not None
-        finally:
-            server.shutdown()
-
-        assert server.server is None
 
 
-class TestControllerServerIntegration:
-    """Integration tests for ControllerServer with real HTTP requests."""
+class TestServerIntegration:
+    """Integration tests for Server with real HTTP requests."""
 
     @pytest.fixture
     def running_server(self, tmp_path):
@@ -230,7 +148,7 @@ class TestControllerServerIntegration:
 
         # Create and start server
         resolver = SpecResolver(etc_path=site_config)
-        server = ControllerServer(
+        server = Server(
             bind="127.0.0.1",
             port=0,  # Let OS assign port
             spec_resolver=resolver,
@@ -332,10 +250,10 @@ class TestCreateServer:
     """Tests for create_server factory function."""
 
     def test_creates_server_instance(self):
-        """create_server returns ControllerServer instance."""
+        """create_server returns Server instance."""
         server = create_server(port=8443, bind="127.0.0.1")
 
-        assert isinstance(server, ControllerServer)
+        assert isinstance(server, Server)
         assert server.port == 8443
         assert server.bind == "127.0.0.1"
 
@@ -364,53 +282,3 @@ class TestCreateServer:
         assert server.tls_config is tls_config
 
 
-class TestSignalHandlers:
-    """Tests for signal handler setup."""
-
-    @pytest.fixture
-    def server_with_signals(self, tmp_path):
-        """Create a server for signal testing."""
-        # Create minimal site-config
-        (tmp_path / "specs").mkdir(parents=True)
-        (tmp_path / "postures").mkdir(parents=True)
-        (tmp_path / "site.yaml").write_text(yaml.dump({"defaults": {}}))
-        (tmp_path / "secrets.yaml").write_text(yaml.dump({}))
-        (tmp_path / "postures" / "dev.yaml").write_text(
-            yaml.dump({"auth": {"method": "network"}})
-        )
-
-        tls_config = generate_self_signed_cert(
-            cert_dir=tmp_path / "certs", hostname="localhost", key_size=2048
-        )
-        resolver = SpecResolver(etc_path=tmp_path)
-
-        server = ControllerServer(
-            bind="127.0.0.1",
-            port=0,  # Let OS assign port
-            spec_resolver=resolver,
-            tls_config=tls_config,
-        )
-        server.start()
-
-        yield server
-
-        try:
-            server.shutdown()
-        except Exception:
-            pass
-
-    @pytest.mark.skip(reason="Server startup hangs in CI - covered by integration tests")
-    def test_sighup_clears_cache(self, server_with_signals):
-        """SIGHUP clears resolver cache."""
-        server = server_with_signals
-
-        # Populate cache
-        server.spec_resolver._load_site()
-        assert server.spec_resolver._site is not None
-
-        # Get the signal handler and call it
-        handler = signal.getsignal(signal.SIGHUP)
-        handler(signal.SIGHUP, None)
-
-        # Cache should be cleared
-        assert server.spec_resolver._site is None

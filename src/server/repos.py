@@ -1,4 +1,4 @@
-"""Repo endpoint handler for the controller.
+"""Repo endpoint handler for the server.
 
 Serves git repositories via HTTP dumb protocol with Bearer token auth.
 Creates temporary bare repos with `_working` branch containing uncommitted changes.
@@ -17,7 +17,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional, List, Dict, Tuple
 
-from controller.auth import validate_repo_token, AuthError
+from server.auth import validate_repo_token, AuthError
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ class RepoManager:
         Raises:
             RuntimeError: If no repos could be prepared
         """
-        self.serve_dir = Path(tempfile.mkdtemp(prefix="controller-repos-"))
+        self.serve_dir = Path(tempfile.mkdtemp(prefix="server-repos-"))
         logger.info("Preparing repos in %s", self.serve_dir)
 
         for repo_name in KNOWN_REPOS:
@@ -198,7 +198,7 @@ class RepoManager:
 
             commit = subprocess.run(
                 ["git", "-C", str(repo_path), "commit-tree", tree, "-p", head, "-m",
-                 "Working tree snapshot for controller"],
+                 "Working tree snapshot for server"],
                 capture_output=True,
                 text=True,
                 check=True,

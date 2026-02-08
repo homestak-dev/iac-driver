@@ -1,4 +1,4 @@
-"""Main HTTPS server for the controller.
+"""Main HTTPS server.
 
 Unified daemon serving both specs and repos on a single HTTPS port.
 """
@@ -17,9 +17,9 @@ from urllib.parse import urlparse
 from resolver.spec_resolver import SpecResolver
 from resolver.base import ResolverError
 
-from controller.tls import TLSConfig, generate_self_signed_cert
-from controller.specs import handle_spec_request, handle_specs_list
-from controller.repos import RepoManager, handle_repo_request
+from server.tls import TLSConfig, generate_self_signed_cert
+from server.specs import handle_spec_request, handle_specs_list
+from server.repos import RepoManager, handle_repo_request
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +28,8 @@ DEFAULT_PORT = 44443
 DEFAULT_BIND = "0.0.0.0"
 
 
-class ControllerHandler(BaseHTTPRequestHandler):
-    """HTTP request handler for the unified controller."""
+class ServerHandler(BaseHTTPRequestHandler):
+    """HTTP request handler for the unified server."""
 
     # Class-level state (shared across requests)
     spec_resolver: Optional[SpecResolver] = None
@@ -134,7 +134,7 @@ class ControllerHandler(BaseHTTPRequestHandler):
             self.send_bytes(content, status, content_type)
 
 
-class ControllerServer:
+class Server:
     """Unified HTTPS server for specs and repos."""
 
     def __init__(
@@ -146,7 +146,7 @@ class ControllerServer:
         repo_token: str = "",
         tls_config: Optional[TLSConfig] = None,
     ):
-        """Initialize controller server.
+        """Initialize server.
 
         Args:
             bind: Address to bind to
@@ -196,12 +196,12 @@ class ControllerServer:
                 raise RuntimeError(f"Repos init failed: {e}") from e
 
         # Set handler class attributes
-        ControllerHandler.spec_resolver = self.spec_resolver
-        ControllerHandler.repo_manager = self.repo_manager
-        ControllerHandler.repo_token = self.repo_token
+        ServerHandler.spec_resolver = self.spec_resolver
+        ServerHandler.repo_manager = self.repo_manager
+        ServerHandler.repo_token = self.repo_token
 
         # Create HTTP server
-        self.server = HTTPServer((self.bind, self.port), ControllerHandler)
+        self.server = HTTPServer((self.bind, self.port), ServerHandler)
 
         # Wrap with TLS
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -215,7 +215,7 @@ class ControllerServer:
         )
 
         # Log startup info
-        logger.info("Controller starting on https://%s:%d", self.bind, self.port)
+        logger.info("Server starting on https://%s:%d", self.bind, self.port)
         logger.info("Certificate fingerprint: %s", self.tls_config.fingerprint)
         if self.spec_resolver:
             logger.info("Available specs: %s", ", ".join(self.spec_resolver.list_specs()))
@@ -240,7 +240,7 @@ class ControllerServer:
 
     def shutdown(self):
         """Shutdown the server and cleanup."""
-        logger.info("Shutting down controller")
+        logger.info("Shutting down server")
 
         if self.server:
             self.server.shutdown()
@@ -262,7 +262,7 @@ class ControllerServer:
                 logger.info("Refreshing repos")
                 self.repo_manager.cleanup()
                 self.repo_manager.prepare()
-                ControllerHandler.repo_manager = self.repo_manager
+                ServerHandler.repo_manager = self.repo_manager
 
         def handle_sigterm(signum, frame):
             """Handle SIGTERM for graceful shutdown."""
@@ -281,8 +281,8 @@ def create_server(
     repo_manager: Optional[RepoManager] = None,
     repo_token: str = "",
     tls_config: Optional[TLSConfig] = None,
-) -> ControllerServer:
-    """Create a controller server instance.
+) -> Server:
+    """Create a server instance.
 
     Convenience function for creating a server.
 
@@ -295,9 +295,9 @@ def create_server(
         tls_config: TLS configuration
 
     Returns:
-        ControllerServer instance (not yet started)
+        Server instance (not yet started)
     """
-    return ControllerServer(
+    return Server(
         bind=bind,
         port=port,
         spec_resolver=spec_resolver,

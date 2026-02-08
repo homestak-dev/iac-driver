@@ -1,8 +1,8 @@
-"""Spec resolver for the controller.
+"""Spec resolver for the server.
 
 Loads specs from site-config/specs/ and resolves foreign key references
 to postures and secrets. Migrated from bootstrap/lib/spec_resolver.py for
-unified controller architecture.
+unified server architecture.
 """
 
 import logging

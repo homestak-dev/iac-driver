@@ -1,4 +1,4 @@
-"""Authentication middleware for the controller.
+"""Authentication middleware for the server.
 
 Provides:
 - Posture-based auth for specs (network, site_token, node_token)

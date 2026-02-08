@@ -1,4 +1,4 @@
-"""Tests for controller/specs.py - spec endpoint handler."""
+"""Tests for server/specs.py - spec endpoint handler."""
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -10,7 +10,7 @@ import yaml
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from controller.specs import handle_spec_request, handle_specs_list, _error_response
+from server.specs import handle_spec_request, handle_specs_list, _error_response
 from resolver.spec_resolver import SpecResolver, SpecNotFoundError, SchemaValidationError
 from resolver.base import PostureNotFoundError, SSHKeyNotFoundError, ResolverError
 
@@ -171,7 +171,7 @@ class TestHandleSpecRequest:
     def test_internal_error_returns_500(self, resolver):
         """Unexpected error returns 500."""
         # Mock validate_spec_auth to return None (success), then mock resolve to raise
-        with patch("controller.specs.validate_spec_auth", return_value=None):
+        with patch("server.specs.validate_spec_auth", return_value=None):
             with patch.object(resolver, "resolve", side_effect=RuntimeError("Boom")):
                 response, status = handle_spec_request("base", "", resolver)
 

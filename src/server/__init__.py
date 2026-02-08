@@ -1,29 +1,35 @@
-"""Controller package for unified HTTPS daemon.
+"""Server package for unified HTTPS daemon.
 
-The controller serves both specs (for config phase) and repos (for bootstrap)
+The server serves both specs (for config phase) and repos (for bootstrap)
 on a single HTTPS port with posture-based and token authentication.
 """
 
-from controller.server import (
-    ControllerServer,
+from server.httpd import (
+    Server,
     create_server,
     DEFAULT_PORT,
     DEFAULT_BIND,
 )
-from controller.tls import (
+from server.tls import (
     TLSConfig,
     generate_self_signed_cert,
     get_cert_fingerprint,
 )
-from controller.auth import (
+from server.auth import (
     AuthError,
     validate_spec_auth,
     validate_repo_token,
 )
+from server.daemon import (
+    daemonize,
+    stop_daemon,
+    check_status,
+    get_pid_file,
+)
 
 __all__ = [
     # Server
-    "ControllerServer",
+    "Server",
     "create_server",
     "DEFAULT_PORT",
     "DEFAULT_BIND",
@@ -35,4 +41,9 @@ __all__ = [
     "AuthError",
     "validate_spec_auth",
     "validate_repo_token",
+    # Daemon
+    "daemonize",
+    "stop_daemon",
+    "check_status",
+    "get_pid_file",
 ]
