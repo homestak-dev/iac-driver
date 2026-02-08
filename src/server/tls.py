@@ -1,4 +1,4 @@
-"""TLS certificate management for the controller.
+"""TLS certificate management for the server.
 
 Provides self-signed certificate auto-generation with fingerprint output
 for TOFU (trust-on-first-use) verification.
@@ -17,14 +17,14 @@ from typing import Optional, Tuple
 logger = logging.getLogger(__name__)
 
 # Certificate defaults
-DEFAULT_CERT_DIR = Path("/var/lib/homestak/controller")
+DEFAULT_CERT_DIR = Path("/var/lib/homestak/server")
 DEFAULT_CERT_DAYS = 365
 DEFAULT_KEY_SIZE = 4096
 
 
 @dataclass
 class TLSConfig:
-    """TLS configuration for the controller."""
+    """TLS configuration for the server."""
 
     cert_path: Path
     key_path: Path
@@ -118,7 +118,7 @@ def generate_self_signed_cert(
     key_size: int = DEFAULT_KEY_SIZE,
     force: bool = False,
 ) -> TLSConfig:
-    """Generate a self-signed certificate for the controller.
+    """Generate a self-signed certificate for the server.
 
     Creates a certificate with:
     - CN = hostname

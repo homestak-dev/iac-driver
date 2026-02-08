@@ -1,4 +1,4 @@
-"""Tests for controller/auth.py - authentication middleware."""
+"""Tests for server/auth.py - authentication middleware."""
 
 import os
 from pathlib import Path
@@ -11,7 +11,7 @@ import yaml
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from controller.auth import (
+from server.auth import (
     AuthError,
     extract_bearer_token,
     validate_spec_auth,

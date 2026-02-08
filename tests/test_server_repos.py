@@ -1,4 +1,4 @@
-"""Tests for controller/repos.py - repo endpoint handler."""
+"""Tests for server/repos.py - repo endpoint handler."""
 
 import json
 import os
@@ -13,7 +13,7 @@ import pytest
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from controller.repos import (
+from server.repos import (
     RepoManager,
     handle_repo_request,
     KNOWN_REPOS,

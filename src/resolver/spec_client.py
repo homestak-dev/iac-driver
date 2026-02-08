@@ -1,7 +1,7 @@
-"""HTTP client for fetching specs from the controller.
+"""HTTP client for fetching specs from the server.
 
 Fetches specs from the server, validates them, and persists to local state.
-Migrated from bootstrap/lib/spec_client.py for unified controller architecture.
+Migrated from bootstrap/lib/spec_client.py for unified server architecture.
 """
 
 import argparse

@@ -12,16 +12,18 @@ import json
 import logging
 import shlex
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
-from common import ActionResult
+from common import ActionResult, run_ssh
 from config import HostConfig
 from manifest import Manifest
 from manifest_opr.graph import ExecutionNode, ManifestGraph
 from manifest_opr.state import ExecutionState
 
 logger = logging.getLogger(__name__)
+
+SERVER_PORT = 44443
 
 
 @dataclass
@@ -46,6 +48,83 @@ class NodeExecutor:
     config: HostConfig
     dry_run: bool = False
     json_output: bool = False
+    _server_refs: int = field(default=0, init=False, repr=False)
+    _started_server: bool = field(default=False, init=False, repr=False)
+
+    def _ensure_server(self) -> None:
+        """Ensure the spec server is running on the target host.
+
+        Uses reference counting so nested calls (test → create → destroy)
+        only start/stop once. First call starts if needed; subsequent calls
+        just increment the ref count.
+        """
+        self._server_refs += 1
+        if self._server_refs > 1:
+            # Already ensured by an outer caller
+            return
+
+        host = self.config.ssh_host
+        user = self.config.ssh_user
+
+        # Check current status
+        rc, stdout, _ = run_ssh(
+            host, f'cd /usr/local/lib/homestak/iac-driver && ./run.sh server status --json --port {SERVER_PORT}',
+            user=user, timeout=15,
+        )
+
+        if rc == 0:
+            try:
+                status = json.loads(stdout.strip())
+                if status.get('running') and status.get('healthy'):
+                    logger.info("Server already running on %s:%d (reusing)", host, SERVER_PORT)
+                    self._started_server = False
+                    return
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        # Start the server
+        logger.info("Starting server on %s:%d", host, SERVER_PORT)
+        rc, stdout, stderr = run_ssh(
+            host, f'cd /usr/local/lib/homestak/iac-driver && ./run.sh server start --port {SERVER_PORT}',
+            user=user, timeout=30,
+        )
+
+        if rc != 0:
+            logger.warning("Server start returned rc=%d: %s", rc, stderr.strip() or stdout.strip())
+        else:
+            logger.info("Server started on %s:%d", host, SERVER_PORT)
+
+        self._started_server = True
+
+    def _stop_server(self) -> None:
+        """Stop the spec server if we started it.
+
+        Only actually stops when the ref count reaches zero (outermost caller).
+        Preserves user-managed servers (those we didn't start).
+        """
+        self._server_refs = max(0, self._server_refs - 1)
+        if self._server_refs > 0:
+            # Inner caller returning; outer caller will handle stop
+            return
+
+        if not self._started_server:
+            return
+
+        host = self.config.ssh_host
+        user = self.config.ssh_user
+
+        logger.info("Stopping server on %s:%d", host, SERVER_PORT)
+        rc, _, stderr = run_ssh(
+            host, f'cd /usr/local/lib/homestak/iac-driver && ./run.sh server stop --port {SERVER_PORT}',
+            user=user, timeout=15,
+        )
+
+        if rc != 0:
+            logger.warning("Server stop returned rc=%d: %s", rc, stderr.strip())
+        else:
+            logger.info("Server stopped on %s:%d", host, SERVER_PORT)
+
+        self._started_server = False
 
     def create(self, context: dict) -> tuple[bool, ExecutionState]:
         """Execute create lifecycle: provision root nodes, delegate subtrees.
@@ -76,62 +155,68 @@ class NodeExecutor:
             state.finish()
             return True, state
 
+        # Ensure server is running for spec serving (pull mode, etc.)
+        self._ensure_server()
+
         on_error = self.manifest.settings.on_error
         created_nodes: list[ExecutionNode] = []
         success = True
 
-        for exec_node in self.graph.create_order():
-            # Only handle root nodes locally; children are delegated
-            if exec_node.depth > 0:
-                continue
+        try:
+            for exec_node in self.graph.create_order():
+                # Only handle root nodes locally; children are delegated
+                if exec_node.depth > 0:
+                    continue
 
-            node_state = state.get_node(exec_node.name)
-            node_state.start()
+                node_state = state.get_node(exec_node.name)
+                node_state.start()
 
-            result = self._create_node(exec_node, context)
-            if result.success:
-                context.update(result.context_updates or {})
-                vm_id = result.context_updates.get(f'{exec_node.name}_vm_id')
-                ip = result.context_updates.get(f'{exec_node.name}_ip')
-                node_state.complete(vm_id=vm_id, ip=ip)
-                created_nodes.append(exec_node)
-                state.save()
+                result = self._create_node(exec_node, context)
+                if result.success:
+                    context.update(result.context_updates or {})
+                    vm_id = result.context_updates.get(f'{exec_node.name}_vm_id')
+                    ip = result.context_updates.get(f'{exec_node.name}_ip')
+                    node_state.complete(vm_id=vm_id, ip=ip)
+                    created_nodes.append(exec_node)
+                    state.save()
 
-                # If PVE node with children: delegate subtree
-                if exec_node.manifest_node.type == 'pve' and exec_node.children:
-                    delegate_result = self._delegate_subtree(exec_node, context, state)
-                    if not delegate_result.success:
-                        # Mark all descendant nodes as failed
-                        for desc in self._get_descendants(exec_node):
-                            desc_state = state.get_node(desc.name)
-                            desc_state.fail(f"Delegation failed: {delegate_result.message}")
-                        success = False
-                        logger.error(f"Subtree delegation failed for '{exec_node.name}': {delegate_result.message}")
-                        if on_error == 'stop':
-                            break
-                        if on_error == 'rollback':
-                            self._rollback(created_nodes, context, state)
-                            break
-                    else:
-                        # Update state and context from delegation result
-                        context.update(delegate_result.context_updates or {})
-                        for desc in self._get_descendants(exec_node):
-                            desc_state = state.get_node(desc.name)
-                            desc_vm_id = (delegate_result.context_updates or {}).get(f'{desc.name}_vm_id')
-                            desc_ip = (delegate_result.context_updates or {}).get(f'{desc.name}_ip')
-                            desc_state.complete(vm_id=desc_vm_id, ip=desc_ip)
-                        state.save()
-            else:
-                node_state.fail(result.message)
-                success = False
-                logger.error(f"Create failed for node '{exec_node.name}': {result.message}")
+                    # If PVE node with children: delegate subtree
+                    if exec_node.manifest_node.type == 'pve' and exec_node.children:
+                        delegate_result = self._delegate_subtree(exec_node, context, state)
+                        if not delegate_result.success:
+                            # Mark all descendant nodes as failed
+                            for desc in self._get_descendants(exec_node):
+                                desc_state = state.get_node(desc.name)
+                                desc_state.fail(f"Delegation failed: {delegate_result.message}")
+                            success = False
+                            logger.error(f"Subtree delegation failed for '{exec_node.name}': {delegate_result.message}")
+                            if on_error == 'stop':
+                                break
+                            if on_error == 'rollback':
+                                self._rollback(created_nodes, context, state)
+                                break
+                        else:
+                            # Update state and context from delegation result
+                            context.update(delegate_result.context_updates or {})
+                            for desc in self._get_descendants(exec_node):
+                                desc_state = state.get_node(desc.name)
+                                desc_vm_id = (delegate_result.context_updates or {}).get(f'{desc.name}_vm_id')
+                                desc_ip = (delegate_result.context_updates or {}).get(f'{desc.name}_ip')
+                                desc_state.complete(vm_id=desc_vm_id, ip=desc_ip)
+                            state.save()
+                else:
+                    node_state.fail(result.message)
+                    success = False
+                    logger.error(f"Create failed for node '{exec_node.name}': {result.message}")
 
-                if on_error == 'stop':
-                    break
-                if on_error == 'rollback':
-                    self._rollback(created_nodes, context, state)
-                    break
-                # on_error == 'continue': skip and continue
+                    if on_error == 'stop':
+                        break
+                    if on_error == 'rollback':
+                        self._rollback(created_nodes, context, state)
+                        break
+                    # on_error == 'continue': skip and continue
+        finally:
+            self._stop_server()
 
         state.finish()
         state.save()
@@ -161,40 +246,46 @@ class NodeExecutor:
             state.finish()
             return True, state
 
+        # Ensure server is running (needed for subtree delegation)
+        self._ensure_server()
+
         success = True
 
-        # Process root nodes only; children are delegated
-        for exec_node in self.graph.destroy_order():
-            if exec_node.depth > 0:
-                continue
+        try:
+            # Process root nodes only; children are delegated
+            for exec_node in self.graph.destroy_order():
+                if exec_node.depth > 0:
+                    continue
 
-            # If PVE node with children: delegate subtree destruction first
-            if exec_node.manifest_node.type == 'pve' and exec_node.children:
-                ip = context.get(f'{exec_node.name}_ip')
-                if ip:
-                    delegate_result = self._delegate_subtree_destroy(exec_node, context)
-                    if not delegate_result.success:
-                        logger.error(f"Subtree destroy delegation failed for '{exec_node.name}': {delegate_result.message}")
-                        success = False
+                # If PVE node with children: delegate subtree destruction first
+                if exec_node.manifest_node.type == 'pve' and exec_node.children:
+                    ip = context.get(f'{exec_node.name}_ip')
+                    if ip:
+                        delegate_result = self._delegate_subtree_destroy(exec_node, context)
+                        if not delegate_result.success:
+                            logger.error(f"Subtree destroy delegation failed for '{exec_node.name}': {delegate_result.message}")
+                            success = False
+                        else:
+                            # Mark descendant nodes as destroyed
+                            for desc in self._get_descendants(exec_node):
+                                desc_state = state.get_node(desc.name) if desc.name in state.nodes else state.add_node(desc.name)
+                                desc_state.mark_destroyed()
                     else:
-                        # Mark descendant nodes as destroyed
-                        for desc in self._get_descendants(exec_node):
-                            desc_state = state.get_node(desc.name) if desc.name in state.nodes else state.add_node(desc.name)
-                            desc_state.mark_destroyed()
+                        logger.warning(f"No IP for PVE node '{exec_node.name}', skipping subtree delegation")
+
+                # Now destroy the root node itself
+                node_state = state.get_node(exec_node.name) if exec_node.name in state.nodes else state.add_node(exec_node.name)
+                node_state.start()
+
+                result = self._destroy_node(exec_node, context)
+                if result.success:
+                    node_state.mark_destroyed()
                 else:
-                    logger.warning(f"No IP for PVE node '{exec_node.name}', skipping subtree delegation")
-
-            # Now destroy the root node itself
-            node_state = state.get_node(exec_node.name) if exec_node.name in state.nodes else state.add_node(exec_node.name)
-            node_state.start()
-
-            result = self._destroy_node(exec_node, context)
-            if result.success:
-                node_state.mark_destroyed()
-            else:
-                node_state.fail(result.message)
-                success = False
-                logger.error(f"Destroy failed for node '{exec_node.name}': {result.message}")
+                    node_state.fail(result.message)
+                    success = False
+                    logger.error(f"Destroy failed for node '{exec_node.name}': {result.message}")
+        finally:
+            self._stop_server()
 
         state.finish()
         state.save()
@@ -203,27 +294,37 @@ class NodeExecutor:
     def test(self, context: dict) -> tuple[bool, ExecutionState]:
         """Execute test lifecycle: create, verify, destroy.
 
+        Manages server lifecycle at the outer level so create/destroy
+        don't each start/stop independently.
+
         Args:
             context: Shared execution context
 
         Returns:
             (success, execution_state) tuple
         """
-        # Create
-        create_ok, state = self.create(context)
-        if not create_ok:
-            if self.manifest.settings.cleanup_on_failure:
-                logger.info("Create failed, cleaning up...")
-                self.destroy(context)
-            return False, state
+        if not self.dry_run:
+            self._ensure_server()
 
-        # Verify SSH on all created nodes
-        verify_ok = self._verify_nodes(context, state)
+        try:
+            # Create (server already running, create() will see it as healthy and reuse)
+            create_ok, state = self.create(context)
+            if not create_ok:
+                if self.manifest.settings.cleanup_on_failure:
+                    logger.info("Create failed, cleaning up...")
+                    self.destroy(context)
+                return False, state
 
-        # Destroy
-        destroy_ok, _ = self.destroy(context)
+            # Verify SSH on all created nodes
+            verify_ok = self._verify_nodes(context, state)
 
-        return create_ok and verify_ok and destroy_ok, state
+            # Destroy (server still running, destroy() will reuse)
+            destroy_ok, _ = self.destroy(context)
+
+            return create_ok and verify_ok and destroy_ok, state
+        finally:
+            if not self.dry_run:
+                self._stop_server()
 
     def _create_node(self, exec_node: ExecutionNode, context: dict) -> ActionResult:
         """Create a single node: provision, start, wait for IP/SSH, PVE lifecycle.
@@ -518,7 +619,7 @@ class NodeExecutor:
         """Poll for spec fetch + config completion on a pull-mode node.
 
         Waits for two marker files:
-        1. spec.yaml — indicates spec was fetched from controller
+        1. spec.yaml — indicates spec was fetched from server
         2. config-complete.json — indicates config phase completed
 
         Args:

@@ -1,4 +1,4 @@
-"""Tests for controller/tls.py - TLS certificate management."""
+"""Tests for server/tls.py - TLS certificate management."""
 
 import os
 import subprocess
@@ -12,7 +12,7 @@ import pytest
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from controller.tls import (
+from server.tls import (
     TLSConfig,
     generate_self_signed_cert,
     get_cert_fingerprint,
@@ -233,7 +233,7 @@ class TestGenerateSelfSignedCert:
 
     def test_includes_san_with_ip(self, tmp_path):
         """Certificate includes IP address in SAN when available."""
-        with patch("controller.tls.get_primary_ip", return_value="10.0.12.100"):
+        with patch("server.tls.get_primary_ip", return_value="10.0.12.100"):
             config = generate_self_signed_cert(
                 cert_dir=tmp_path, hostname="my-controller", key_size=2048
             )

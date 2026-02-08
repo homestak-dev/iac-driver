@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+### Theme: Server Daemon Robustness (#177)
+
+Proper daemonization replacing nohup/Popen hack with double-fork, PID files,
+and health-check startup gate.
+
+### Added
+- Add `server` verb with `start`/`stop`/`status` subcommands (#177)
+- Add `server/daemon.py` — double-fork daemonization, PID file management, health-check gate (#177)
+- Add operator server lifecycle integration — auto start/stop around graph walk (#177)
+- Add 31 unit tests for daemon.py (replaces 4 skipped server lifecycle tests)
+
+### Changed
+- Rename `src/controller/` → `src/server/` (#177)
+- Simplify `run.sh` to 6-line exec wrapper (eliminates zombie wrapper process) (#177)
+- Rewrite `StartServerAction`/`StopServerAction` to use `./run.sh server` CLI (#177)
+- Replace `serve` verb with `server` verb in CLI (#177)
+
+### Removed
+- Remove `--serve-repos` flag and `start_serve_repos()`/`stop_serve_repos()` from run.sh (#177)
+- Remove `scripts/serve-repos.sh` (#177)
+- Remove `serve` verb from CLI (#177)
+
 ### Theme: Site-Config/IAC-Driver Cleanup, Pt.3 (#219)
 
 ### Changed

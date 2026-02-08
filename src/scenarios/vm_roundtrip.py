@@ -7,7 +7,6 @@ Includes push (verify env vars) and pull (verify autonomous config) modes.
 """
 
 import logging
-import subprocess
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -68,8 +67,8 @@ class CheckSpecServerConfigAction:
 
 
 @dataclass
-class StartSpecServerAction:
-    """Start spec server on controller host."""
+class StartServerAction:
+    """Start server daemon on remote host via SSH."""
     name: str
     server_port: int = 44443
     timeout: int = 30
@@ -77,7 +76,7 @@ class StartSpecServerAction:
     repo_token: str | None = None  # None = don't pass flag, "" = disable auth
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
-        """Start controller serve on PVE host via SSH."""
+        """Start server on PVE host via ./run.sh server start."""
         start = time.time()
 
         pve_host = config.ssh_host
@@ -94,93 +93,61 @@ class StartSpecServerAction:
                 duration=time.time() - start
             )
 
-        # Check if already running by checking the port
-        check_cmd = f'ss -tlnp | grep ":{self.server_port} " || true'
-        rc, out, err = run_ssh(pve_host, check_cmd, user=ssh_user, timeout=10)
-        if out.strip():
-            # Port is bound — verify the controller is actually healthy (#176)
-            health_cmd = f'curl -sk --connect-timeout 5 --max-time 5 https://localhost:{self.server_port}/health 2>&1 || echo HEALTH_FAILED'
-            rc, health_out, _ = run_ssh(pve_host, health_cmd, user=ssh_user, timeout=10)
-            if '"status"' in health_out and 'ok' in health_out.lower():
-                logger.info(f"[{self.name}] Controller already running and healthy on port {self.server_port}")
+        # Check if already running via server status
+        status_cmd = f'cd {iac_dir} && ./run.sh server status --port {self.server_port} --json 2>/dev/null || true'
+        rc, out, _ = run_ssh(pve_host, status_cmd, user=ssh_user, timeout=10)
+        try:
+            import json as _json
+            status = _json.loads(out.strip())
+            if status.get('running') and status.get('healthy'):
+                pid = status.get('pid', '?')
+                logger.info(f"[{self.name}] Server already running and healthy (PID {pid}, port {self.server_port})")
                 return ActionResult(
                     success=True,
-                    message=f"Controller already running on port {self.server_port}",
+                    message=f"Server already running (PID {pid}, port {self.server_port})",
                     duration=time.time() - start,
+                    context_updates={'spec_server_pid': str(pid)}
                 )
+        except (ValueError, TypeError):
+            pass  # Status check failed, proceed with start
 
-            # Stale/hung controller — kill it and start fresh
-            logger.warning(f"[{self.name}] Controller on port {self.server_port} is unresponsive, killing stale process")
-            kill_cmd = f'ss -tlnp | grep ":{self.server_port} " | grep -oP "pid=\\K[0-9]+" | head -1'
-            rc, pid_out, _ = run_ssh(pve_host, kill_cmd, user=ssh_user, timeout=10)
-            stale_pid = pid_out.strip()
-            if stale_pid:
-                run_ssh(pve_host, f'kill -9 {stale_pid} 2>/dev/null; sleep 1', user=ssh_user, timeout=10)
-                logger.info(f"[{self.name}] Killed stale controller (PID: {stale_pid})")
-
-        # Start controller in background via iac-driver.
-        # Write PID to file — SSH with capture_output blocks until all
-        # inherited FDs close, even with & (#166). Use Popen to avoid
-        # waiting for the SSH process to complete.
-        serve_flags = f'--port {self.server_port}'
+        # Build start command flags
+        start_flags = f'--port {self.server_port}'
         if self.serve_repos:
-            serve_flags += ' --repos'
+            start_flags += ' --repos'
             if self.repo_token is not None:
-                serve_flags += f" --repo-token '{self.repo_token}'"
-        pid_file = '/tmp/homestak-controller.pid'
-        start_cmd = (
-            f'cd {iac_dir} && '
-            f'nohup ./run.sh serve {serve_flags} '
-            f'> /tmp/homestak-controller.log 2>&1 </dev/null & '
-            f'echo $! > {pid_file}'
-        )
-        logger.info(f"[{self.name}] Starting controller on {pve_host}:{self.server_port}...")
-        ssh_opts = [
-            '-o', 'StrictHostKeyChecking=no',
-            '-o', 'UserKnownHostsFile=/dev/null',
-            '-o', 'LogLevel=ERROR',
-            '-o', 'ConnectTimeout=10',
-        ]
-        subprocess.Popen(
-            ['ssh'] + ssh_opts + [f'{ssh_user}@{pve_host}', start_cmd],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-        )
+                start_flags += f" --repo-token '{self.repo_token}'"
 
-        # Wait for controller to start and read PID
-        time.sleep(3)
-        rc, pid_out, _ = run_ssh(pve_host, f'cat {pid_file} 2>/dev/null', user=ssh_user, timeout=10)
-        pid = pid_out.strip()
-        if not pid:
-            log_cmd = 'tail -20 /tmp/homestak-controller.log 2>/dev/null || true'
-            _, log_out, _ = run_ssh(pve_host, log_cmd, user=ssh_user, timeout=10)
+        # Start server daemon — blocks until health check passes, then returns
+        start_cmd = f'cd {iac_dir} && ./run.sh server start {start_flags}'
+        logger.info(f"[{self.name}] Starting server on {pve_host}:{self.server_port}...")
+        rc, out, err = run_ssh(pve_host, start_cmd, user=ssh_user, timeout=self.timeout)
+
+        if rc != 0:
             return ActionResult(
                 success=False,
-                message=f"Controller PID file not written. Log: {log_out}",
+                message=f"Server failed to start (rc={rc}): {out} {err}",
                 duration=time.time() - start
             )
 
-        # Verify process is running
-        verify_cmd = f'kill -0 {pid} 2>/dev/null && echo running || echo stopped'
-        rc, out, err = run_ssh(pve_host, verify_cmd, user=ssh_user, timeout=10)
-
-        if 'running' not in out:
-            # Check log for errors
-            log_cmd = 'tail -20 /tmp/homestak-controller.log 2>/dev/null || true'
-            _, log_out, _ = run_ssh(pve_host, log_cmd, user=ssh_user, timeout=10)
-            return ActionResult(
-                success=False,
-                message=f"Controller failed to start. Log: {log_out}",
-                duration=time.time() - start
-            )
+        # Extract PID from output (format: "Server started (PID 12345, port 44443)")
+        pid = '?'
+        if 'PID' in out:
+            try:
+                pid = out.split('PID ')[1].split(',')[0].strip()
+            except (IndexError, ValueError):
+                pass
 
         return ActionResult(
             success=True,
-            message=f"Controller started (PID: {pid})",
+            message=f"Server started (PID {pid}, port {self.server_port})",
             duration=time.time() - start,
             context_updates={'spec_server_pid': pid}
         )
+
+
+# Backward compatibility alias
+StartSpecServerAction = StartServerAction
 
 
 @dataclass
@@ -296,35 +263,36 @@ class VerifyServerReachableAction:
 
 
 @dataclass
-class StopSpecServerAction:
-    """Stop spec server on controller host."""
+class StopServerAction:
+    """Stop server daemon on remote host via SSH."""
     name: str
+    server_port: int = 44443
     timeout: int = 30
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
-        """Stop spec server."""
+        """Stop server via ./run.sh server stop."""
         start = time.time()
 
         pve_host = config.ssh_host
         ssh_user = config.ssh_user
+        iac_dir = '/usr/local/lib/homestak/iac-driver'
 
-        # Find PID from port and kill it
-        find_cmd = 'ss -tlnp | grep ":44443 " | grep -oP "pid=\\K[0-9]+" || true'
-        rc, out, err = run_ssh(pve_host, find_cmd, user=ssh_user, timeout=10)
-        pid = out.strip()
+        stop_cmd = f'cd {iac_dir} && ./run.sh server stop --port {self.server_port}'
+        logger.info(f"[{self.name}] Stopping server on {pve_host}:{self.server_port}...")
+        rc, out, err = run_ssh(pve_host, stop_cmd, user=ssh_user, timeout=self.timeout)
 
-        if pid:
-            kill_cmd = f'kill {pid} 2>/dev/null || true'
-            logger.info(f"[{self.name}] Stopping spec server (PID: {pid}) on {pve_host}...")
-            run_ssh(pve_host, kill_cmd, user=ssh_user, timeout=self.timeout)
-        else:
-            logger.info(f"[{self.name}] No spec server found on port 44443")
+        if rc != 0:
+            logger.warning(f"[{self.name}] server stop returned rc={rc}: {out} {err}")
 
         return ActionResult(
             success=True,
-            message=f"Spec server stopped (PID: {pid})" if pid else "No spec server was running",
+            message=out.strip() if out.strip() else "Server stopped",
             duration=time.time() - start
         )
+
+
+# Backward compatibility alias
+StopSpecServerAction = StopServerAction
 
 
 @dataclass
@@ -421,7 +389,7 @@ class SpecVMPushRoundtrip:
                 name='check-spec-config',
             ), 'Verify spec_server configured'),
 
-            ('start_server', StartSpecServerAction(
+            ('start_server', StartServerAction(
                 name='start-spec-server',
             ), 'Start spec discovery server'),
 
@@ -475,7 +443,7 @@ class SpecVMPushRoundtrip:
                 image='debian-12',
             ), 'Destroy VM(s)'),
 
-            ('stop_server', StopSpecServerAction(
+            ('stop_server', StopServerAction(
                 name='stop-spec-server',
             ), 'Stop spec discovery server'),
         ]
@@ -497,7 +465,7 @@ class SpecVMPullRoundtrip:
                 name='check-spec-config',
             ), 'Verify spec_server configured'),
 
-            ('start_server', StartSpecServerAction(
+            ('start_server', StartServerAction(
                 name='start-spec-server',
                 serve_repos=True,
                 repo_token='',  # Disable auth for dev posture (network trust)
@@ -572,7 +540,7 @@ class SpecVMPullRoundtrip:
                 image='debian-12',
             ), 'Destroy VM(s)'),
 
-            ('stop_server', StopSpecServerAction(
+            ('stop_server', StopServerAction(
                 name='stop-spec-server',
             ), 'Stop spec discovery server'),
         ]
