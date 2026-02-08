@@ -4,6 +4,10 @@
 
 ### Theme: Site-Config/IAC-Driver Cleanup, Pt.3 (#219)
 
+### Changed
+- `-H` flag now supports `user@host` syntax to override ssh_user (#179)
+- `HostConfig.ssh_user` defaults to `$USER` instead of hardcoded `root` (#179)
+
 ### Removed
 - Remove dead template mode code path from ConfigResolver and tofu actions (#180)
 - Remove v1 manifest schema (levels-based): `ManifestLevel`, `_from_dict_v1()`, `_nodes_to_levels()` (#181)

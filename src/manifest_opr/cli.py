@@ -83,6 +83,18 @@ def _setup_logging(verbose: bool, json_output: bool) -> None:
         logging.getLogger().setLevel(logging.DEBUG)
 
 
+def _parse_host_arg(value: str) -> tuple[str | None, str]:
+    """Parse user@host syntax from -H flag.
+
+    Returns:
+        (user, host) tuple. user is None if no @ present.
+    """
+    if '@' in value:
+        user, host = value.split('@', 1)
+        return (user or None, host)
+    return (None, value)
+
+
 def _load_manifest_and_config(args):
     """Load manifest and host config from parsed args.
 
@@ -104,17 +116,22 @@ def _load_manifest_and_config(args):
         print(f"Error loading manifest: {e}", file=sys.stderr)
         sys.exit(1)
 
-    if manifest.schema_version != 2 or manifest.nodes is None:
+    if manifest.schema_version != 2 or not manifest.nodes:
         print("Error: Verb commands require a v2 manifest with nodes[]", file=sys.stderr)
         sys.exit(1)
 
+    # Parse user@host syntax
+    ssh_user_override, host = _parse_host_arg(args.host)
+
     # Load host config
     available = list_hosts()
-    if args.host not in available:
-        print(f"Error: Unknown host '{args.host}'. Available: {', '.join(available)}", file=sys.stderr)
+    if host not in available:
+        print(f"Error: Unknown host '{host}'. Available: {', '.join(available)}", file=sys.stderr)
         sys.exit(1)
 
-    config = load_host_config(args.host)
+    config = load_host_config(host)
+    if ssh_user_override:
+        config.ssh_user = ssh_user_override
     return manifest, config
 
 
