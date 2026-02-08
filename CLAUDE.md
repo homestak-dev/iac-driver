@@ -69,13 +69,14 @@ All repos are siblings in a common parent directory:
 │   │   │   ├── base.py        # Shared FK resolution utilities
 │   │   │   ├── spec_resolver.py # Spec loading and FK resolution
 │   │   │   └── spec_client.py   # HTTP client for spec fetching
-│   │   ├── controller/   # Unified controller daemon
+│   │   ├── server/      # Server daemon
 │   │   │   ├── tls.py         # TLS certificate management
 │   │   │   ├── auth.py        # Authentication middleware
 │   │   │   ├── specs.py       # Spec endpoint handler
 │   │   │   ├── repos.py       # Repo endpoint handler
-│   │   │   ├── server.py      # Unified HTTPS server
-│   │   │   └── cli.py         # serve verb CLI integration
+│   │   │   ├── httpd.py       # HTTPS server
+│   │   │   ├── daemon.py      # Double-fork daemonization, PID management
+│   │   │   └── cli.py         # server start/stop/status CLI
 │   │   ├── actions/      # Reusable primitive operations
 │   │   │   ├── tofu.py   # TofuApplyAction, TofuDestroyAction
 │   │   │   ├── ansible.py# AnsiblePlaybookAction
@@ -159,7 +160,7 @@ resolver.list_presets()   # ['vm-large', 'vm-medium', 'vm-small', ...]
     "datastore": "local-zfs",
     "root_password": "$6$...",
     "ssh_keys": ["ssh-rsa ...", ...],
-    "spec_server": "https://controller:44443",  # v0.45+
+    "spec_server": "https://father:44443",  # v0.45+
     "vms": [
         {
             "name": "test",
@@ -262,25 +263,48 @@ After `WaitForProvisionedVMsAction`, context contains:
 - `{vm_name}_ip` for each VM (e.g., `deb12-test_ip`, `deb13-leaf_ip`)
 - `vm_ip` - first VM's IP (backward compatibility)
 
-## Controller Daemon
+## Server Daemon
 
-The unified controller daemon serves both specs and git repos over a single HTTPS endpoint.
+The server daemon serves both specs and git repos over a single HTTPS endpoint.
 
-### Starting the Controller
+### Server Management
 
 ```bash
-# Start with defaults (port 44443, auto-generated TLS cert)
-./run.sh serve
+# Start as daemon (double-fork, PID file, health-check gate)
+./run.sh server start
 
 # Custom port and bind address
-./run.sh serve --port 8443 --bind 127.0.0.1
+./run.sh server start --port 8443 --bind 127.0.0.1
 
 # With explicit TLS certificate
-./run.sh serve --cert /path/to/cert.pem --key /path/to/key.pem
+./run.sh server start --cert /path/to/cert.pem --key /path/to/key.pem
 
-# With repo token for git access
-./run.sh serve --repo-token my-secret-token
+# With repo serving enabled (for pull-mode bootstrap)
+./run.sh server start --repos --repo-token my-secret-token
+
+# Foreground mode (for development)
+./run.sh server start --foreground
+
+# Check server status
+./run.sh server status [--json]
+
+# Stop server
+./run.sh server stop
 ```
+
+### Daemon Lifecycle
+
+The server uses double-fork daemonization with a health-check startup gate:
+
+1. Parent forks child, child forks grandchild (daemon)
+2. Daemon starts HTTPS server, writes PID file
+3. Parent polls `/health` endpoint until ready (or timeout)
+4. Parent exits 0 only after health check passes
+
+PID file: `/var/run/homestak/server.pid` (FHS path)
+Log file: `/var/log/homestak/server.log`
+
+Operator (executor.py) auto-manages server lifecycle for manifest verbs with reference counting — nested test→create→destroy only starts/stops once.
 
 ### Endpoints
 
@@ -307,12 +331,12 @@ Spec endpoints use posture-based authentication from `postures/{posture}.yaml`:
 All repo endpoints require Bearer token authentication:
 ```bash
 curl -H "Authorization: Bearer <repo-token>" \
-  https://controller:44443/bootstrap.git/install.sh
+  https://server:44443/bootstrap.git/install.sh
 ```
 
 ### TLS Certificates
 
-The controller auto-generates a self-signed certificate if none provided:
+The server auto-generates a self-signed certificate if none provided:
 - Certificate stored in temp directory (ephemeral)
 - SHA256 fingerprint displayed on startup for verification
 - Supports explicit cert/key paths via `--cert` and `--key` flags
@@ -326,7 +350,7 @@ The controller auto-generates a self-signed certificate if none provided:
 
 ### Git Repo Serving
 
-The controller creates temporary bare repos with uncommitted changes:
+The server creates temporary bare repos with uncommitted changes:
 
 1. **Bare clone**: Creates `{repo}.git` from source repo
 2. **_working branch**: Contains snapshot of uncommitted changes
@@ -335,11 +359,11 @@ The controller creates temporary bare repos with uncommitted changes:
 Clients can clone or fetch files:
 ```bash
 # Clone via dumb HTTP
-git clone https://controller:44443/bootstrap.git
+git clone https://server:44443/bootstrap.git
 
 # Fetch raw file (extracts via git show)
 curl -H "Authorization: Bearer <token>" \
-  https://controller:44443/bootstrap.git/install.sh
+  https://server:44443/bootstrap.git/install.sh
 ```
 
 ## Operator Engine (v0.46+)
