@@ -22,7 +22,7 @@ from config import ConfigError, get_site_config_dir
 logger = logging.getLogger(__name__)
 
 # Default manifest name when none specified
-DEFAULT_MANIFEST = 'n2-quick'
+DEFAULT_MANIFEST = 'n2-tiered'
 
 # Supported schema versions
 SUPPORTED_SCHEMA_VERSIONS = {2}

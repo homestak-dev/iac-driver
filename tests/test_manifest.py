@@ -226,7 +226,7 @@ class TestManifestV2:
 
         data = {
             'schema_version': 2,
-            'name': 'n1-basic',
+            'name': 'n1-push',
             'pattern': 'flat',
             'nodes': [
                 {'name': 'edge', 'type': 'vm', 'preset': 'vm-small', 'image': 'debian-12', 'vmid': 99001}
@@ -235,7 +235,7 @@ class TestManifestV2:
         manifest = Manifest.from_dict(data)
 
         assert manifest.schema_version == 2
-        assert manifest.name == 'n1-basic'
+        assert manifest.name == 'n1-push'
         assert manifest.pattern == 'flat'
         assert manifest.nodes is not None
         assert len(manifest.nodes) == 1
@@ -247,7 +247,7 @@ class TestManifestV2:
 
         data = {
             'schema_version': 2,
-            'name': 'n2-quick',
+            'name': 'n2-tiered',
             'pattern': 'tiered',
             'nodes': [
                 {'name': 'root-pve', 'type': 'pve', 'preset': 'vm-large', 'image': 'debian-13-pve', 'vmid': 99011},
@@ -266,7 +266,7 @@ class TestManifestV2:
 
         data = {
             'schema_version': 2,
-            'name': 'n3-full',
+            'name': 'n3-deep',
             'pattern': 'tiered',
             'nodes': [
                 {'name': 'root-pve', 'type': 'pve', 'preset': 'vm-large', 'image': 'debian-13-pve', 'vmid': 99011},
@@ -482,7 +482,7 @@ class TestManifestV2Serialization:
 
         data = {
             'schema_version': 2,
-            'name': 'n2-quick',
+            'name': 'n2-tiered',
             'description': 'Test',
             'pattern': 'tiered',
             'nodes': [
@@ -514,16 +514,16 @@ class TestManifestLoader:
             manifests_dir = Path(tmpdir) / 'manifests'
             manifests_dir.mkdir()
 
-            (manifests_dir / 'n2-quick.yaml').write_text(
-                'schema_version: 2\nname: n2-quick\nnodes:\n  - name: test\n    type: vm\n')
-            (manifests_dir / 'n3-full.yaml').write_text(
-                'schema_version: 2\nname: n3-full\nnodes:\n  - name: test\n    type: vm\n')
+            (manifests_dir / 'n2-tiered.yaml').write_text(
+                'schema_version: 2\nname: n2-tiered\nnodes:\n  - name: test\n    type: vm\n')
+            (manifests_dir / 'n3-deep.yaml').write_text(
+                'schema_version: 2\nname: n3-deep\nnodes:\n  - name: test\n    type: vm\n')
 
             loader = ManifestLoader(site_config_path=tmpdir)
             manifests = loader.list_manifests()
 
-            assert 'n2-quick' in manifests
-            assert 'n3-full' in manifests
+            assert 'n2-tiered' in manifests
+            assert 'n3-deep' in manifests
 
     def test_load_manifest(self):
         """Should load manifest by name."""

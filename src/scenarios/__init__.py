@@ -188,4 +188,4 @@ from scenarios import pve_setup  # noqa: E402, F401
 from scenarios import user_setup  # noqa: E402, F401
 from scenarios import bootstrap  # noqa: E402, F401
 from scenarios import packer_build  # noqa: E402, F401
-from scenarios import spec_vm  # noqa: E402, F401
+from scenarios import vm_roundtrip  # noqa: E402, F401

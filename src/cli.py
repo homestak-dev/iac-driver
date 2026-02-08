@@ -40,15 +40,17 @@ VERB_COMMANDS = {
 # Scenarios retired in v0.47 (scenario consolidation)
 # Maps old scenario names to migration hints
 RETIRED_SCENARIOS = {
-    "vm-constructor": "Use: ./run.sh create -M n1-basic -H <host>",
-    "vm-destructor": "Use: ./run.sh destroy -M n1-basic -H <host>",
-    "vm-roundtrip": "Use: ./run.sh test -M n1-basic -H <host>",
-    "nested-pve-constructor": "Use: ./run.sh create -M n2-quick -H <host>",
-    "nested-pve-destructor": "Use: ./run.sh destroy -M n2-quick -H <host>",
-    "nested-pve-roundtrip": "Use: ./run.sh test -M n2-quick -H <host>",
+    "vm-constructor": "Use: ./run.sh create -M n1-push -H <host>",
+    "vm-destructor": "Use: ./run.sh destroy -M n1-push -H <host>",
+    "vm-roundtrip": "Use: ./run.sh test -M n1-push -H <host>",
+    "nested-pve-constructor": "Use: ./run.sh create -M n2-tiered -H <host>",
+    "nested-pve-destructor": "Use: ./run.sh destroy -M n2-tiered -H <host>",
+    "nested-pve-roundtrip": "Use: ./run.sh test -M n2-tiered -H <host>",
     "recursive-pve-constructor": "Use: ./run.sh create -M <manifest> -H <host>",
     "recursive-pve-destructor": "Use: ./run.sh destroy -M <manifest> -H <host>",
     "recursive-pve-roundtrip": "Use: ./run.sh test -M <manifest> -H <host>",
+    "spec-vm-push-roundtrip": "Renamed to: push-vm-roundtrip",
+    "spec-vm-pull-roundtrip": "Renamed to: pull-vm-roundtrip",
 }
 
 
@@ -187,8 +189,8 @@ def print_usage():
     print()
     print("Examples:")
     print("  ./run.sh scenario pve-setup -H father")
-    print("  ./run.sh create -M n1-basic -H father")
-    print("  ./run.sh test -M n2-quick -H father")
+    print("  ./run.sh create -M n1-push -H father")
+    print("  ./run.sh test -M n2-tiered -H father")
     print("  ./run.sh serve --port 44443")
     print("  ./run.sh config --fetch --insecure")
 
