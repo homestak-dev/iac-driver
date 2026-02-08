@@ -82,10 +82,10 @@ class NodeExecutor:
             except (json.JSONDecodeError, ValueError):
                 pass
 
-        # Start the server
+        # Start the server (with repo serving for pull mode bootstrap, no auth)
         logger.info("Starting server on %s:%d", host, SERVER_PORT)
         rc, stdout, stderr = run_ssh(
-            host, f'cd /usr/local/lib/homestak/iac-driver && ./run.sh server start --port {SERVER_PORT}',
+            host, f"cd /usr/local/lib/homestak/iac-driver && ./run.sh server start --port {SERVER_PORT} --repos --repo-token ''",
             user=user, timeout=30,
         )
 
