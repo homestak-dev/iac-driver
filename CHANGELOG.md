@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Theme: Site-Config/IAC-Driver Cleanup, Pt.3 (#219)
+
+### Removed
+- Remove dead template mode code path from ConfigResolver and tofu actions (#180)
+
 ### Theme: Site-Config/IAC-Driver Cleanup, Pt.2 (#212)
 
 Complete v1→v2 config path migration and retire legacy entities.

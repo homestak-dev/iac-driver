@@ -3,7 +3,7 @@
 
 Tests verify:
 1. IP validation (CIDR format, dhcp, None)
-2. VM resolution with preset/template inheritance
+2. VM resolution with preset inheritance
 3. vmid allocation (base + index, explicit override)
 4. Error handling for missing/invalid config
 5. Ansible variable resolution (v0.13)
@@ -31,7 +31,7 @@ class TestIPValidation:
         """Create a minimal resolver for validation tests."""
         (tmp_path / 'nodes').mkdir()
         (tmp_path / 'envs').mkdir()
-        (tmp_path / 'vms').mkdir()
+
         (tmp_path / 'presets').mkdir()
         (tmp_path / 'site.yaml').write_text('defaults: {}')
         (tmp_path / 'secrets.yaml').write_text('api_tokens: {}')
@@ -79,7 +79,7 @@ class TestWriteTfvars:
         """write_tfvars should create valid JSON file."""
         # Create minimal site-config
         (tmp_path / 'nodes').mkdir()
-        (tmp_path / 'vms').mkdir()
+
         (tmp_path / 'presets').mkdir()
         (tmp_path / 'site.yaml').write_text('defaults: {}')
         (tmp_path / 'secrets.yaml').write_text('api_tokens: {}\npasswords: {}')

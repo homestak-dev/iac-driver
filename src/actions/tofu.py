@@ -31,16 +31,12 @@ class TofuApplyAction:
     """Run tofu init and apply using ConfigResolver.
 
     Uses ConfigResolver.resolve_inline_vm() for VM configuration.
-
-    Supports two modes:
-    - Template mode: template references vms/{template}.yaml
-    - Preset mode: vm_preset references presets/{vm_preset}.yaml (requires image)
+    vm_preset references presets/{vm_preset}.yaml (requires image).
     """
     name: str
     vm_name: str      # VM hostname (becomes PVE node name)
     vmid: int         # Explicit VM ID
-    template: str = None   # FK to vms/{template}.yaml (template mode)
-    vm_preset: str = None     # FK to presets/{vm_preset}.yaml (vm_preset mode)
+    vm_preset: str = None     # FK to presets/{vm_preset}.yaml
     image: str = None      # Image name (required for vm_preset mode)
     timeout_init: int = 120
     timeout_apply: int = 300
@@ -57,7 +53,6 @@ class TofuApplyAction:
                 node=config.name,
                 vm_name=self.vm_name,
                 vmid=self.vmid,
-                template=self.template,
                 vm_preset=self.vm_preset,
                 image=self.image
             )
@@ -140,8 +135,7 @@ class TofuDestroyAction:
     name: str
     vm_name: str      # VM hostname
     vmid: int         # VM ID
-    template: str = None   # FK to vms/{template}.yaml (template mode)
-    vm_preset: str = None     # FK to presets/{vm_preset}.yaml (vm_preset mode)
+    vm_preset: str = None     # FK to presets/{vm_preset}.yaml
     image: str = None      # Image name (for vm_preset mode)
     timeout: int = 300
 
@@ -157,7 +151,6 @@ class TofuDestroyAction:
                 node=config.name,
                 vm_name=self.vm_name,
                 vmid=self.vmid,
-                template=self.template,
                 vm_preset=self.vm_preset,
                 image=self.image
             )

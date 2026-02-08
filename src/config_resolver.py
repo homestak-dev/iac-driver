@@ -54,7 +54,6 @@ class ConfigResolver:
         self.site = self._load_yaml("site.yaml")
         self.secrets = _load_secrets(self.path) or {}
         self.vm_presets = self._load_dir("presets")
-        self.templates = self._load_dir("vms")
         self.postures = self._load_dir("postures")
 
     def _load_yaml(self, relative_path: str) -> dict:
@@ -114,34 +113,28 @@ class ConfigResolver:
         node: str,
         vm_name: str,
         vmid: int,
-        template: Optional[str] = None,
         vm_preset: Optional[str] = None,
         image: Optional[str] = None,
         posture: Optional[str] = None
     ) -> dict:
         """Resolve inline VM definition.
 
-        VM is defined by direct parameters (vm_name, vmid, preset/template)
+        VM is defined by direct parameters (vm_name, vmid, preset)
         from manifest nodes or CLI flags.
-
-        Supports two modes:
-        1. Template mode: template references vms/{template}.yaml (legacy, deprecated)
-        2. Preset mode: vm_preset references presets/{vm_preset}.yaml (requires image)
 
         Args:
             node: Target PVE node name (matches nodes/{node}.yaml)
             vm_name: VM hostname
             vmid: Explicit VM ID
-            template: Template name (matches vms/{template}.yaml)
             vm_preset: Preset name (matches presets/{vm_preset}.yaml)
-            image: Image name (required for vm_preset mode, optional override for template)
+            image: Image name (required for vm_preset mode)
             posture: Posture name for auth token resolution (default: dev)
 
         Returns:
             Dict with all resolved config ready for tfvars.json
         """
-        if not template and not vm_preset:
-            raise ConfigError("resolve_inline_vm requires either template or vm_preset")
+        if not vm_preset:
+            raise ConfigError("resolve_inline_vm requires vm_preset")
 
         node_config = self._load_yaml(f"nodes/{node}.yaml")
 
@@ -172,8 +165,6 @@ class ConfigResolver:
             "name": vm_name,
             "vmid": vmid,
         }
-        if template:
-            vm_instance["template"] = template
         if vm_preset:
             vm_instance["vm_preset"] = vm_preset
         if image:
@@ -212,11 +203,9 @@ class ConfigResolver:
         }
 
     def _resolve_vm(self, vm_instance: dict, default_vmid: Optional[int], defaults: dict) -> dict:
-        """Resolve VM instance with template/vm_preset inheritance.
+        """Resolve VM instance with vm_preset inheritance.
 
-        Merge order depends on mode:
-        - Template mode: vm_preset (from template) → template → instance overrides
-        - Preset mode: vm_preset → instance overrides (no template)
+        Merge order: vm_preset → instance overrides
 
         Args:
             vm_instance: VM instance from manifest nodes[] or CLI parameters
@@ -226,20 +215,9 @@ class ConfigResolver:
         Returns:
             Fully resolved VM configuration
         """
-        template_name = vm_instance.get("template")
-        direct_vm_preset_name = vm_instance.get("vm_preset")  # Direct vm_preset from manifest
+        direct_vm_preset_name = vm_instance.get("vm_preset")
 
-        if template_name:
-            # Template mode: preset (from template) → template → instance
-            template = self.templates.get(template_name, {}).copy()
-            preset_name = template.get("preset")  # Templates use 'preset' key
-            base = self.vm_presets.get(preset_name, {}).copy() if preset_name else {}
-
-            # Layer 2: Template (merge on top of preset)
-            for key, value in template.items():
-                if key != "preset":  # Don't include preset key in final output
-                    base[key] = value
-        elif direct_vm_preset_name:
+        if direct_vm_preset_name:
             # Preset mode: vm_preset → instance (no template)
             base = self.vm_presets.get(direct_vm_preset_name, {}).copy()
             if not base:
@@ -250,7 +228,7 @@ class ConfigResolver:
 
         # Layer 3: Instance overrides
         for key, value in vm_instance.items():
-            if key not in ("template", "vm_preset"):  # Don't include meta keys in final output
+            if key != "vm_preset":  # Don't include meta key in final output
                 base[key] = value
 
         # Layer 4: Default vmid if not specified
