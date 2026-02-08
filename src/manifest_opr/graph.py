@@ -68,8 +68,8 @@ class ManifestGraph:
         Raises:
             ValueError: If manifest has no v2 nodes
         """
-        if manifest.nodes is None:
-            raise ValueError("ManifestGraph requires a v2 manifest with nodes")
+        if not manifest.nodes:
+            raise ValueError("ManifestGraph requires a manifest with nodes")
 
         self.manifest = manifest
         self._nodes: dict[str, ExecutionNode] = {}

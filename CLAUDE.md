@@ -59,7 +59,7 @@ All repos are siblings in a common parent directory:
 │   │   ├── config.py          # Host configuration (auto-discovery from site-config)
 │   │   ├── config_apply.py    # Config phase: spec-to-ansible-vars + apply
 │   │   ├── config_resolver.py # ConfigResolver - resolves site-config for tofu
-│   │   ├── manifest.py        # Manifest schema v1 (levels) + v2 (nodes graph)
+│   │   ├── manifest.py        # Manifest schema v2 (nodes graph)
 │   │   ├── manifest_opr/ # Operator engine for manifest-based orchestration
 │   │   │   ├── graph.py       # ExecutionNode, ManifestGraph, topo sort
 │   │   │   ├── state.py       # NodeState, ExecutionState persistence
@@ -88,7 +88,7 @@ All repos are siblings in a common parent directory:
 │   │   │   ├── pve_setup.py         # pve-setup (local/remote)
 │   │   │   ├── user_setup.py        # user-setup (local/remote)
 │   │   │   ├── bootstrap.py         # bootstrap-install
-│   │   │   └── spec_vm.py           # spec-vm-push-roundtrip
+│   │   │   └── vm_roundtrip.py       # push-vm-roundtrip, pull-vm-roundtrip
 │   │   └── reporting/    # Test report generation (JSON + markdown)
 │   ├── reports/          # Generated test reports
 │   └── scripts/          # Helper scripts
@@ -352,7 +352,7 @@ Schema v2 uses graph-based `nodes[]` with `parent` references instead of linear 
 
 ```yaml
 schema_version: 2
-name: n2-quick
+name: n2-tiered
 pattern: tiered
 nodes:
   - name: root-pve
@@ -369,19 +369,17 @@ nodes:
     parent: root-pve
 ```
 
-v2 manifests are backward-compatible: nodes are converted to levels via topological sort for v1 compatibility.
-
 ### Verb Commands
 
 ```bash
 # Create infrastructure from manifest
-./run.sh create -M n2-quick -H father [--dry-run] [--json-output] [--verbose]
+./run.sh create -M n2-tiered -H father [--dry-run] [--json-output] [--verbose]
 
 # Destroy infrastructure
-./run.sh destroy -M n2-quick -H father [--dry-run] [--yes]
+./run.sh destroy -M n2-tiered -H father [--dry-run] [--yes]
 
 # Full cycle: create, verify SSH, destroy
-./run.sh test -M n2-quick -H father [--dry-run] [--json-output]
+./run.sh test -M n2-tiered -H father [--dry-run] [--json-output]
 
 # Apply spec to local host (config phase)
 ./run.sh config [--fetch] [--insecure] [--spec /path.yaml] [--dry-run] [--json-output]
@@ -555,25 +553,25 @@ Node configuration merges in `tofu/envs/common/locals.tf`:
 
 ## Manifest-Driven Orchestration
 
-Manifests define N-level nested PVE deployments. Schema v2 (graph-based) is the primary format; v1 (linear levels) is supported for backward compatibility. Manifests are YAML files in `site-config/manifests/`.
+Manifests define N-level nested PVE deployments using graph-based schema v2. Manifests are YAML files in `site-config/manifests/`.
 
 ### Usage
 
 ```bash
 # Create infrastructure from manifest
-./run.sh create -M n2-quick -H father
+./run.sh create -M n2-tiered -H father
 
 # Destroy infrastructure
-./run.sh destroy -M n2-quick -H father --yes
+./run.sh destroy -M n2-tiered -H father --yes
 
 # Full roundtrip: create, verify SSH, destroy
-./run.sh test -M n2-quick -H father
+./run.sh test -M n2-tiered -H father
 
 # Dry-run preview
-./run.sh create -M n2-quick -H father --dry-run
+./run.sh create -M n2-tiered -H father --dry-run
 
 # JSON output for programmatic use
-./run.sh test -M n1-basic -H father --json-output
+./run.sh test -M n1-push -H father --json-output
 ```
 
 ### RecursiveScenarioAction
@@ -602,7 +600,7 @@ Key features:
 
 | Type | Pattern | Examples |
 |------|---------|----------|
-| **Scenarios** | `noun-verb` | `pve-setup`, `user-setup`, `bootstrap-install`, `spec-vm-push-roundtrip` |
+| **Scenarios** | `noun-verb` | `pve-setup`, `user-setup`, `bootstrap-install`, `push-vm-roundtrip` |
 | **Phases** | `verb_noun` | `ensure_pve`, `setup_pve`, `provision_vm`, `create_user` |
 | **Actions** | `VerbNounAction` | `EnsurePVEAction`, `StartVMAction`, `WaitForSSHAction` |
 
@@ -818,9 +816,9 @@ The orchestrator uses verb commands for all operations. Run `./run.sh` with no a
 
 ```bash
 # Verb commands (manifest-based)
-./run.sh create -M n2-quick -H father              # Create infrastructure
-./run.sh destroy -M n2-quick -H father --yes        # Destroy infrastructure
-./run.sh test -M n2-quick -H father                 # Full roundtrip
+./run.sh create -M n2-tiered -H father              # Create infrastructure
+./run.sh destroy -M n2-tiered -H father --yes        # Destroy infrastructure
+./run.sh test -M n2-tiered -H father                 # Full roundtrip
 
 # Config verb (local execution)
 ./run.sh config                                         # Apply spec to local host
@@ -873,7 +871,7 @@ The orchestrator uses verb commands for all operations. Run `./run.sh` with no a
 The `--json-output` flag emits structured JSON for programmatic consumption:
 
 ```bash
-./run.sh test -M n1-basic -H father --json-output 2>/dev/null | jq .
+./run.sh test -M n1-push -H father --json-output 2>/dev/null | jq .
 ```
 
 Output schema:
@@ -945,11 +943,11 @@ The `latest` tag is maintained by the packer release process (see packer#5).
 | `packer-sync` | ~30s | Sync local packer to remote |
 | `packer-sync-build-fetch` | ~6m | Sync, build, fetch (dev workflow) |
 | `pve-setup` | ~3m | Install PVE (if needed), configure host, generate node config |
-| `spec-vm-push-roundtrip` | ~3m | Spec discovery integration test (push verification) |
-| `spec-vm-pull-roundtrip` | ~5m | Config phase integration test (pull verification) |
+| `push-vm-roundtrip` | ~3m | Spec discovery integration test (push verification) |
+| `pull-vm-roundtrip` | ~5m | Config phase integration test (pull verification) |
 | `user-setup` | ~30s | Create homestak user |
 
-**Retired Scenarios (v0.47):** `vm-constructor`, `vm-destructor`, `vm-roundtrip`, `nested-pve-*`, `recursive-pve-*` — replaced by verb commands (`create`/`destroy`/`test`). Running a retired scenario prints a migration hint.
+**Retired Scenarios (v0.47+):** `vm-constructor`, `vm-destructor`, `vm-roundtrip`, `nested-pve-*`, `recursive-pve-*` — replaced by verb commands (`create`/`destroy`/`test`). `spec-vm-push-roundtrip` → `push-vm-roundtrip`, `spec-vm-pull-roundtrip` → `pull-vm-roundtrip` (homestak-dev#214). Running a retired scenario prints a migration hint.
 
 Runtime estimates are shown by `--list-scenarios` and used for `--timeout` defaults.
 

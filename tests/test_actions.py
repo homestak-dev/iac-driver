@@ -165,7 +165,7 @@ class TestVerifyPackagesAction:
 
     def test_all_packages_installed(self):
         """All packages installed should return success."""
-        from scenarios.spec_vm import VerifyPackagesAction
+        from scenarios.vm_roundtrip import VerifyPackagesAction
 
         action = VerifyPackagesAction(
             name='test', host_key='vm_ip', packages=('htop', 'curl'),
@@ -173,7 +173,7 @@ class TestVerifyPackagesAction:
         config = MockHostConfig()
         context = {'vm_ip': '192.0.2.1'}
 
-        with patch('scenarios.spec_vm.run_ssh', return_value=(0, 'INSTALLED', '')):
+        with patch('scenarios.vm_roundtrip.run_ssh', return_value=(0, 'INSTALLED', '')):
             result = action.run(config, context)
 
         assert result.success is True
@@ -181,7 +181,7 @@ class TestVerifyPackagesAction:
 
     def test_missing_package_fails(self):
         """Missing package should return failure."""
-        from scenarios.spec_vm import VerifyPackagesAction
+        from scenarios.vm_roundtrip import VerifyPackagesAction
 
         action = VerifyPackagesAction(
             name='test', host_key='vm_ip', packages=('htop', 'missing-pkg'),
@@ -189,7 +189,7 @@ class TestVerifyPackagesAction:
         config = MockHostConfig()
         context = {'vm_ip': '192.0.2.1'}
 
-        with patch('scenarios.spec_vm.run_ssh') as mock_ssh:
+        with patch('scenarios.vm_roundtrip.run_ssh') as mock_ssh:
             mock_ssh.side_effect = [
                 (0, 'INSTALLED', ''),  # htop
                 (0, 'MISSING', ''),    # missing-pkg
@@ -201,7 +201,7 @@ class TestVerifyPackagesAction:
 
     def test_missing_host_returns_error(self):
         """Missing host in context should return failure."""
-        from scenarios.spec_vm import VerifyPackagesAction
+        from scenarios.vm_roundtrip import VerifyPackagesAction
 
         action = VerifyPackagesAction(name='test', packages=('curl',), host_key='missing')
         config = MockHostConfig()
@@ -216,7 +216,7 @@ class TestVerifyUserAction:
 
     def test_user_exists(self):
         """User exists should return success."""
-        from scenarios.spec_vm import VerifyUserAction
+        from scenarios.vm_roundtrip import VerifyUserAction
 
         action = VerifyUserAction(
             name='test', host_key='vm_ip', username='homestak',
@@ -224,7 +224,7 @@ class TestVerifyUserAction:
         config = MockHostConfig()
         context = {'vm_ip': '192.0.2.1'}
 
-        with patch('scenarios.spec_vm.run_ssh',
+        with patch('scenarios.vm_roundtrip.run_ssh',
                    return_value=(0, 'uid=1000(homestak) gid=1000(homestak)\nUSER_EXISTS', '')):
             result = action.run(config, context)
 
@@ -233,7 +233,7 @@ class TestVerifyUserAction:
 
     def test_user_missing_fails(self):
         """Missing user should return failure."""
-        from scenarios.spec_vm import VerifyUserAction
+        from scenarios.vm_roundtrip import VerifyUserAction
 
         action = VerifyUserAction(
             name='test', host_key='vm_ip', username='noone',
@@ -241,7 +241,7 @@ class TestVerifyUserAction:
         config = MockHostConfig()
         context = {'vm_ip': '192.0.2.1'}
 
-        with patch('scenarios.spec_vm.run_ssh',
+        with patch('scenarios.vm_roundtrip.run_ssh',
                    return_value=(1, 'USER_MISSING', '')):
             result = action.run(config, context)
 
@@ -250,7 +250,7 @@ class TestVerifyUserAction:
 
     def test_missing_host_returns_error(self):
         """Missing host in context should return failure."""
-        from scenarios.spec_vm import VerifyUserAction
+        from scenarios.vm_roundtrip import VerifyUserAction
 
         action = VerifyUserAction(name='test', username='homestak', host_key='missing')
         config = MockHostConfig()

@@ -120,14 +120,12 @@ class TestManifestGraph:
         with pytest.raises(KeyError):
             graph.get_node('nonexistent')
 
-    def test_requires_v2_manifest(self):
+    def test_requires_manifest_with_nodes(self):
         manifest = Manifest(
-            schema_version=1,
-            name='v1-test',
-            levels=[],
-            nodes=None,
+            schema_version=2,
+            name='empty-test',
         )
-        with pytest.raises(ValueError, match="v2 manifest"):
+        with pytest.raises(ValueError, match="requires a manifest with nodes"):
             ManifestGraph(manifest)
 
 

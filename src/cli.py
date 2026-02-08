@@ -40,15 +40,17 @@ VERB_COMMANDS = {
 # Scenarios retired in v0.47 (scenario consolidation)
 # Maps old scenario names to migration hints
 RETIRED_SCENARIOS = {
-    "vm-constructor": "Use: ./run.sh create -M n1-basic -H <host>",
-    "vm-destructor": "Use: ./run.sh destroy -M n1-basic -H <host>",
-    "vm-roundtrip": "Use: ./run.sh test -M n1-basic -H <host>",
-    "nested-pve-constructor": "Use: ./run.sh create -M n2-quick -H <host>",
-    "nested-pve-destructor": "Use: ./run.sh destroy -M n2-quick -H <host>",
-    "nested-pve-roundtrip": "Use: ./run.sh test -M n2-quick -H <host>",
+    "vm-constructor": "Use: ./run.sh create -M n1-push -H <host>",
+    "vm-destructor": "Use: ./run.sh destroy -M n1-push -H <host>",
+    "vm-roundtrip": "Use: ./run.sh test -M n1-push -H <host>",
+    "nested-pve-constructor": "Use: ./run.sh create -M n2-tiered -H <host>",
+    "nested-pve-destructor": "Use: ./run.sh destroy -M n2-tiered -H <host>",
+    "nested-pve-roundtrip": "Use: ./run.sh test -M n2-tiered -H <host>",
     "recursive-pve-constructor": "Use: ./run.sh create -M <manifest> -H <host>",
     "recursive-pve-destructor": "Use: ./run.sh destroy -M <manifest> -H <host>",
     "recursive-pve-roundtrip": "Use: ./run.sh test -M <manifest> -H <host>",
+    "spec-vm-push-roundtrip": "Renamed to: push-vm-roundtrip",
+    "spec-vm-pull-roundtrip": "Renamed to: pull-vm-roundtrip",
 }
 
 
@@ -57,12 +59,25 @@ def _is_ip_address(value: str) -> bool:
     return bool(re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', value))
 
 
-def _create_ip_config(ip: str):
+def _parse_host_arg(value: str) -> tuple[str | None, str]:
+    """Parse user@host syntax from -H flag.
+
+    Returns:
+        (user, host) tuple. user is None if no @ present.
+    """
+    if '@' in value:
+        user, host = value.split('@', 1)
+        return (user or None, host)
+    return (None, value)
+
+
+def _create_ip_config(ip: str, ssh_user: str | None = None):
     """Create a HostConfig for a raw IP address (no site-config lookup)."""
     from config import HostConfig
     config = HostConfig(name=ip, config_file=Path('/dev/null'))
     config.ssh_host = ip
-    config.ssh_user = 'root'
+    if ssh_user:
+        config.ssh_user = ssh_user
     config.is_host_only = True
     return config
 
@@ -140,7 +155,6 @@ def create_local_config():
     # Derive API endpoint for local PVE
     config.api_endpoint = 'https://localhost:8006'
     config.ssh_host = 'localhost'
-    config.ssh_user = 'root'
 
     # Try to load API token for current host
     try:
@@ -175,8 +189,8 @@ def print_usage():
     print()
     print("Examples:")
     print("  ./run.sh scenario pve-setup -H father")
-    print("  ./run.sh create -M n1-basic -H father")
-    print("  ./run.sh test -M n2-quick -H father")
+    print("  ./run.sh create -M n1-push -H father")
+    print("  ./run.sh test -M n2-tiered -H father")
     print("  ./run.sh serve --port 44443")
     print("  ./run.sh config --fetch --insecure")
 
@@ -444,8 +458,14 @@ def main():
         print("Run with sudo or as root")
         return 1
 
-    # Handle --host resolution
-    host = args.host
+    # Handle --host resolution (supports user@host syntax)
+    host_arg = args.host
+    ssh_user_override = None
+
+    if host_arg:
+        ssh_user_override, host = _parse_host_arg(host_arg)
+    else:
+        host = None
 
     # Auto-detect host from hostname when --local and no --host
     if args.local and not host:
@@ -487,13 +507,17 @@ def main():
 
     # Load config (use local config with auto-derived values for --local)
     if is_raw_ip:
-        config = _create_ip_config(host)
+        config = _create_ip_config(host, ssh_user=ssh_user_override)
         logger.info(f"Using raw IP: {host} (no site-config lookup)")
     elif host:
         config = load_host_config(host)
     else:
         # Create local config with auto-derived API endpoint and token
         config = create_local_config()
+
+    # Apply user@ override if specified
+    if ssh_user_override and not is_raw_ip:
+        config.ssh_user = ssh_user_override
 
     # Override packer release if specified (CLI takes precedence)
     if args.packer_release:

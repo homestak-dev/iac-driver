@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Theme: Site-Config/IAC-Driver Cleanup, Pt.3 (#219)
+
+### Changed
+- `-H` flag now supports `user@host` syntax to override ssh_user (#179)
+- `HostConfig.ssh_user` defaults to `$USER` instead of hardcoded `root` (#179)
+- Rename scenarios: `spec-vm-push-roundtrip` → `push-vm-roundtrip`, `spec-vm-pull-roundtrip` → `pull-vm-roundtrip` (homestak-dev#214)
+- Rename `spec_vm.py` → `vm_roundtrip.py` (homestak-dev#214)
+- Update `DEFAULT_MANIFEST` from `n2-quick` to `n2-tiered` (homestak-dev#214)
+
+### Removed
+- Remove dead template mode code path from ConfigResolver and tofu actions (#180)
+- Remove v1 manifest schema (levels-based): `ManifestLevel`, `_from_dict_v1()`, `_nodes_to_levels()` (#181)
+
 ### Theme: Site-Config/IAC-Driver Cleanup, Pt.2 (#212)
 
 Complete v1→v2 config path migration and retire legacy entities.

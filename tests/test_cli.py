@@ -1,5 +1,6 @@
 """Tests for CLI module."""
 
+import os
 import pytest
 from unittest.mock import patch, MagicMock
 from pathlib import Path
@@ -35,7 +36,7 @@ class TestCreateLocalConfig:
     @patch('config_resolver.ConfigResolver')
     @patch('socket.gethostname')
     def test_sets_localhost_ssh_host(self, mock_hostname, mock_resolver_class):
-        """SSH host should be localhost."""
+        """SSH host should be localhost, ssh_user defaults to current user."""
         mock_hostname.return_value = 'testhost'
         mock_resolver_class.side_effect = Exception("Not needed")
 
@@ -43,7 +44,7 @@ class TestCreateLocalConfig:
         config = create_local_config()
 
         assert config.ssh_host == 'localhost'
-        assert config.ssh_user == 'root'
+        assert config.ssh_user == os.getenv('USER', '')
 
     @patch('config_resolver.ConfigResolver')
     @patch('socket.gethostname')
@@ -112,3 +113,38 @@ class TestCreateLocalConfig:
         # Should not raise, config should still be valid
         assert config.name == 'local'
         assert config.api_endpoint == 'https://localhost:8006'
+
+
+class TestParseHostArg:
+    """Tests for _parse_host_arg() user@host parsing."""
+
+    def test_plain_hostname(self):
+        from src.cli import _parse_host_arg
+        user, host = _parse_host_arg('father')
+        assert user is None
+        assert host == 'father'
+
+    def test_user_at_hostname(self):
+        from src.cli import _parse_host_arg
+        user, host = _parse_host_arg('root@father')
+        assert user == 'root'
+        assert host == 'father'
+
+    def test_user_at_ip(self):
+        from src.cli import _parse_host_arg
+        user, host = _parse_host_arg('admin@198.51.100.1')
+        assert user == 'admin'
+        assert host == '198.51.100.1'
+
+    def test_plain_ip(self):
+        from src.cli import _parse_host_arg
+        user, host = _parse_host_arg('198.51.100.1')
+        assert user is None
+        assert host == '198.51.100.1'
+
+    def test_empty_user_at_host(self):
+        """Bare @ should result in None user."""
+        from src.cli import _parse_host_arg
+        user, host = _parse_host_arg('@father')
+        assert user is None
+        assert host == 'father'

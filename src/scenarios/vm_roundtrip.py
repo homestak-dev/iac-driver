@@ -409,7 +409,7 @@ class VerifyUserAction:
 class SpecVMPushRoundtrip:
     """Test Create → Specify flow (push): provision VM, verify spec server integration."""
 
-    name = 'spec-vm-push-roundtrip'
+    name = 'push-vm-roundtrip'
     description = 'Deploy VM with spec server vars, verify env injection via SSH, destroy'
     expected_runtime = 180  # ~3 min
 
@@ -485,7 +485,7 @@ class SpecVMPushRoundtrip:
 class SpecVMPullRoundtrip:
     """Test Create → Config flow (pull): VM self-configures, driver verifies."""
 
-    name = 'spec-vm-pull-roundtrip'
+    name = 'pull-vm-roundtrip'
     description = 'Deploy VM with pull mode, verify autonomous spec fetch + config apply, destroy'
     expected_runtime = 300  # ~5 min (includes waiting for cloud-init config)
 

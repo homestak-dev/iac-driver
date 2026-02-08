@@ -232,7 +232,7 @@ class TestHostConfig:
         config_file.write_text('')
 
         config = HostConfig(name='test', config_file=config_file)
-        assert config.ssh_user == 'root'  # For PVE host connections
+        assert config.ssh_user == os.getenv('USER', '')  # Defaults to current user
         assert config.automation_user == 'homestak'  # For VMs via cloud-init
         assert config.datastore == 'local-zfs'
         assert config.packer_release == 'latest'
