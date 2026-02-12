@@ -1,27 +1,28 @@
 """Authentication middleware for the server.
 
 Provides:
-- Posture-based auth for specs (network, site_token, node_token)
+- Provisioning token verification for specs (HMAC-SHA256, #231)
 - Token auth for repos (repo_token)
 """
 
+import base64
+import hashlib
+import hmac as hmac_mod
+import json
 import logging
-from dataclasses import dataclass
-from typing import Optional, Tuple
-
-from resolver.spec_resolver import SpecResolver, SpecNotFoundError
-from resolver.base import ResolverError
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class AuthError:
+class AuthError(Exception):
     """Authentication error with error code and HTTP status."""
 
-    code: str
-    message: str
-    http_status: int
+    def __init__(self, code: str, message: str, http_status: int):
+        self.code = code
+        self.message = message
+        self.http_status = http_status
+        super().__init__(f"{code}: {message}")
 
 
 def extract_bearer_token(auth_header: str) -> Optional[str]:
@@ -38,63 +39,79 @@ def extract_bearer_token(auth_header: str) -> Optional[str]:
     return None
 
 
-def validate_spec_auth(
-    identity: str,
-    auth_header: str,
-    resolver: SpecResolver,
-) -> Optional[AuthError]:
-    """Validate authentication for a spec request.
+def _base64url_decode(s: str) -> bytes:
+    """Decode base64url string (padding-free)."""
+    # Add padding
+    s += '=' * (4 - len(s) % 4) if len(s) % 4 else ''
+    return base64.urlsafe_b64decode(s)
 
-    Uses posture-based auth model:
-    - network: No token required (trust network boundary)
-    - site_token: Shared site-wide token required
-    - node_token: Per-identity unique token required
+
+def verify_provisioning_token(
+    token: str,
+    signing_key: str,
+    url_identity: str,
+) -> dict:
+    """Verify a provisioning token and return decoded claims.
 
     Args:
-        identity: Spec identity being requested
-        auth_header: Authorization header from request
-        resolver: SpecResolver for posture/token lookup
+        token: The provisioning token (base64url(payload).base64url(sig))
+        signing_key: Hex-encoded 256-bit signing key
+        url_identity: Identity from the URL path (for defense-in-depth check)
 
     Returns:
-        None if auth is valid, or AuthError on failure
+        Decoded claims dict on success
+
+    Raises:
+        AuthError: On any verification failure
     """
+    # 1. Split token
+    parts = token.split(".")
+    if len(parts) != 2:
+        raise AuthError("E300", "Malformed token: expected 2 dot-separated segments", 400)
+
+    payload_b64, sig_b64 = parts
+
+    # 2. Verify HMAC (constant-time comparison)
     try:
-        auth_method = resolver.get_auth_method(identity)
-    except SpecNotFoundError as e:
-        return AuthError(e.code, e.message, 404)
-    except ResolverError as e:
-        return AuthError(e.code, e.message, 500)
+        expected_sig = hmac_mod.new(
+            bytes.fromhex(signing_key),
+            payload_b64.encode(),
+            hashlib.sha256,
+        ).digest()
+    except ValueError:
+        raise AuthError("E500", "Invalid signing key configuration", 500)
 
-    if auth_method == "network":
-        # Trust network boundary, no token required
-        logger.debug("Auth: network trust for %s", identity)
-        return None
+    try:
+        actual_sig = _base64url_decode(sig_b64)
+    except Exception:
+        raise AuthError("E300", "Malformed token: invalid signature encoding", 400)
 
-    token = extract_bearer_token(auth_header)
+    if not hmac_mod.compare_digest(expected_sig, actual_sig):
+        raise AuthError("E301", "Invalid token signature", 401)
 
-    if auth_method == "site_token":
-        expected = resolver.get_site_token()
-        if not expected:
-            return AuthError("E500", "site_token not configured in secrets", 500)
-        if not token:
-            return AuthError("E300", "Authorization required", 401)
-        if token != expected:
-            return AuthError("E301", "Invalid token", 403)
-        logger.debug("Auth: site_token validated for %s", identity)
-        return None
+    # 3. Decode payload
+    try:
+        claims = json.loads(_base64url_decode(payload_b64))
+    except Exception:
+        raise AuthError("E300", "Malformed token: invalid payload encoding", 400)
 
-    if auth_method == "node_token":
-        expected = resolver.get_node_token(identity)
-        if not expected:
-            return AuthError("E500", f"node_token not configured for {identity}", 500)
-        if not token:
-            return AuthError("E300", "Authorization required", 401)
-        if token != expected:
-            return AuthError("E301", "Invalid token", 403)
-        logger.debug("Auth: node_token validated for %s", identity)
-        return None
+    # 4. Validate version
+    if claims.get("v") != 1:
+        raise AuthError("E300", f"Unsupported token version: {claims.get('v')}", 400)
 
-    return AuthError("E500", f"Unknown auth method: {auth_method}", 500)
+    # 5. Validate required claims
+    if "n" not in claims or "s" not in claims:
+        raise AuthError("E300", "Malformed token: missing required claims", 400)
+
+    # 6. Validate identity match (defense in depth)
+    if claims["n"] != url_identity:
+        raise AuthError(
+            "E301",
+            f"Token identity mismatch: token={claims['n']} url={url_identity}",
+            401,
+        )
+
+    return claims
 
 
 def validate_repo_token(

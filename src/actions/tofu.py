@@ -38,6 +38,7 @@ class TofuApplyAction:
     vmid: int         # Explicit VM ID
     vm_preset: str = None     # FK to presets/{vm_preset}.yaml
     image: str = None      # Image name (required for vm_preset mode)
+    spec: str = None       # FK to specs/{spec}.yaml (for provisioning token)
     timeout_init: int = 120
     timeout_apply: int = 300
 
@@ -54,7 +55,8 @@ class TofuApplyAction:
                 vm_name=self.vm_name,
                 vmid=self.vmid,
                 vm_preset=self.vm_preset,
-                image=self.image
+                image=self.image,
+                spec=self.spec,
             )
 
             tfvars_path = create_temp_tfvars(self.vm_name, config.name)
@@ -137,6 +139,7 @@ class TofuDestroyAction:
     vmid: int         # VM ID
     vm_preset: str = None     # FK to presets/{vm_preset}.yaml
     image: str = None      # Image name (for vm_preset mode)
+    spec: str = None       # FK to specs/{spec}.yaml (for provisioning token)
     timeout: int = 300
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
@@ -152,7 +155,8 @@ class TofuDestroyAction:
                 vm_name=self.vm_name,
                 vmid=self.vmid,
                 vm_preset=self.vm_preset,
-                image=self.image
+                image=self.image,
+                spec=self.spec,
             )
             tfvars_path = create_temp_tfvars(self.vm_name, config.name)
             resolver.write_tfvars(resolved, str(tfvars_path))

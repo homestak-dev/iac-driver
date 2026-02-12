@@ -13,6 +13,8 @@ import json
 import sys
 from pathlib import Path
 
+import yaml
+
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import pytest
@@ -249,53 +251,11 @@ class TestSpecServerResolution:
         assert config['spec_server'] == 'https://controller:44443'
 
 
-class TestAuthTokenResolution:
-    """Test auth token resolution based on posture (v0.45+)."""
+class TestProvisioningTokenResolution:
+    """Test provisioning token minting in resolve_inline_vm (#231)."""
 
-    def test_resolve_auth_token_network_returns_empty(self, site_config_dir):
-        """network auth method should return empty token."""
-        resolver = ConfigResolver(str(site_config_dir))
-        token = resolver._resolve_auth_token('dev', 'test-vm')
-        assert token == ''
-
-    def test_resolve_auth_token_site_token_returns_shared(self, site_config_dir):
-        """site_token auth method should return shared token."""
-        resolver = ConfigResolver(str(site_config_dir))
-        token = resolver._resolve_auth_token('stage', 'test-vm')
-        assert token == 'shared-staging-token'
-
-    def test_resolve_auth_token_node_token_returns_per_vm(self, site_config_dir):
-        """node_token auth method should return per-VM token."""
-        resolver = ConfigResolver(str(site_config_dir))
-        token = resolver._resolve_auth_token('prod', 'test1')
-        assert token == 'unique-test1-token'
-
-    def test_resolve_auth_token_node_token_missing_returns_empty(self, site_config_dir):
-        """Missing node token should return empty string."""
-        resolver = ConfigResolver(str(site_config_dir))
-        token = resolver._resolve_auth_token('prod', 'unknown-vm')
-        assert token == ''
-
-    def test_resolve_auth_token_unknown_method_returns_empty(self, site_config_dir):
-        """Unknown auth method should default to empty token."""
-        # Add a posture with unknown auth method
-        (site_config_dir / 'postures/custom.yaml').write_text("""
-auth:
-  method: unknown_method
-""")
-        resolver = ConfigResolver(str(site_config_dir))
-        token = resolver._resolve_auth_token('custom', 'test-vm')
-        assert token == ''
-
-    def test_resolve_auth_token_missing_posture_returns_empty(self, site_config_dir):
-        """Missing posture should default to network (empty token)."""
-        resolver = ConfigResolver(str(site_config_dir))
-        # 'nonexistent' posture doesn't exist
-        token = resolver._resolve_auth_token('nonexistent', 'test-vm')
-        assert token == ''
-
-    def test_resolve_inline_vm_includes_auth_token(self, site_config_dir):
-        """resolve_inline_vm should include auth_token in VM."""
+    def test_resolve_inline_vm_mints_token_with_spec(self, site_config_dir):
+        """resolve_inline_vm mints provisioning token when spec and spec_server set."""
         resolver = ConfigResolver(str(site_config_dir))
         config = resolver.resolve_inline_vm(
             node='test-node',
@@ -303,24 +263,47 @@ auth:
             vmid=99900,
             vm_preset='vm-small',
             image='debian-12-custom.img',
-            posture='stage'
+            spec='base',
         )
 
-        assert config['vms'][0]['auth_token'] == 'shared-staging-token'
+        token = config['vms'][0]['auth_token']
+        # Token should be non-empty (minted)
+        assert token != ''
+        # Token format: base64url.base64url
+        assert '.' in token
+        parts = token.split('.')
+        assert len(parts) == 2
 
-    def test_resolve_inline_vm_defaults_to_dev_posture(self, site_config_dir):
-        """resolve_inline_vm should default to dev posture if not specified."""
+    def test_resolve_inline_vm_empty_token_without_spec(self, site_config_dir):
+        """resolve_inline_vm returns empty token when no spec FK."""
         resolver = ConfigResolver(str(site_config_dir))
         config = resolver.resolve_inline_vm(
             node='test-node',
             vm_name='inline-vm',
             vmid=99900,
             vm_preset='vm-small',
-            image='debian-12-custom.img'
-            # No posture specified
+            image='debian-12-custom.img',
+            # No spec parameter
         )
 
-        # dev posture = network auth = empty token
+        assert config['vms'][0]['auth_token'] == ''
+
+    def test_resolve_inline_vm_empty_token_without_spec_server(self, site_config_dir):
+        """resolve_inline_vm returns empty token when no spec_server configured."""
+        # Override site.yaml to remove spec_server
+        (site_config_dir / 'site.yaml').write_text(yaml.dump({
+            "defaults": {"domain": "test.local", "timezone": "UTC"}
+        }))
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_inline_vm(
+            node='test-node',
+            vm_name='inline-vm',
+            vmid=99900,
+            vm_preset='vm-small',
+            image='debian-12-custom.img',
+            spec='base',
+        )
+
         assert config['vms'][0]['auth_token'] == ''
 
 

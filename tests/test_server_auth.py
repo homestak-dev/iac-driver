@@ -1,11 +1,15 @@
 """Tests for server/auth.py - authentication middleware."""
 
+import base64
+import hashlib
+import hmac
+import json
 import os
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-import yaml
 
 # Add src to path for imports
 import sys
@@ -14,11 +18,30 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from server.auth import (
     AuthError,
     extract_bearer_token,
-    validate_spec_auth,
+    verify_provisioning_token,
     validate_repo_token,
+    _base64url_decode,
 )
-from resolver.spec_resolver import SpecResolver, SpecNotFoundError
-from resolver.base import ResolverError
+
+
+# Test signing key (256-bit, hex-encoded)
+TEST_SIGNING_KEY = "a" * 64  # 32 bytes = 256 bits
+
+
+def _mint_test_token(node: str, spec: str, signing_key: str = TEST_SIGNING_KEY, **overrides) -> str:
+    """Helper: mint a valid provisioning token for testing."""
+    payload = {"v": 1, "n": node, "s": spec, "iat": int(time.time())}
+    payload.update(overrides)
+    payload_bytes = base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(',', ':')).encode()
+    ).rstrip(b'=')
+    signature = hmac.new(
+        bytes.fromhex(signing_key),
+        payload_bytes,
+        hashlib.sha256,
+    ).digest()
+    sig_bytes = base64.urlsafe_b64encode(signature).rstrip(b'=')
+    return f"{payload_bytes.decode()}.{sig_bytes.decode()}"
 
 
 class TestAuthError:
@@ -66,190 +89,163 @@ class TestExtractBearerToken:
         assert token == ""
 
 
-class TestValidateSpecAuth:
-    """Tests for validate_spec_auth function."""
+class TestBase64UrlDecode:
+    """Tests for _base64url_decode helper."""
 
-    @pytest.fixture
-    def site_config(self, tmp_path):
-        """Create a minimal site-config for auth testing."""
-        # Create directories
-        (tmp_path / "specs").mkdir(parents=True)
-        (tmp_path / "postures").mkdir(parents=True)
+    def test_decode_no_padding(self):
+        """Decodes base64url without padding."""
+        encoded = base64.urlsafe_b64encode(b"hello").rstrip(b'=').decode()
+        assert _base64url_decode(encoded) == b"hello"
 
-        # Create site.yaml
-        site_yaml = {"defaults": {"domain": "test.local"}}
-        (tmp_path / "site.yaml").write_text(yaml.dump(site_yaml))
+    def test_decode_with_padding(self):
+        """Decodes base64url that already has padding."""
+        encoded = base64.urlsafe_b64encode(b"test").decode()
+        assert _base64url_decode(encoded) == b"test"
 
-        # Create secrets.yaml
-        secrets_yaml = {
-            "ssh_keys": {},
-            "auth": {
-                "site_token": "test-site-token",
-                "node_tokens": {
-                    "prod1": "prod1-node-token",
-                    "prod2": "prod2-node-token",
-                },
-            },
-        }
-        (tmp_path / "secrets.yaml").write_text(yaml.dump(secrets_yaml))
+    def test_decode_url_safe_chars(self):
+        """Handles URL-safe characters (- and _ instead of + and /)."""
+        # Data that would produce + or / in standard base64
+        data = bytes(range(256))
+        encoded = base64.urlsafe_b64encode(data).rstrip(b'=').decode()
+        assert _base64url_decode(encoded) == data
 
-        # Create postures
-        dev_posture = {"auth": {"method": "network"}}
-        (tmp_path / "postures" / "dev.yaml").write_text(yaml.dump(dev_posture))
 
-        stage_posture = {"auth": {"method": "site_token"}}
-        (tmp_path / "postures" / "stage.yaml").write_text(yaml.dump(stage_posture))
+class TestVerifyProvisioningToken:
+    """Tests for verify_provisioning_token function."""
 
-        prod_posture = {"auth": {"method": "node_token"}}
-        (tmp_path / "postures" / "prod.yaml").write_text(yaml.dump(prod_posture))
+    def test_valid_token(self):
+        """Valid token returns decoded claims."""
+        token = _mint_test_token("edge", "base")
+        claims = verify_provisioning_token(token, TEST_SIGNING_KEY, "edge")
 
-        # Create specs with different postures
-        dev_spec = {"schema_version": 1, "access": {"posture": "dev"}}
-        (tmp_path / "specs" / "dev-vm.yaml").write_text(yaml.dump(dev_spec))
+        assert claims["v"] == 1
+        assert claims["n"] == "edge"
+        assert claims["s"] == "base"
+        assert "iat" in claims
 
-        stage_spec = {"schema_version": 1, "access": {"posture": "stage"}}
-        (tmp_path / "specs" / "stage-vm.yaml").write_text(yaml.dump(stage_spec))
+    def test_valid_token_different_spec(self):
+        """Token with different spec FK is valid."""
+        token = _mint_test_token("pve-node", "pve")
+        claims = verify_provisioning_token(token, TEST_SIGNING_KEY, "pve-node")
 
-        prod_spec = {"schema_version": 1, "access": {"posture": "prod"}}
-        (tmp_path / "specs" / "prod1.yaml").write_text(yaml.dump(prod_spec))
-        (tmp_path / "specs" / "prod2.yaml").write_text(yaml.dump(prod_spec))
+        assert claims["s"] == "pve"
 
-        return tmp_path
+    def test_malformed_token_no_dots(self):
+        """Rejects token without dot separator."""
+        with pytest.raises(AuthError) as exc_info:
+            verify_provisioning_token("nodots", TEST_SIGNING_KEY, "edge")
+        assert exc_info.value.code == "E300"
+        assert exc_info.value.http_status == 400
 
-    @pytest.fixture
-    def resolver(self, site_config):
-        """Create SpecResolver with test site-config."""
-        return SpecResolver(etc_path=site_config)
+    def test_malformed_token_too_many_dots(self):
+        """Rejects token with too many dot segments."""
+        with pytest.raises(AuthError) as exc_info:
+            verify_provisioning_token("a.b.c", TEST_SIGNING_KEY, "edge")
+        assert exc_info.value.code == "E300"
+        assert exc_info.value.http_status == 400
 
-    # Network auth tests (no token required)
+    def test_invalid_signature(self):
+        """Rejects token with wrong signature."""
+        token = _mint_test_token("edge", "base")
+        # Use a different signing key to verify
+        wrong_key = "b" * 64
+        with pytest.raises(AuthError) as exc_info:
+            verify_provisioning_token(token, wrong_key, "edge")
+        assert exc_info.value.code == "E301"
+        assert exc_info.value.http_status == 401
 
-    def test_network_auth_no_token_required(self, resolver):
-        """Network auth succeeds without any token."""
-        error = validate_spec_auth("dev-vm", "", resolver)
-        assert error is None
+    def test_tampered_payload(self):
+        """Rejects token with modified payload."""
+        token = _mint_test_token("edge", "base")
+        payload_b64, sig_b64 = token.split(".")
 
-    def test_network_auth_ignores_provided_token(self, resolver):
-        """Network auth ignores any provided token."""
-        error = validate_spec_auth("dev-vm", "Bearer some-token", resolver)
-        assert error is None
+        # Tamper with payload (change a character)
+        tampered = list(payload_b64)
+        tampered[5] = 'X' if tampered[5] != 'X' else 'Y'
+        tampered_token = f"{''.join(tampered)}.{sig_b64}"
 
-    # Site token auth tests
+        with pytest.raises(AuthError) as exc_info:
+            verify_provisioning_token(tampered_token, TEST_SIGNING_KEY, "edge")
+        # Could be E300 (bad payload) or E301 (bad sig) depending on what X decodes to
+        assert exc_info.value.http_status in (400, 401)
 
-    def test_site_token_auth_success(self, resolver):
-        """Site token auth succeeds with correct token."""
-        error = validate_spec_auth("stage-vm", "Bearer test-site-token", resolver)
-        assert error is None
+    def test_identity_mismatch(self):
+        """Rejects token when URL identity doesn't match token identity."""
+        token = _mint_test_token("edge", "base")
+        with pytest.raises(AuthError) as exc_info:
+            verify_provisioning_token(token, TEST_SIGNING_KEY, "wrong-identity")
+        assert exc_info.value.code == "E301"
+        assert "mismatch" in exc_info.value.message
 
-    def test_site_token_auth_missing_token(self, resolver):
-        """Site token auth fails when no token provided."""
-        error = validate_spec_auth("stage-vm", "", resolver)
-        assert error is not None
-        assert error.code == "E300"
-        assert error.http_status == 401
+    def test_unsupported_version(self):
+        """Rejects token with unsupported version."""
+        token = _mint_test_token("edge", "base", v=2)
+        with pytest.raises(AuthError) as exc_info:
+            verify_provisioning_token(token, TEST_SIGNING_KEY, "edge")
+        assert exc_info.value.code == "E300"
+        assert "version" in exc_info.value.message.lower()
 
-    def test_site_token_auth_wrong_token(self, resolver):
-        """Site token auth fails with wrong token."""
-        error = validate_spec_auth("stage-vm", "Bearer wrong-token", resolver)
-        assert error is not None
-        assert error.code == "E301"
-        assert error.http_status == 403
+    def test_missing_n_claim(self):
+        """Rejects token without 'n' claim."""
+        # Build token manually without 'n'
+        payload = {"v": 1, "s": "base", "iat": int(time.time())}
+        payload_bytes = base64.urlsafe_b64encode(
+            json.dumps(payload, separators=(',', ':')).encode()
+        ).rstrip(b'=')
+        signature = hmac.new(
+            bytes.fromhex(TEST_SIGNING_KEY), payload_bytes, hashlib.sha256
+        ).digest()
+        sig_bytes = base64.urlsafe_b64encode(signature).rstrip(b'=')
+        token = f"{payload_bytes.decode()}.{sig_bytes.decode()}"
 
-    def test_site_token_auth_not_configured(self, tmp_path):
-        """Site token auth fails when site_token not in secrets."""
-        # Create site-config without site_token
-        (tmp_path / "specs").mkdir(parents=True)
-        (tmp_path / "postures").mkdir(parents=True)
-        (tmp_path / "site.yaml").write_text(yaml.dump({"defaults": {}}))
-        (tmp_path / "secrets.yaml").write_text(yaml.dump({"auth": {}}))
+        with pytest.raises(AuthError) as exc_info:
+            verify_provisioning_token(token, TEST_SIGNING_KEY, "edge")
+        assert exc_info.value.code == "E300"
+        assert "missing required claims" in exc_info.value.message
 
-        stage_posture = {"auth": {"method": "site_token"}}
-        (tmp_path / "postures" / "stage.yaml").write_text(yaml.dump(stage_posture))
+    def test_missing_s_claim(self):
+        """Rejects token without 's' claim."""
+        payload = {"v": 1, "n": "edge", "iat": int(time.time())}
+        payload_bytes = base64.urlsafe_b64encode(
+            json.dumps(payload, separators=(',', ':')).encode()
+        ).rstrip(b'=')
+        signature = hmac.new(
+            bytes.fromhex(TEST_SIGNING_KEY), payload_bytes, hashlib.sha256
+        ).digest()
+        sig_bytes = base64.urlsafe_b64encode(signature).rstrip(b'=')
+        token = f"{payload_bytes.decode()}.{sig_bytes.decode()}"
 
-        spec = {"schema_version": 1, "access": {"posture": "stage"}}
-        (tmp_path / "specs" / "test.yaml").write_text(yaml.dump(spec))
+        with pytest.raises(AuthError) as exc_info:
+            verify_provisioning_token(token, TEST_SIGNING_KEY, "edge")
+        assert exc_info.value.code == "E300"
+        assert "missing required claims" in exc_info.value.message
 
-        resolver = SpecResolver(etc_path=tmp_path)
-        error = validate_spec_auth("test", "Bearer some-token", resolver)
+    def test_invalid_signing_key_hex(self):
+        """Rejects operation with malformed signing key."""
+        token = _mint_test_token("edge", "base")
+        with pytest.raises(AuthError) as exc_info:
+            verify_provisioning_token(token, "not-hex", "edge")
+        assert exc_info.value.code == "E500"
+        assert exc_info.value.http_status == 500
 
-        assert error is not None
-        assert error.code == "E500"
-        assert "not configured" in error.message
+    def test_invalid_sig_encoding(self):
+        """Rejects token with non-base64 signature."""
+        payload = {"v": 1, "n": "edge", "s": "base", "iat": int(time.time())}
+        payload_bytes = base64.urlsafe_b64encode(
+            json.dumps(payload, separators=(',', ':')).encode()
+        ).rstrip(b'=')
+        token = f"{payload_bytes.decode()}.!!!invalid!!!"
 
-    # Node token auth tests
+        with pytest.raises(AuthError) as exc_info:
+            verify_provisioning_token(token, TEST_SIGNING_KEY, "edge")
+        assert exc_info.value.http_status in (400, 401)
 
-    def test_node_token_auth_success(self, resolver):
-        """Node token auth succeeds with correct token."""
-        error = validate_spec_auth("prod1", "Bearer prod1-node-token", resolver)
-        assert error is None
-
-    def test_node_token_auth_different_nodes(self, resolver):
-        """Each node has unique token."""
-        error1 = validate_spec_auth("prod1", "Bearer prod1-node-token", resolver)
-        error2 = validate_spec_auth("prod2", "Bearer prod2-node-token", resolver)
-        assert error1 is None
-        assert error2 is None
-
-        # Cross-node token fails
-        error3 = validate_spec_auth("prod1", "Bearer prod2-node-token", resolver)
-        assert error3 is not None
-        assert error3.code == "E301"
-
-    def test_node_token_auth_missing_token(self, resolver):
-        """Node token auth fails when no token provided."""
-        error = validate_spec_auth("prod1", "", resolver)
-        assert error is not None
-        assert error.code == "E300"
-        assert error.http_status == 401
-
-    def test_node_token_auth_not_configured(self, tmp_path):
-        """Node token auth fails when node_token not in secrets."""
-        (tmp_path / "specs").mkdir(parents=True)
-        (tmp_path / "postures").mkdir(parents=True)
-        (tmp_path / "site.yaml").write_text(yaml.dump({"defaults": {}}))
-        (tmp_path / "secrets.yaml").write_text(yaml.dump({"auth": {"node_tokens": {}}}))
-
-        prod_posture = {"auth": {"method": "node_token"}}
-        (tmp_path / "postures" / "prod.yaml").write_text(yaml.dump(prod_posture))
-
-        spec = {"schema_version": 1, "access": {"posture": "prod"}}
-        (tmp_path / "specs" / "unknown.yaml").write_text(yaml.dump(spec))
-
-        resolver = SpecResolver(etc_path=tmp_path)
-        error = validate_spec_auth("unknown", "Bearer some-token", resolver)
-
-        assert error is not None
-        assert error.code == "E500"
-        assert "not configured" in error.message
-
-    # Error handling tests
-
-    def test_spec_not_found_error(self, resolver):
-        """Returns 404 for nonexistent spec."""
-        error = validate_spec_auth("nonexistent", "", resolver)
-        assert error is not None
-        assert error.code == "E200"
-        assert error.http_status == 404
-
-    def test_unknown_auth_method(self, tmp_path):
-        """Returns 500 for unknown auth method."""
-        (tmp_path / "specs").mkdir(parents=True)
-        (tmp_path / "postures").mkdir(parents=True)
-        (tmp_path / "site.yaml").write_text(yaml.dump({"defaults": {}}))
-        (tmp_path / "secrets.yaml").write_text(yaml.dump({}))
-
-        # Create posture with invalid auth method
-        bad_posture = {"auth": {"method": "invalid_method"}}
-        (tmp_path / "postures" / "bad.yaml").write_text(yaml.dump(bad_posture))
-
-        spec = {"schema_version": 1, "access": {"posture": "bad"}}
-        (tmp_path / "specs" / "test.yaml").write_text(yaml.dump(spec))
-
-        resolver = SpecResolver(etc_path=tmp_path)
-        error = validate_spec_auth("test", "", resolver)
-
-        assert error is not None
-        assert error.code == "E500"
-        assert "Unknown auth method" in error.message
+    def test_iat_claim_preserved(self):
+        """iat (issued-at) claim is preserved in returned claims."""
+        now = int(time.time())
+        token = _mint_test_token("edge", "base", iat=now)
+        claims = verify_provisioning_token(token, TEST_SIGNING_KEY, "edge")
+        assert claims["iat"] == now
 
 
 class TestValidateRepoToken:

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
+from config import _load_secrets, get_site_config_dir
 from resolver.spec_resolver import SpecResolver
 from resolver.base import ResolverError
 
@@ -35,6 +36,7 @@ class ServerHandler(BaseHTTPRequestHandler):
     spec_resolver: Optional[SpecResolver] = None
     repo_manager: Optional[RepoManager] = None
     repo_token: str = ""
+    signing_key: str = ""  # Provisioning token signing key (#231)
 
     def log_message(self, format: str, *args):
         """Override to use Python logging."""
@@ -101,7 +103,9 @@ class ServerHandler(BaseHTTPRequestHandler):
             return
 
         auth_header = self.headers.get("Authorization", "")
-        response, status = handle_spec_request(identity, auth_header, self.spec_resolver)
+        response, status = handle_spec_request(
+            identity, auth_header, self.spec_resolver, self.signing_key
+        )
         self.send_json(response, status)
 
     def _handle_specs_list(self):
@@ -195,10 +199,22 @@ class Server:
                 logger.error("Failed to prepare repos: %s", e)
                 raise RuntimeError(f"Repos init failed: {e}") from e
 
+        # Load signing key from secrets for provisioning token verification
+        try:
+            site_config_path = self.spec_resolver.etc_path if self.spec_resolver else get_site_config_dir()
+            secrets = _load_secrets(site_config_path) or {}
+            signing_key = secrets.get("auth", {}).get("signing_key", "")
+            if not signing_key:
+                logger.warning("auth.signing_key not found in secrets.yaml — spec auth disabled")
+        except Exception as e:
+            logger.warning("Failed to load signing key: %s — spec auth disabled", e)
+            signing_key = ""
+
         # Set handler class attributes
         ServerHandler.spec_resolver = self.spec_resolver
         ServerHandler.repo_manager = self.repo_manager
         ServerHandler.repo_token = self.repo_token
+        ServerHandler.signing_key = signing_key
 
         # Create HTTP server
         self.server = HTTPServer((self.bind, self.port), ServerHandler)

@@ -1,6 +1,6 @@
 """Spec endpoint handler for the server.
 
-Serves resolved specs from site-config/specs/ with posture-based auth.
+Serves resolved specs from site-config/specs/ with provisioning token auth (#231).
 """
 
 import json
@@ -17,7 +17,7 @@ from resolver.base import (
     PostureNotFoundError,
     SSHKeyNotFoundError,
 )
-from server.auth import validate_spec_auth, AuthError
+from server.auth import extract_bearer_token, verify_provisioning_token, AuthError
 
 logger = logging.getLogger(__name__)
 
@@ -26,27 +26,46 @@ def handle_spec_request(
     identity: str,
     auth_header: str,
     resolver: SpecResolver,
+    signing_key: str,
 ) -> Tuple[dict, int]:
-    """Handle a spec request.
+    """Handle a spec request with provisioning token authentication.
 
-    Validates auth and returns resolved spec.
+    Requires a valid provisioning token. The spec is resolved using the
+    token's 's' claim (spec FK), not the URL identity.
 
     Args:
-        identity: Spec identity (e.g., "base", "pve")
+        identity: Node identity from URL path (e.g., "edge")
         auth_header: Authorization header from request
         resolver: SpecResolver instance
+        signing_key: Hex-encoded signing key for token verification
 
     Returns:
         Tuple of (response_dict, http_status)
     """
-    # Validate authentication
-    auth_error = validate_spec_auth(identity, auth_header, resolver)
-    if auth_error:
-        return _error_response(auth_error.code, auth_error.message), auth_error.http_status
+    # Extract and verify provisioning token
+    token = extract_bearer_token(auth_header)
+    if not token:
+        return _error_response("E300", "Provisioning token required"), 400
 
-    # Resolve spec
+    if not signing_key:
+        return _error_response("E500", "Signing key not configured"), 500
+
     try:
-        spec = resolver.resolve(identity)
+        claims = verify_provisioning_token(token, signing_key, identity)
+    except AuthError as e:
+        logger.warning(
+            "Token verification failed: %s %s node=%s",
+            e.code, e.message, identity,
+        )
+        return _error_response(e.code, e.message), e.http_status
+
+    # Extract spec FK from token claims
+    spec_name = claims["s"]
+    logger.info("Token verified: n=%s s=%s iat=%s", claims["n"], spec_name, claims.get("iat"))
+
+    # Resolve spec using the token's spec FK
+    try:
+        spec = resolver.resolve(spec_name)
 
         # Remove internal _posture field from response
         if "access" in spec and "_posture" in spec["access"]:
@@ -56,7 +75,7 @@ def handle_spec_request(
         return spec, 200
 
     except SpecNotFoundError as e:
-        return _error_response(e.code, e.message), 404
+        return _error_response("E200", f"Spec not found: {spec_name}"), 404
     except PostureNotFoundError as e:
         return _error_response(e.code, e.message), 404
     except SSHKeyNotFoundError as e:
@@ -66,7 +85,7 @@ def handle_spec_request(
     except ResolverError as e:
         return _error_response(e.code, e.message), 500
     except Exception as e:
-        logger.exception("Unexpected error resolving spec %s", identity)
+        logger.exception("Unexpected error resolving spec %s", spec_name)
         return _error_response("E500", f"Internal error: {e}"), 500
 
 
