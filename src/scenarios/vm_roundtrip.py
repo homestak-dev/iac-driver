@@ -404,6 +404,7 @@ class SpecVMPushRoundtrip:
                 vmid=99900,
                 vm_preset='vm-small',
                 image='debian-12',
+                spec='base',
             ), 'Provision VM(s)'),
 
             ('start', StartProvisionedVMsAction(
@@ -482,6 +483,7 @@ class SpecVMPullRoundtrip:
                 vmid=99950,
                 vm_preset='vm-small',
                 image='debian-12',
+                spec='base',
             ), 'Provision VM(s)'),
 
             ('start', StartProvisionedVMsAction(
