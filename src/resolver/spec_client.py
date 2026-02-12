@@ -248,18 +248,29 @@ class SpecClient:
 def get_config_from_env() -> dict:
     """Get configuration from environment variables.
 
+    Environment variables (v0.49+):
+      HOMESTAK_SERVER  - Server URL (replaces HOMESTAK_SPEC_SERVER)
+      HOMESTAK_TOKEN   - Provisioning token (replaces HOMESTAK_IDENTITY + HOMESTAK_AUTH_TOKEN)
+
+    Identity is derived from hostname, not env var.
+
     Returns:
         Dict with server, identity, token (if set)
     """
     config = {}
 
-    if server := os.environ.get("HOMESTAK_SPEC_SERVER"):
+    # v0.49+: HOMESTAK_SERVER (preferred), fallback to HOMESTAK_SPEC_SERVER
+    server = os.environ.get("HOMESTAK_SERVER") or os.environ.get("HOMESTAK_SPEC_SERVER")
+    if server:
         config["server"] = server
 
-    if identity := os.environ.get("HOMESTAK_IDENTITY"):
-        config["identity"] = identity
+    # Identity from hostname (not env var)
+    import socket
+    config["identity"] = socket.gethostname()
 
-    if token := os.environ.get("HOMESTAK_AUTH_TOKEN"):
+    # v0.49+: HOMESTAK_TOKEN (provisioning token, required for pull mode)
+    token = os.environ.get("HOMESTAK_TOKEN")
+    if token:
         config["token"] = token
 
     return config
@@ -275,19 +286,19 @@ def main():
         "--server",
         "-s",
         help="Server URL (e.g., https://father:44443). "
-        "Env: HOMESTAK_SPEC_SERVER",
+        "Env: HOMESTAK_SERVER",
     )
     parser.add_argument(
         "--identity",
         "-i",
-        help="Node identity (e.g., dev1). "
-        "Env: HOMESTAK_IDENTITY",
+        help="Node identity (default: hostname). "
+        "Override for testing only.",
     )
     parser.add_argument(
         "--token",
         "-t",
-        help="Bearer token for authentication. "
-        "Env: HOMESTAK_AUTH_TOKEN",
+        help="Provisioning token. "
+        "Env: HOMESTAK_TOKEN",
     )
     parser.add_argument(
         "--output",
@@ -331,11 +342,11 @@ def main():
 
     # Validate required args
     if not server:
-        logger.error("Error: --server or HOMESTAK_SPEC_SERVER required")
+        logger.error("Error: --server or HOMESTAK_SERVER required")
         sys.exit(EXIT_CLIENT_ERROR)
 
     if not identity:
-        logger.error("Error: --identity or HOMESTAK_IDENTITY required")
+        logger.error("Error: --identity required (default: hostname)")
         sys.exit(EXIT_CLIENT_ERROR)
 
     # Warn about insecure mode

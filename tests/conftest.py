@@ -67,7 +67,7 @@ defaults:
   spec_server: "https://controller:44443"
 """)
 
-    # Create secrets.yaml (v0.45: auth section for spec tokens)
+    # Create secrets.yaml (v0.49: signing_key for provisioning tokens)
     (tmp_path / 'secrets.yaml').write_text("""
 api_tokens:
   test-node: "user@pam!token=secret"
@@ -77,10 +77,7 @@ ssh_keys:
   key1: "ssh-rsa AAAA... user1"
   key2: "ssh-ed25519 AAAA... user2"
 auth:
-  site_token: "shared-staging-token"
-  node_tokens:
-    test1: "unique-test1-token"
-    test2: "unique-test2-token"
+  signing_key: """ + '"' + 'a' * 64 + '"' + """
 """)
 
     # Create node config (datastore required)

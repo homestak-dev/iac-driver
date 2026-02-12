@@ -182,7 +182,7 @@ class VerifyEnvVarsAction:
             )
 
         # Check for required env vars
-        required_vars = ['HOMESTAK_SPEC_SERVER', 'HOMESTAK_IDENTITY']
+        required_vars = ['HOMESTAK_SERVER', 'HOMESTAK_TOKEN']
         missing = []
         for var in required_vars:
             if var not in out:

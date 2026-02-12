@@ -382,8 +382,8 @@ def apply_config(
 def _fetch_spec(insecure: bool = False) -> Optional[Path]:
     """Fetch spec from server using environment variables.
 
-    Uses HOMESTAK_SPEC_SERVER, HOMESTAK_IDENTITY, and optionally
-    HOMESTAK_AUTH_TOKEN from the environment.
+    Uses HOMESTAK_SERVER and HOMESTAK_TOKEN from the environment (v0.49+).
+    Identity is derived from hostname.
 
     Args:
         insecure: Skip SSL certificate verification
@@ -399,10 +399,10 @@ def _fetch_spec(insecure: bool = False) -> Optional[Path]:
     token = env_config.get('token')
 
     if not server:
-        logger.error("--fetch requires HOMESTAK_SPEC_SERVER environment variable")
+        logger.error("--fetch requires HOMESTAK_SERVER environment variable")
         return None
-    if not identity:
-        logger.error("--fetch requires HOMESTAK_IDENTITY environment variable")
+    if not token:
+        logger.error("--fetch requires HOMESTAK_TOKEN environment variable (provisioning token)")
         return None
 
     try:
@@ -445,7 +445,7 @@ def config_main(argv: list) -> int:
         '--fetch',
         action='store_true',
         help='Fetch spec from server before applying '
-             '(uses HOMESTAK_SPEC_SERVER + HOMESTAK_IDENTITY env vars)',
+             '(uses HOMESTAK_SERVER + HOMESTAK_TOKEN env vars)',
     )
     parser.add_argument(
         '--insecure', '-k',

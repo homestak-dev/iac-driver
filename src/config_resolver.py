@@ -7,21 +7,24 @@ inheritance is resolved here, so consumers receive fully-computed values.
 Resolution order (tofu):
 1. presets/{vm_preset}.yaml (VM size: cores, memory, disk)
 2. Inline VM overrides (name, vmid, image) from manifest nodes or CLI
-3. postures/{posture}.yaml for auth.method (v0.45+)
+3. Provisioning token minted with spec FK (v0.49+)
 
 Resolution order (ansible):
 1. site.yaml defaults (timezone, packages, pve settings)
 2. postures/{posture}.yaml (security settings from env's posture FK)
 3. Packages merged: site packages + posture packages (deduplicated)
 
-Auth token resolution (v0.45+):
-- network: empty string (trust network boundary)
-- site_token: secrets.auth.site_token (shared)
-- node_token: secrets.auth.node_tokens.{vm_name} (per-VM)
+Provisioning token (v0.49+):
+HMAC-SHA256 signed token carrying node name and spec FK.
+Replaces posture-based auth (network/site_token/node_token).
 """
 
+import base64
+import hashlib
+import hmac
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -74,39 +77,62 @@ class ConfigResolver:
                 result[f.stem] = _parse_yaml(f)
         return result
 
-    def _resolve_auth_token(self, posture_name: str, vm_name: str) -> str:
-        """Resolve auth token for a VM based on posture's auth method.
-
-        Uses postures/{posture}.yaml to determine auth.method, then
-        resolves the appropriate token from secrets.yaml.
-
-        Args:
-            posture_name: Posture name (matches postures/{posture}.yaml)
-            vm_name: VM name (used for node_token resolution)
+    def _get_signing_key(self) -> str:
+        """Get the provisioning token signing key from secrets.
 
         Returns:
-            Auth token string, or empty string for network trust
+            Hex-encoded 256-bit signing key
+
+        Raises:
+            ConfigError: If signing key is not configured
         """
-        posture = self.postures.get(posture_name, {})
-        auth_config = posture.get("auth", {})
-        auth_method = auth_config.get("method", "network")
+        auth = self.secrets.get("auth", {})
+        key = auth.get("signing_key", "")
+        if not key:
+            raise ConfigError(
+                "auth.signing_key not found in secrets.yaml. "
+                "Generate with: python3 -c \"import secrets; print(secrets.token_hex(32))\""
+            )
+        return key
 
-        # Resolve token based on method
-        auth_secrets = self.secrets.get("auth", {})
+    def _mint_provisioning_token(self, node_name: str, spec_name: str) -> str:
+        """Mint a signed provisioning token for a VM.
 
-        if auth_method == "network":
-            # Trust network boundary, no token needed
-            return ""
-        elif auth_method == "site_token":
-            # Shared site-wide token
-            return auth_secrets.get("site_token", "")
-        elif auth_method == "node_token":
-            # Per-VM unique token
-            node_tokens = auth_secrets.get("node_tokens", {})
-            return node_tokens.get(vm_name, "")
-        else:
-            # Unknown method, default to no token
-            return ""
+        Creates an HMAC-SHA256 signed token carrying the node identity
+        and spec FK. The token is the sole auth artifact for spec fetching.
+
+        Args:
+            node_name: VM hostname (becomes 'n' claim)
+            spec_name: Spec FK (becomes 's' claim, resolves to specs/{s}.yaml)
+
+        Returns:
+            Signed token: base64url(payload).base64url(signature)
+
+        Raises:
+            ConfigError: If signing key is not configured
+        """
+        signing_key = self._get_signing_key()
+
+        payload = {
+            "v": 1,
+            "n": node_name,
+            "s": spec_name,
+            "iat": int(time.time()),
+        }
+
+        payload_bytes = base64.urlsafe_b64encode(
+            json.dumps(payload, separators=(',', ':')).encode()
+        ).rstrip(b'=')
+
+        signature = hmac.new(
+            bytes.fromhex(signing_key),
+            payload_bytes,
+            hashlib.sha256,
+        ).digest()
+
+        sig_bytes = base64.urlsafe_b64encode(signature).rstrip(b'=')
+
+        return f"{payload_bytes.decode()}.{sig_bytes.decode()}"
 
     def resolve_inline_vm(
         self,
@@ -115,7 +141,7 @@ class ConfigResolver:
         vmid: int,
         vm_preset: Optional[str] = None,
         image: Optional[str] = None,
-        posture: Optional[str] = None
+        spec: Optional[str] = None,
     ) -> dict:
         """Resolve inline VM definition.
 
@@ -128,7 +154,7 @@ class ConfigResolver:
             vmid: Explicit VM ID
             vm_preset: Preset name (matches presets/{vm_preset}.yaml)
             image: Image name (required for vm_preset mode)
-            posture: Posture name for auth token resolution (default: dev)
+            spec: Spec FK for provisioning token (specs/{spec}.yaml)
 
         Returns:
             Dict with all resolved config ready for tfvars.json
@@ -154,11 +180,8 @@ class ConfigResolver:
         # Site defaults
         defaults = self.site.get("defaults", {})
 
-        # Spec server for Create → Specify flow (v0.45+)
+        # Spec server for Create → Config flow (v0.49+: HOMESTAK_SERVER)
         spec_server = defaults.get("spec_server", "")
-
-        # Posture for auth token resolution (default to dev)
-        posture_name = posture or "dev"
 
         # Build VM instance dict for _resolve_vm
         vm_instance = {
@@ -172,8 +195,11 @@ class ConfigResolver:
 
         # Resolve the single VM
         resolved_vm = self._resolve_vm(vm_instance, vmid, defaults)
-        # Add auth token based on posture (v0.45+)
-        resolved_vm["auth_token"] = self._resolve_auth_token(posture_name, vm_name)
+        # Mint provisioning token if spec server and spec FK are configured (v0.49+)
+        if spec_server and spec:
+            resolved_vm["auth_token"] = self._mint_provisioning_token(vm_name, spec)
+        else:
+            resolved_vm["auth_token"] = ""
 
         # Resolve passwords and SSH keys from secrets
         passwords = self.secrets.get("passwords", {})

@@ -160,19 +160,6 @@ class SpecResolver(ResolverBase):
         self._spec_cache[identity] = spec
         return spec
 
-    def get_auth_method(self, identity: str) -> str:
-        """Get the auth method for a spec.
-
-        Args:
-            identity: Spec identifier
-
-        Returns:
-            Auth method: "network", "site_token", or "node_token"
-        """
-        spec = self.resolve(identity)
-        posture = spec.get("access", {}).get("_posture", {})
-        return posture.get("auth", {}).get("method", "network")
-
     def list_specs(self) -> list:
         """List available spec identities.
 

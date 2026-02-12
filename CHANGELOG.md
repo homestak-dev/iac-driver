@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Theme: Provisioning Token (homestak-dev#231)
+
+HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
+
+### Added
+- Add `_mint_provisioning_token()` in ConfigResolver — mints HMAC-signed token at create time (#187)
+- Add `verify_provisioning_token()` in server/auth — verifies HMAC, extracts spec FK from `s` claim (#187)
+- Add `token inspect` CLI verb — decode/verify provisioning tokens (#187)
+- Add `get_signing_key()` to ResolverBase (#187)
+
+### Changed
+- Server spec endpoint requires provisioning token; spec resolved from token's `s` claim, not URL identity (#187)
+- Rename `HOMESTAK_SPEC_SERVER` → `HOMESTAK_SERVER` across all components (#188)
+- Consolidate `HOMESTAK_IDENTITY` + `HOMESTAK_AUTH_TOKEN` into `HOMESTAK_TOKEN` (#187, #188)
+- Cloud-init injects `HOMESTAK_SERVER` + `HOMESTAK_TOKEN` (was 3 env vars) (#187)
+- `AuthError` now inherits from `Exception` (was dataclass) (#187)
+
+### Removed
+- Remove `validate_spec_auth()` — replaced by `verify_provisioning_token()` (#187)
+- Remove `_resolve_auth_token()` and posture-based auth dispatch from ConfigResolver (#187)
+- Remove `get_auth_method()` from SpecResolver (#187)
+- Remove `get_auth_token()`, `get_site_token()`, `get_node_token()` from ResolverBase (#187)
+
 ### Theme: Server Daemon Robustness (#177)
 
 Proper daemonization replacing nohup/Popen hack with double-fork, PID files,

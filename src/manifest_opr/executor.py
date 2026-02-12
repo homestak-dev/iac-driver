@@ -364,6 +364,7 @@ class NodeExecutor:
             vmid=mn.vmid,
             vm_preset=mn.preset,
             image=mn.image,
+            spec=mn.spec,
         )
         result = apply_action.run(self.config, context)
         if not result.success:
@@ -820,6 +821,7 @@ class NodeExecutor:
             vmid=mn.vmid,
             vm_preset=mn.preset,
             image=mn.image,
+            spec=mn.spec,
         )
         return destroy_action.run(self.config, context)
 

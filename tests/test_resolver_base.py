@@ -90,11 +90,7 @@ class TestResolverBase:
                 "user2": "ssh-ed25519 AAAA... user2@host",
             },
             "auth": {
-                "site_token": "test-site-token",
-                "node_tokens": {
-                    "dev1": "test-node-token-dev1",
-                    "dev2": "test-node-token-dev2",
-                },
+                "signing_key": "a" * 64,
             },
         }
         (tmp_path / "secrets.yaml").write_text(yaml.dump(secrets_yaml))
@@ -219,41 +215,26 @@ class TestResolverBase:
         defaults = resolver._get_site_defaults()
         assert defaults["timezone"] == "America/Denver"
 
-    def test_get_auth_token_network(self, site_config):
-        """get_auth_token returns empty for network posture."""
+    def test_get_signing_key(self, site_config):
+        """get_signing_key returns signing key from secrets."""
         resolver = ResolverBase(etc_path=site_config)
-        token = resolver.get_auth_token("dev", "any-identity")
-        assert token == ""
+        key = resolver.get_signing_key()
+        assert key == "a" * 64
 
-    def test_get_auth_token_site_token(self, site_config):
-        """get_auth_token returns site token for stage posture."""
-        resolver = ResolverBase(etc_path=site_config)
-        token = resolver.get_auth_token("stage", "any-identity")
-        assert token == "test-site-token"
+    def test_get_signing_key_missing(self, tmp_path):
+        """get_signing_key returns None when secrets missing."""
+        resolver = ResolverBase(etc_path=tmp_path)
+        key = resolver.get_signing_key()
+        assert key is None
 
-    def test_get_auth_token_node_token(self, site_config):
-        """get_auth_token returns node token for prod posture."""
-        resolver = ResolverBase(etc_path=site_config)
-        token = resolver.get_auth_token("prod", "dev1")
-        assert token == "test-node-token-dev1"
-
-    def test_get_auth_token_node_token_missing(self, site_config):
-        """get_auth_token returns empty for missing node token."""
-        resolver = ResolverBase(etc_path=site_config)
-        token = resolver.get_auth_token("prod", "nonexistent")
-        assert token == ""
-
-    def test_get_site_token(self, site_config):
-        """get_site_token returns site token."""
-        resolver = ResolverBase(etc_path=site_config)
-        token = resolver.get_site_token()
-        assert token == "test-site-token"
-
-    def test_get_node_token(self, site_config):
-        """get_node_token returns node-specific token."""
-        resolver = ResolverBase(etc_path=site_config)
-        token = resolver.get_node_token("dev1")
-        assert token == "test-node-token-dev1"
+    def test_get_signing_key_no_auth_section(self, tmp_path):
+        """get_signing_key returns None when auth section missing."""
+        (tmp_path / "postures").mkdir(parents=True)
+        (tmp_path / "site.yaml").write_text("defaults: {}")
+        (tmp_path / "secrets.yaml").write_text("ssh_keys: {}")
+        resolver = ResolverBase(etc_path=tmp_path)
+        key = resolver.get_signing_key()
+        assert key is None
 
     def test_clear_cache(self, site_config):
         """clear_cache clears all cached data."""

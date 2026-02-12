@@ -61,11 +61,7 @@ class TestSpecResolver:
                 "admin": "ssh-ed25519 AAAA... admin@host",
             },
             "auth": {
-                "site_token": "test-site-token",
-                "node_tokens": {
-                    "test1": "test-node-token-1",
-                    "test2": "test-node-token-2",
-                },
+                "signing_key": "a" * 64,
             },
         }
         (tmp_path / "secrets.yaml").write_text(yaml.dump(secrets_yaml))
@@ -260,24 +256,6 @@ class TestSpecResolver:
         with pytest.raises(SSHKeyNotFoundError) as exc_info:
             resolver.resolve("bad-ssh")
         assert exc_info.value.code == "E202"
-
-    def test_get_auth_method_network(self, site_config):
-        """get_auth_method returns network for dev posture."""
-        resolver = SpecResolver(etc_path=site_config)
-        method = resolver.get_auth_method("base")
-        assert method == "network"
-
-    def test_get_auth_method_site_token(self, site_config):
-        """get_auth_method returns site_token for stage posture."""
-        resolver = SpecResolver(etc_path=site_config)
-        method = resolver.get_auth_method("pve")
-        assert method == "site_token"
-
-    def test_get_auth_method_node_token(self, site_config):
-        """get_auth_method returns node_token for prod posture."""
-        resolver = SpecResolver(etc_path=site_config)
-        method = resolver.get_auth_method("prod-vm")
-        assert method == "node_token"
 
     def test_clear_cache(self, site_config):
         """clear_cache clears all cached data including specs."""
