@@ -1,7 +1,7 @@
 """Server package for unified HTTPS daemon.
 
 The server serves both specs (for config phase) and repos (for bootstrap)
-on a single HTTPS port with posture-based and token authentication.
+on a single HTTPS port with provisioning token and token authentication.
 """
 
 from server.httpd import (
@@ -17,7 +17,7 @@ from server.tls import (
 )
 from server.auth import (
     AuthError,
-    validate_spec_auth,
+    verify_provisioning_token,
     validate_repo_token,
 )
 from server.daemon import (
@@ -39,7 +39,7 @@ __all__ = [
     "get_cert_fingerprint",
     # Auth
     "AuthError",
-    "validate_spec_auth",
+    "verify_provisioning_token",
     "validate_repo_token",
     # Daemon
     "daemonize",

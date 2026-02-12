@@ -229,71 +229,14 @@ class ResolverBase:
         """
         return self._load_site().get("defaults", {})
 
-    def get_auth_token(self, posture_name: str, identity: str) -> str:
-        """Resolve auth token based on posture's auth method.
-
-        Auth methods:
-        - network: Empty string (trust network boundary)
-        - site_token: Shared site-wide token from secrets.auth.site_token
-        - node_token: Per-identity token from secrets.auth.node_tokens.{identity}
-
-        Args:
-            posture_name: Posture name for auth method lookup
-            identity: Identity name for node_token resolution
+    def get_signing_key(self) -> Optional[str]:
+        """Get the provisioning token signing key from secrets.
 
         Returns:
-            Auth token string, or empty string for network trust
-        """
-        try:
-            posture = self._load_posture(posture_name)
-        except PostureNotFoundError:
-            # Fall back to network trust if posture not found
-            return ""
-
-        auth_config = posture.get("auth", {})
-        auth_method = auth_config.get("method", "network")
-
-        try:
-            secrets = self._load_secrets()
-        except SecretsNotFoundError:
-            return ""
-
-        auth_secrets = secrets.get("auth", {})
-
-        if auth_method == "network":
-            return ""
-        elif auth_method == "site_token":
-            return auth_secrets.get("site_token", "")
-        elif auth_method == "node_token":
-            node_tokens = auth_secrets.get("node_tokens", {})
-            return node_tokens.get(identity, "")
-        else:
-            # Unknown method, default to no token
-            return ""
-
-    def get_site_token(self) -> Optional[str]:
-        """Get the site token from secrets.
-
-        Returns:
-            Site token string, or None if not configured
+            Hex-encoded signing key, or None if not configured
         """
         try:
             secrets = self._load_secrets()
-            return secrets.get("auth", {}).get("site_token")
-        except SecretsNotFoundError:
-            return None
-
-    def get_node_token(self, identity: str) -> Optional[str]:
-        """Get the node token for a specific identity.
-
-        Args:
-            identity: Identity name (e.g., VM name)
-
-        Returns:
-            Node token string, or None if not configured
-        """
-        try:
-            secrets = self._load_secrets()
-            return secrets.get("auth", {}).get("node_tokens", {}).get(identity)
+            return secrets.get("auth", {}).get("signing_key")
         except SecretsNotFoundError:
             return None

@@ -239,14 +239,14 @@ class TestFetchSpec:
     """Test _fetch_spec function."""
 
     def test_missing_server_returns_none(self):
-        """Missing HOMESTAK_SPEC_SERVER returns None."""
+        """Missing HOMESTAK_SERVER returns None."""
         with patch.dict('os.environ', {}, clear=True):
             result = _fetch_spec()
         assert result is None
 
-    def test_missing_identity_returns_none(self):
-        """Missing HOMESTAK_IDENTITY returns None."""
-        with patch.dict('os.environ', {'HOMESTAK_SPEC_SERVER': 'https://localhost:44443'}, clear=True):
+    def test_missing_token_returns_none(self):
+        """Missing HOMESTAK_TOKEN returns None."""
+        with patch.dict('os.environ', {'HOMESTAK_SERVER': 'https://localhost:44443'}, clear=True):
             result = _fetch_spec()
         assert result is None
 
@@ -256,8 +256,8 @@ class TestFetchSpec:
         mock_spec = {'schema_version': 1, 'identity': {'hostname': 'test'}}
 
         with patch.dict('os.environ', {
-            'HOMESTAK_SPEC_SERVER': 'https://localhost:44443',
-            'HOMESTAK_IDENTITY': 'test',
+            'HOMESTAK_SERVER': 'https://localhost:44443',
+            'HOMESTAK_TOKEN': 'test-provisioning-token',
         }, clear=True):
             with patch('resolver.spec_client.SpecClient') as MockClient:
                 instance = MockClient.return_value

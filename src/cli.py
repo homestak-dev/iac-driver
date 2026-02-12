@@ -35,6 +35,7 @@ VERB_COMMANDS = {
     "destroy": "Destroy infrastructure from manifest",
     "test": "Create, verify, and destroy infrastructure from manifest",
     "config": "Apply specification to the local host",
+    "token": "Provisioning token utilities (inspect)",
 }
 
 # Scenarios retired in v0.47 (scenario consolidation)
@@ -111,6 +112,10 @@ def dispatch_verb(verb: str, argv: list) -> int:
     if verb == "config":
         from config_apply import config_main
         return config_main(argv)
+
+    if verb == "token":
+        from token_cli import main as token_main
+        return token_main(argv)
 
     print(f"Error: Verb '{verb}' not yet implemented")
     return 1

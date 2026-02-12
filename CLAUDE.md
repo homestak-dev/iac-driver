@@ -170,23 +170,25 @@ resolver.list_presets()   # ['vm-large', 'vm-medium', 'vm-small', ...]
             "memory": 2048,
             "disk": 20,
             "bridge": "vmbr0",
-            "auth_token": ""  # v0.45+ - based on posture
+            "auth_token": ""  # HMAC-signed provisioning token (#231)
         }
     ]
 }
 ```
 
-### Auth Token Resolution (v0.45+)
+### Provisioning Token (#231)
 
-Per-VM `auth_token` is resolved based on the environment's posture:
+Per-VM `auth_token` is an HMAC-SHA256 signed provisioning token minted by ConfigResolver when both `spec_server` and `spec` are set. The token carries the node identity and spec FK as claims.
 
-| Posture | Auth Method | Token Source |
-|---------|-------------|--------------|
-| dev/local | `network` | Empty (trust network boundary) |
-| stage | `site_token` | `secrets.auth.site_token` |
-| prod | `node_token` | `secrets.auth.node_tokens.{vm_name}` |
+**Token format:** `base64url(payload).base64url(signature)`
 
-The auth method is determined by `postures/{posture}.yaml`.
+**Payload:** `{"v":1,"n":"<vm_name>","s":"<spec_name>","iat":<unix_timestamp>}`
+
+**Minting:** `ConfigResolver._mint_provisioning_token()` signs with `secrets.auth.signing_key`
+
+**Verification:** Server's `verify_provisioning_token()` checks HMAC signature and identity match
+
+If `spec_server` or `spec` is not set, `auth_token` is empty and cloud-init skips env var injection.
 
 ### Output Structure (Ansible)
 
@@ -318,13 +320,12 @@ Operator (executor.py) auto-manages server lifecycle for manifest verbs with ref
 
 ### Spec Authentication
 
-Spec endpoints use posture-based authentication from `postures/{posture}.yaml`:
+Spec endpoints require a provisioning token (#231). The token is an HMAC-SHA256 signed credential minted by ConfigResolver and injected into VMs via cloud-init as `HOMESTAK_TOKEN`.
 
-| Method | Description | Token Source |
-|--------|-------------|--------------|
-| `network` | Trust network boundary | None required |
-| `site_token` | Shared site-wide token | `secrets.auth.site_token` |
-| `node_token` | Per-node unique token | `secrets.auth.node_tokens.{name}` |
+The server verifies:
+1. HMAC signature against `secrets.auth.signing_key`
+2. Token identity (`n` claim) matches the URL path identity
+3. Token contains a valid spec FK (`s` claim)
 
 ### Repo Authentication
 
