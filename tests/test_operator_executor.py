@@ -50,6 +50,17 @@ def _fail_result(msg='failed'):
     return ActionResult(success=False, message=msg, duration=0.1)
 
 
+@pytest.fixture(autouse=True)
+def _skip_server(monkeypatch):
+    """Prevent real SSH calls to start/stop the spec server in unit tests."""
+    monkeypatch.setattr(
+        'manifest_opr.executor.NodeExecutor._ensure_server', lambda self: None,
+    )
+    monkeypatch.setattr(
+        'manifest_opr.executor.NodeExecutor._stop_server', lambda self: None,
+    )
+
+
 class TestNodeExecutorDryRun:
     """Tests for dry-run (preview) mode."""
 
