@@ -1,6 +1,6 @@
 """Spec endpoint handler for the server.
 
-Serves resolved specs from site-config/specs/ with provisioning token auth (v0.49+).
+Serves resolved specs from site-config/specs/ with provisioning token auth (#231).
 """
 
 import json

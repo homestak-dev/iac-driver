@@ -67,7 +67,7 @@ defaults:
   spec_server: "https://controller:44443"
 """)
 
-    # Create secrets.yaml (v0.49: signing_key for provisioning tokens)
+    # Create secrets.yaml (signing_key for provisioning tokens, #231)
     (tmp_path / 'secrets.yaml').write_text("""
 api_tokens:
   test-node: "user@pam!token=secret"

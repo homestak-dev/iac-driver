@@ -248,7 +248,7 @@ class SpecClient:
 def get_config_from_env() -> dict:
     """Get configuration from environment variables.
 
-    Environment variables (v0.49+):
+    Environment variables (#231):
       HOMESTAK_SERVER  - Server URL (replaces HOMESTAK_SPEC_SERVER)
       HOMESTAK_TOKEN   - Provisioning token (replaces HOMESTAK_IDENTITY + HOMESTAK_AUTH_TOKEN)
 
@@ -259,7 +259,7 @@ def get_config_from_env() -> dict:
     """
     config = {}
 
-    # v0.49+: HOMESTAK_SERVER (preferred), fallback to HOMESTAK_SPEC_SERVER
+    # HOMESTAK_SERVER (preferred, #231), fallback to HOMESTAK_SPEC_SERVER
     server = os.environ.get("HOMESTAK_SERVER") or os.environ.get("HOMESTAK_SPEC_SERVER")
     if server:
         config["server"] = server
@@ -268,7 +268,7 @@ def get_config_from_env() -> dict:
     import socket
     config["identity"] = socket.gethostname()
 
-    # v0.49+: HOMESTAK_TOKEN (provisioning token, required for pull mode)
+    # HOMESTAK_TOKEN (provisioning token, required for pull mode, #231)
     token = os.environ.get("HOMESTAK_TOKEN")
     if token:
         config["token"] = token

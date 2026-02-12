@@ -36,7 +36,7 @@ class ServerHandler(BaseHTTPRequestHandler):
     spec_resolver: Optional[SpecResolver] = None
     repo_manager: Optional[RepoManager] = None
     repo_token: str = ""
-    signing_key: str = ""  # Provisioning token signing key (v0.49+)
+    signing_key: str = ""  # Provisioning token signing key (#231)
 
     def log_message(self, format: str, *args):
         """Override to use Python logging."""

@@ -382,7 +382,7 @@ def apply_config(
 def _fetch_spec(insecure: bool = False) -> Optional[Path]:
     """Fetch spec from server using environment variables.
 
-    Uses HOMESTAK_SERVER and HOMESTAK_TOKEN from the environment (v0.49+).
+    Uses HOMESTAK_SERVER and HOMESTAK_TOKEN from the environment (#231).
     Identity is derived from hostname.
 
     Args:

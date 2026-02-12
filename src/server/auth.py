@@ -1,7 +1,7 @@
 """Authentication middleware for the server.
 
 Provides:
-- Provisioning token verification for specs (HMAC-SHA256, v0.49+)
+- Provisioning token verification for specs (HMAC-SHA256, #231)
 - Token auth for repos (repo_token)
 """
 

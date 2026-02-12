@@ -252,7 +252,7 @@ class TestSpecServerResolution:
 
 
 class TestProvisioningTokenResolution:
-    """Test provisioning token minting in resolve_inline_vm (v0.49+)."""
+    """Test provisioning token minting in resolve_inline_vm (#231)."""
 
     def test_resolve_inline_vm_mints_token_with_spec(self, site_config_dir):
         """resolve_inline_vm mints provisioning token when spec and spec_server set."""

@@ -7,14 +7,14 @@ inheritance is resolved here, so consumers receive fully-computed values.
 Resolution order (tofu):
 1. presets/{vm_preset}.yaml (VM size: cores, memory, disk)
 2. Inline VM overrides (name, vmid, image) from manifest nodes or CLI
-3. Provisioning token minted with spec FK (v0.49+)
+3. Provisioning token minted with spec FK (#231)
 
 Resolution order (ansible):
 1. site.yaml defaults (timezone, packages, pve settings)
 2. postures/{posture}.yaml (security settings from env's posture FK)
 3. Packages merged: site packages + posture packages (deduplicated)
 
-Provisioning token (v0.49+):
+Provisioning token (#231):
 HMAC-SHA256 signed token carrying node name and spec FK.
 Replaces posture-based auth (network/site_token/node_token).
 """
@@ -180,7 +180,7 @@ class ConfigResolver:
         # Site defaults
         defaults = self.site.get("defaults", {})
 
-        # Spec server for Create → Config flow (v0.49+: HOMESTAK_SERVER)
+        # Spec server for Create → Config flow (#231: HOMESTAK_SERVER)
         spec_server = defaults.get("spec_server", "")
 
         # Build VM instance dict for _resolve_vm
@@ -195,7 +195,7 @@ class ConfigResolver:
 
         # Resolve the single VM
         resolved_vm = self._resolve_vm(vm_instance, vmid, defaults)
-        # Mint provisioning token if spec server and spec FK are configured (v0.49+)
+        # Mint provisioning token if spec server and spec FK are configured (#231)
         if spec_server and spec:
             resolved_vm["auth_token"] = self._mint_provisioning_token(vm_name, spec)
         else:
