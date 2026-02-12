@@ -47,8 +47,6 @@ make decrypt  # Decrypt secrets (requires age key)
 
 ## Directory Structure
 
-All repos are siblings in a common parent directory:
-
 ```
 <parent>/
 ├── iac-driver/           # This repo - Infrastructure orchestration
@@ -93,17 +91,10 @@ All repos are siblings in a common parent directory:
 │   ├── reports/          # Generated test reports
 │   └── scripts/          # Helper scripts
 ├── site-config/          # Site-specific secrets and configuration
-│   ├── site.yaml         # Site-wide defaults
-│   ├── secrets.yaml      # All sensitive values (SOPS encrypted)
-│   ├── nodes/            # PVE instance configuration
-│   ├── envs/             # Environment configuration (for tofu)
-│   └── manifests/        # Recursive scenario manifests
 ├── ansible/              # Tool repo (sibling)
 ├── tofu/                 # Tool repo (sibling)
 └── packer/               # Tool repo (sibling)
 ```
-
-Scripts use relative paths (`../ansible`, `../tofu`, `../packer`) so the parent directory can be anywhere.
 
 ## ConfigResolver
 
@@ -114,11 +105,7 @@ The `ConfigResolver` class resolves site-config YAML files into flat configurati
 ```python
 from src.config_resolver import ConfigResolver
 
-# Auto-discover site-config (env var, sibling, /opt/homestak)
-resolver = ConfigResolver()
-
-# Or specify path explicitly
-resolver = ConfigResolver('/path/to/site-config')
+resolver = ConfigResolver()  # Auto-discover site-config
 
 # Resolve inline VM for tofu
 config = resolver.resolve_inline_vm(
@@ -130,10 +117,6 @@ resolver.write_tfvars(config, '/tmp/tfvars.json')
 # Resolve ansible vars from posture
 ansible_vars = resolver.resolve_ansible_vars('dev')
 resolver.write_ansible_vars(ansible_vars, '/tmp/ansible-vars.json')
-
-# List available entities
-resolver.list_postures()  # ['dev', 'prod', 'stage']
-resolver.list_presets()   # ['vm-large', 'vm-medium', 'vm-small', ...]
 ```
 
 ### Resolution Order (Tofu)
@@ -159,7 +142,7 @@ resolver.list_presets()   # ['vm-large', 'vm-medium', 'vm-small', ...]
     "datastore": "local-zfs",
     "root_password": "$6$...",
     "ssh_keys": ["ssh-rsa ...", ...],
-    "spec_server": "https://father:44443",  # v0.45+
+    "spec_server": "https://father:44443",
     "vms": [
         {
             "name": "test",
@@ -169,25 +152,13 @@ resolver.list_presets()   # ['vm-large', 'vm-medium', 'vm-small', ...]
             "memory": 2048,
             "disk": 20,
             "bridge": "vmbr0",
-            "auth_token": ""  # HMAC-signed provisioning token (#231)
+            "auth_token": ""  # HMAC-signed provisioning token
         }
     ]
 }
 ```
 
-### Provisioning Token (#231)
-
-Per-VM `auth_token` is an HMAC-SHA256 signed provisioning token minted by ConfigResolver when both `spec_server` and `spec` are set. The token carries the node identity and spec FK as claims.
-
-**Token format:** `base64url(payload).base64url(signature)`
-
-**Payload:** `{"v":1,"n":"<vm_name>","s":"<spec_name>","iat":<unix_timestamp>}`
-
-**Minting:** `ConfigResolver._mint_provisioning_token()` signs with `secrets.auth.signing_key`
-
-**Verification:** Server's `verify_provisioning_token()` checks HMAC signature and identity match
-
-If `spec_server` or `spec` is not set, `auth_token` is empty and cloud-init skips env var injection.
+Per-VM `auth_token` is an HMAC-SHA256 provisioning token minted by `ConfigResolver._mint_provisioning_token()` when both `spec_server` and `spec` are set. See [provisioning-token.md](../docs/designs/provisioning-token.md) for token format, signing, and verification.
 
 ### Output Structure (Ansible)
 
@@ -227,85 +198,33 @@ Actions in `src/actions/tofu.py` use ConfigResolver to generate tfvars and run t
 iac-driver/.states/{env}-{node}/terraform.tfstate
 ```
 
-**Important:** The `-state` flag is required because `TF_DATA_DIR` only affects plugin/module caching, not state file location. Without explicit state isolation, running scenarios on different hosts can cause state conflicts.
+The `-state` flag is required because `TF_DATA_DIR` only affects plugin/module caching, not state file location.
 
 **Context Passing:** TofuApplyAction extracts VM IDs from resolved config and adds them to context:
 ```python
-# After tofu apply, context contains:
-context['test_vm_id'] = 99900  # From vm name 'test' with vmid 99900
-context['inner_vm_id'] = 99913  # From vm name 'inner' with vmid 99913
-context['provisioned_vms'] = [{'name': 'test', 'vmid': 99900}, ...]  # All VMs
+context['test_vm_id'] = 99900
+context['provisioned_vms'] = [{'name': 'test', 'vmid': 99900}, ...]
 ```
 
-Downstream actions (StartVMAction, WaitForGuestAgentAction) check context first, then fall back to config attributes.
-
-**Multi-VM Actions:** For environments with multiple VMs, use these actions instead of single-VM variants:
-
-| Action | Description |
-|--------|-------------|
-| `StartProvisionedVMsAction` | Start all VMs from `provisioned_vms` context |
-| `WaitForProvisionedVMsAction` | Wait for guest agent on all VMs, collect IPs |
-
-```python
-# Multi-VM scenario phases
-('start', StartProvisionedVMsAction(
-    name='start-vms',
-    pve_host_attr='ssh_host',
-), 'Start VM(s)'),
-
-('wait_ip', WaitForProvisionedVMsAction(
-    name='wait-for-ips',
-    pve_host_attr='ssh_host',
-    timeout=180,
-), 'Wait for VM IP(s)'),
-```
-
-After `WaitForProvisionedVMsAction`, context contains:
-- `{vm_name}_ip` for each VM (e.g., `deb12-test_ip`, `deb13-leaf_ip`)
-- `vm_ip` - first VM's IP (backward compatibility)
+**Multi-VM Actions:** `StartProvisionedVMsAction` and `WaitForProvisionedVMsAction` operate on all VMs from `provisioned_vms` context. After completion, context contains `{vm_name}_ip` for each VM and `vm_ip` for backward compatibility.
 
 ## Server Daemon
 
-The server daemon serves both specs and git repos over a single HTTPS endpoint.
+The server daemon serves specs and git repos over HTTPS. See [server-daemon.md](../docs/designs/server-daemon.md) for architecture, double-fork daemonization, PID management, and operator lifecycle integration.
 
-### Server Management
+### Management
 
 ```bash
-# Start as daemon (double-fork, PID file, health-check gate)
-./run.sh server start
-
-# Custom port and bind address
-./run.sh server start --port 8443 --bind 127.0.0.1
-
-# With explicit TLS certificate
-./run.sh server start --cert /path/to/cert.pem --key /path/to/key.pem
-
-# With repo serving enabled (for pull-mode bootstrap)
-./run.sh server start --repos --repo-token my-secret-token
-
-# Foreground mode (for development)
-./run.sh server start --foreground
-
-# Check server status
-./run.sh server status [--json]
-
-# Stop server
-./run.sh server stop
+./run.sh server start                    # Start as daemon
+./run.sh server start --repos --repo-token <token>  # With repo serving
+./run.sh server start --foreground       # Development mode
+./run.sh server status [--json]          # Check status
+./run.sh server stop                     # Stop daemon
 ```
 
-### Daemon Lifecycle
+PID file: `/var/run/homestak/server.pid` | Log file: `/var/log/homestak/server.log`
 
-The server uses double-fork daemonization with a health-check startup gate:
-
-1. Parent forks child, child forks grandchild (daemon)
-2. Daemon starts HTTPS server, writes PID file
-3. Parent polls `/health` endpoint until ready (or timeout)
-4. Parent exits 0 only after health check passes
-
-PID file: `/var/run/homestak/server.pid` (FHS path)
-Log file: `/var/log/homestak/server.log`
-
-Operator (executor.py) auto-manages server lifecycle for manifest verbs with reference counting — nested test→create→destroy only starts/stops once.
+Operator (executor.py) auto-manages server lifecycle for manifest verbs with reference counting.
 
 ### Endpoints
 
@@ -313,66 +232,19 @@ Operator (executor.py) auto-manages server lifecycle for manifest verbs with ref
 |--------|----------|------|-------------|
 | GET | `/health` | None | Health check |
 | GET | `/specs` | None | List available specs |
-| GET | `/spec/{identity}` | Posture | Fetch resolved spec |
+| GET | `/spec/{identity}` | Provisioning token | Fetch resolved spec |
 | GET | `/{repo}.git/*` | Bearer | Git dumb HTTP protocol |
 | GET | `/{repo}.git/{path}` | Bearer | Raw file extraction |
 
-### Spec Authentication
+Spec endpoints authenticate via HMAC-signed provisioning tokens. See [provisioning-token.md](../docs/designs/provisioning-token.md).
 
-Spec endpoints require a provisioning token (#231). The token is an HMAC-SHA256 signed credential minted by ConfigResolver and injected into VMs via cloud-init as `HOMESTAK_TOKEN`.
+Auto-generates self-signed TLS certificate if none provided via `--cert`/`--key`.
 
-The server verifies:
-1. HMAC signature against `secrets.auth.signing_key`
-2. Token identity (`n` claim) matches the URL path identity
-3. Token contains a valid spec FK (`s` claim)
+## Operator Engine
 
-### Repo Authentication
-
-All repo endpoints require Bearer token authentication:
-```bash
-curl -H "Authorization: Bearer <repo-token>" \
-  https://server:44443/bootstrap.git/install.sh
-```
-
-### TLS Certificates
-
-The server auto-generates a self-signed certificate if none provided:
-- Certificate stored in temp directory (ephemeral)
-- SHA256 fingerprint displayed on startup for verification
-- Supports explicit cert/key paths via `--cert` and `--key` flags
-
-### Signal Handling
-
-| Signal | Action |
-|--------|--------|
-| SIGTERM/SIGINT | Graceful shutdown, cleanup temp repos |
-| SIGHUP | Clear resolver cache (reload specs without restart) |
-
-### Git Repo Serving
-
-The server creates temporary bare repos with uncommitted changes:
-
-1. **Bare clone**: Creates `{repo}.git` from source repo
-2. **_working branch**: Contains snapshot of uncommitted changes
-3. **update-server-info**: Enables dumb HTTP protocol
-
-Clients can clone or fetch files:
-```bash
-# Clone via dumb HTTP
-git clone https://server:44443/bootstrap.git
-
-# Fetch raw file (extracts via git show)
-curl -H "Authorization: Bearer <token>" \
-  https://server:44443/bootstrap.git/install.sh
-```
-
-## Operator Engine (v0.46+)
-
-The operator engine (`manifest_opr/`) walks a v2 manifest graph to execute create/destroy/test lifecycle operations.
+The operator engine (`manifest_opr/`) walks a v2 manifest graph to execute create/destroy/test lifecycle operations. See [node-orchestration.md](../docs/designs/node-orchestration.md) for topology patterns and execution model comparison.
 
 ### Manifest Schema v2
-
-Schema v2 uses graph-based `nodes[]` with `parent` references instead of linear `levels[]`:
 
 ```yaml
 schema_version: 2
@@ -391,46 +263,20 @@ nodes:
     image: debian-12
     vmid: 99021
     parent: root-pve
+    execution:
+      mode: pull  # Default: push
 ```
 
 ### Verb Commands
 
 ```bash
-# Create infrastructure from manifest
 ./run.sh create -M n2-tiered -H father [--dry-run] [--json-output] [--verbose]
-
-# Destroy infrastructure
 ./run.sh destroy -M n2-tiered -H father [--dry-run] [--yes]
-
-# Full cycle: create, verify SSH, destroy
 ./run.sh test -M n2-tiered -H father [--dry-run] [--json-output]
-
-# Apply spec to local host (config phase)
-./run.sh config [--fetch] [--insecure] [--spec /path.yaml] [--dry-run] [--json-output]
-```
-
-### Architecture
-
-```
-ManifestGraph (graph.py)          NodeExecutor (executor.py)
-┌─────────────────────┐           ┌────────────────────────┐
-│ build from manifest │           │ walks graph in order   │
-│ create_order() BFS  │──────────▶│ TofuApplyInlineAction  │
-│ destroy_order() rev │           │ StartVMAction          │
-│ get_parent_ip_key() │           │ WaitForGuestAgentAction│
-└─────────────────────┘           │ WaitForSSHAction       │
-                                  └────────────────────────┘
-ExecutionState (state.py)                    │
-┌─────────────────────┐                      │
-│ per-node status     │◄─────────────────────┘
-│ vm_id, ip tracking  │
-│ save/load JSON      │
-└─────────────────────┘
+./run.sh config [--fetch] [--insecure] [--spec /path.yaml] [--dry-run]
 ```
 
 ### Error Handling
-
-The `on_error` setting controls behavior when a node fails:
 
 | Mode | Behavior |
 |------|----------|
@@ -440,183 +286,36 @@ The `on_error` setting controls behavior when a node fails:
 
 ### Delegation Model
 
-The operator handles root nodes (depth 0) locally. PVE nodes with children trigger:
+Root nodes (depth 0) are handled locally. PVE nodes with children trigger:
 1. PVE lifecycle setup (bootstrap, secrets, bridge, API token, image download)
-2. Subtree delegation via SSH — extracts child nodes as a new manifest, runs `./run.sh create --manifest-json` on the inner PVE
+2. Subtree delegation via SSH — `./run.sh create --manifest-json` on inner PVE
 
-This recursion handles arbitrary depth (N=2, N=3, etc.) without depth limits.
+This recursion handles arbitrary depth without limits.
 
-### Execution Modes (v0.48+)
+### Execution Modes
 
-Nodes can use **push** (default) or **pull** execution mode for the config phase:
+Nodes use **push** (default) or **pull** for config phase. See [config-phase.md](../docs/designs/config-phase.md) for spec-to-ansible mapping and implementation details.
 
 | Mode | How Config Runs | Operator Behavior |
 |------|----------------|-------------------|
 | `push` | Driver SSHes in and runs config | Default, used for PVE lifecycle |
-| `pull` | VM self-configures via cloud-init | Operator polls for marker files |
+| `pull` | VM self-configures via cloud-init | Operator polls for config-complete.json |
 
-**Pull mode flow:**
-1. Cloud-init runs `./run.sh config --fetch --insecure` on first boot
-2. `--fetch` uses HOMESTAK_SPEC_SERVER + HOMESTAK_IDENTITY env vars to fetch spec
-3. Config applies spec (packages, users, services) via ansible roles
-4. Operator polls via SSH for `/usr/local/etc/homestak/state/config-complete.json`
-5. Node is considered configured when marker exists
-
-**Config verb (`./run.sh config`):**
-- `--fetch`: Fetches spec from server using env vars (HOMESTAK_SPEC_SERVER, HOMESTAK_IDENTITY)
-- Reads spec from `/usr/local/etc/homestak/state/spec.yaml` (or `--spec` path)
-- Maps spec sections to ansible role variables via `spec_to_ansible_vars()`
-- Writes vars to `/usr/local/etc/homestak/state/config-vars.json`
-- Runs `ansible/playbooks/config-apply.yml` locally
-- Writes completion marker to `/usr/local/etc/homestak/state/config-complete.json`
-
-**Per-node execution mode** is set in manifests:
-```yaml
-nodes:
-  - name: edge
-    type: vm
-    execution:
-      mode: pull  # Default: push
-```
-
-PVE nodes always use push regardless of setting (complex lifecycle requires SSH).
-
-## Common Commands
-
-### Ansible (from ansible/)
-```bash
-ansible-playbook -i inventory/local.yml playbooks/pve-setup.yml      # PVE config
-ansible-playbook -i inventory/local.yml playbooks/user.yml           # User management
-ansible-playbook -i inventory/remote-dev.yml playbooks/pve-install.yml \
-  -e ansible_host=<IP> -e pve_hostname=<hostname>                    # Install PVE on Debian 13
-```
-
-### Packer (from packer/)
-```bash
-./build.sh       # Interactive build menu (Debian 12 or 13)
-./publish.sh     # Copy images to /var/lib/vz/template/iso/
-```
-
-### Packer Build Scenarios (via iac-driver)
-
-Build images on a remote host with proper QEMU/KVM support:
-
-```bash
-# Prerequisites: remote host must be bootstrapped
-ssh root@<host> "curl -fsSL .../install.sh | bash && homestak install packer"
-
-# Build and fetch images (for release)
-./run.sh --scenario packer-build-fetch --remote <host-ip>
-
-# Build and publish to PVE storage (for local use)
-./run.sh --scenario packer-build-publish --remote <host-ip>
-
-# Build specific template only
-./run.sh --scenario packer-build-fetch --remote <host-ip> --templates debian-12-custom
-
-# Dev workflow: sync local changes, build, fetch
-./run.sh --scenario packer-sync-build-fetch --remote <host-ip>
-```
-
-**Available packer scenarios:**
-| Scenario | Description |
-|----------|-------------|
-| `packer-build` | Build images (local or remote) |
-| `packer-build-publish` | Build and publish to PVE storage |
-| `packer-build-fetch` | Build remotely, fetch to local |
-| `packer-sync` | Sync local packer to remote |
-| `packer-sync-build-fetch` | Sync, build, fetch (dev workflow) |
-
-**Output:** Images fetched to `/tmp/packer-images/`
-
-### OpenTofu (from tofu/envs/<env>/)
-```bash
-tofu init        # Initialize providers/modules
-tofu plan        # Preview changes
-tofu apply       # Deploy VMs
-tofu destroy     # Tear down
-tofu fmt         # Format HCL files
-```
-
-## Architecture
-
-### Typical Deployment Workflow
-```
-1. Bootstrap Proxmox host → iac-driver (pve-setup) or ansible (pve-setup.yml, user.yml)
-2. Build custom images     → packer (build.sh, publish.sh)
-3. Provision VMs           → tofu (plan, apply)
-4. Reconfigure as needed   → ansible (pve-setup.yml, user.yml)
-```
-
-### Tofu 3-Level Configuration Inheritance
-Node configuration merges in `tofu/envs/common/locals.tf`:
-1. **Defaults** - base values for all VMs
-2. **Cluster** - per-environment overrides (bridge, DNS, packages)
-3. **Node** - individual VM specifics (hostname, IP, MAC, VM ID)
-
-### Tofu Module Responsibilities
-| Module | Purpose |
-|--------|---------|
-| `proxmox-vm` | Single VM: CPU, memory, disk, network, cloud-init |
-| `proxmox-file` | Cloud image management (local or URL source) |
-| `proxmox-sdn` | VXLAN zone, vnet, subnet configuration |
-
-### Ansible Role Hierarchy
-- Core playbooks: `pve-setup.yml`, `user.yml`, `pve-install.yml`
-- Core roles: base, users, security, proxmox, pve-install
-- integration roles: pve-iac (generic IaC tools), nested-pve (integration test config)
-- Environment-specific variables in `inventory/group_vars/`
-
-## Conventions
-
-- **VM IDs**: 5-digit (10000+ dev, 20000+ k8s)
-- **MAC prefix**: BC:24:11:*
-- **Hostnames**: `{cluster}{instance}` (dev1, router, kubeadm1)
-- **Cloud-init files**: `{hostname}-meta.yaml`, `{hostname}-user.yaml`
-- **Environments**: dev (permissive SSH, passwordless sudo) vs prod (strict SSH, fail2ban)
+PVE nodes always use push regardless of setting.
 
 ## Manifest-Driven Orchestration
 
 Manifests define N-level nested PVE deployments using graph-based schema v2. Manifests are YAML files in `site-config/manifests/`.
 
-### Usage
-
 ```bash
-# Create infrastructure from manifest
 ./run.sh create -M n2-tiered -H father
-
-# Destroy infrastructure
 ./run.sh destroy -M n2-tiered -H father --yes
-
-# Full roundtrip: create, verify SSH, destroy
 ./run.sh test -M n2-tiered -H father
-
-# Dry-run preview
 ./run.sh create -M n2-tiered -H father --dry-run
-
-# JSON output for programmatic use
 ./run.sh test -M n1-push -H father --json-output
 ```
 
-### RecursiveScenarioAction
-
-The `RecursiveScenarioAction` executes commands on remote hosts via SSH with PTY streaming. Used by the operator for subtree delegation:
-
-```python
-RecursiveScenarioAction(
-    name='delegate-subtree',
-    raw_command='cd /usr/local/lib/homestak/iac-driver && ./run.sh create --manifest-json \'...\' -H hostname --json-output',
-    host_attr='pve_ip',
-    context_keys=['edge_ip', 'edge_vm_id'],
-    timeout=1200,
-)
-```
-
-Key features:
-- Real-time output streaming via PTY allocation
-- JSON result parsing from `--json-output` commands
-- Context key extraction for parent operator consumption
-- `raw_command` field for verb delegation (v0.47+); `scenario_name` field for legacy scenario execution
+`RecursiveScenarioAction` executes commands on remote hosts via SSH with PTY streaming. Used by the operator for subtree delegation. Supports `raw_command` for verb delegation and `scenario_name` for legacy scenarios. Extracts context keys from `--json-output` results.
 
 ## Naming Conventions
 
@@ -641,48 +340,13 @@ Key features:
 | `destroy_*` | Remove resource | Yes - checks exists |
 | `sync_*` | Synchronize data | Yes |
 
-### Examples
+## Conventions
 
-```python
-# Scenario class (noun-verb pattern)
-class PVESetup:
-    name = 'pve-setup'
-
-# Phase definitions (verb_noun pattern)
-phases = [
-    ('provision_vm', TofuApplyAction(...), 'Provision VM'),
-    ('start_vm', StartVMAction(...), 'Start VM'),
-    ('wait_ip', WaitForGuestAgentAction(...), 'Wait for IP'),
-    ('verify_ssh', WaitForSSHAction(...), 'Verify SSH'),
-]
-
-# Action class (VerbNounAction pattern)
-class EnsurePVEAction:
-    """Idempotent action - checks if PVE running before installing."""
-    def run(self, config, context):
-        # Check first (idempotent)
-        if self._pve_running(context):
-            return ActionResult(success=True, message="PVE already running")
-        # Then act
-        return self._install_pve(config, context)
-```
-
-## Network Topology
-
-Environments use SDN VXLAN with a router VM as gateway:
-- **dev**: 10.10.10.0/24 (router VM 10000)
-- **k8s**: 10.10.20.0/24 (router VM 20000)
-- Both route through vmbr0 (10.0.12.0/24)
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `ansible/inventory/group_vars/*.yml` | Environment-specific Ansible variables |
-| `ansible/collections/.../proxmox/roles/install/defaults/main.yml` | PVE installation defaults |
-| `tofu/envs/common/locals.tf` | Configuration inheritance logic |
-| `tofu/envs/*/locals.tf` | Per-environment cluster definitions |
-| `packer/templates/*.pkr.hcl` | Debian image build definitions |
+- **VM IDs**: 5-digit (10000+ dev, 20000+ k8s)
+- **MAC prefix**: BC:24:11:*
+- **Hostnames**: `{cluster}{instance}` (dev1, router, kubeadm1)
+- **Cloud-init files**: `{hostname}-meta.yaml`, `{hostname}-user.yaml`
+- **Environments**: dev (permissive SSH, passwordless sudo) vs prod (strict SSH, fail2ban)
 
 ## Host Resolution (v0.36+)
 
@@ -695,132 +359,28 @@ The `--host` flag resolves configuration from site-config with fallback:
 
 **Pre-PVE Host Provisioning:**
 
-When provisioning a fresh Debian host that doesn't have PVE yet:
-
 1. Create `hosts/{hostname}.yaml` (or run `make host-config` on the target)
 2. Run `./run.sh --scenario pve-setup --host {hostname}`
 3. After PVE install, `nodes/{hostname}.yaml` is auto-generated
 4. Host is now usable for `./run.sh create` and other PVE scenarios
 
-**HostConfig.is_host_only:**
-
-When loaded from `hosts/*.yaml`, the `HostConfig` object has `is_host_only=True` and PVE-specific fields (`api_endpoint`, `api_token`) are empty. Scenarios can check this flag to handle pre-PVE hosts differently.
+`HostConfig.is_host_only` is `True` when loaded from `hosts/*.yaml` (PVE-specific fields are empty).
 
 ## Node Configuration
 
-PVE node configuration is stored in `site-config/nodes/*.yaml`:
-
-| File | Node | API Endpoint |
-|------|------|--------------|
-| `site-config/nodes/{nodename}.yaml` | {nodename} | https://{ip}:8006 |
-| `site-config/nodes/nested-pve.yaml` | nested-pve | (dynamic, nested PVE) |
-
-**Important:** The filename must match the actual PVE node name (check with `pvesh get /nodes`).
+PVE node configuration is stored in `site-config/nodes/*.yaml`. Filename must match the actual PVE node name (`pvesh get /nodes`).
 
 API tokens are stored separately in `site-config/secrets.yaml` and resolved by key reference:
 ```yaml
-# nodes/father.yaml (primary key derived from filename)
+# nodes/father.yaml
 host: father                      # FK -> hosts/father.yaml
 api_endpoint: https://10.0.12.61:8006
 api_token: father                 # FK -> secrets.api_tokens.father
 ```
 
-**Setup:** First-time clone requires:
-```bash
-cd ../site-config
-make setup    # Configure git hooks, check dependencies
-make decrypt  # Decrypt secrets (requires age key)
-```
-
-**Usage:** iac-driver automatically discovers nodes via `get_site_config_dir()`.
-
 **Configuration Merge Order:** `site.yaml` → `nodes/{node}.yaml` → `secrets.yaml`
 
-## Known Issues
-
-**Debian 12 Cloud-Init First-Boot Kernel Panic**: Add `serial_device {}` to VM resource config. Already handled in proxmox-vm module.
-
-**PVE SSL Certificate Generation with IPv6**: IPv6 link-local addresses with zone IDs (e.g., `fe80::...%vmbr0`) break PVE SSL certificate generation. Fix: temporarily disable IPv6, run `pvecm updatecerts --force`, re-enable IPv6. Handled in ansible `nested-pve` role.
-
-**Snippets Content Type Required**: Cloud-init user-data files require `snippets` content type on local datastore. Run `pvesm set local -content images,rootdir,vztmpl,backup,iso,snippets`. Handled in ansible `nested-pve` role.
-
-**Claude Code Autonomy**: For fully autonomous integration test runs, add these to Claude Code allowed tools:
-```
-Bash(ansible-playbook:*), Bash(ansible:*), Bash(rsync:*)
-```
-Or run with `--dangerously-skip-permissions` flag.
-
-**OpenTofu State Version 4 Bug**: When `TF_DATA_DIR` contains a `terraform.tfstate` file, OpenTofu's legacy code path reads it and rejects valid v4 states with "does not support state version 4". **Workaround**: Store state file outside `TF_DATA_DIR` - we use a `data/` subdirectory for `TF_DATA_DIR` while keeping state at the parent level. See [opentofu/opentofu#3643](https://github.com/opentofu/opentofu/issues/3643).
-
-**Provider Lockfile Mismatch**: When provider version constraints change (e.g., Dependabot updates `providers.tf`), cached lockfiles in `.states/*/data/.terraform.lock.hcl` can have stale versions, causing `tofu init` to fail with "does not match configured version constraint". **Resolution**: Preflight checks now auto-detect and clear stale lockfiles. Manual fix: `rm -rf .states/*/data/.terraform.lock.hcl`.
-
-## Timeout Configuration
-
-Operations use tiered timeouts based on expected duration. Scenarios can override action defaults.
-
-### Timeout Tiers
-
-| Tier | Duration | Use Case |
-|------|----------|----------|
-| Quick | 5-30s | Simple SSH commands, status checks |
-| Short | 60s | Ping waits, basic operations |
-| Medium | 120-300s | Tofu apply/destroy, downloads, SSH waits |
-| Long | 600s | Complex ansible playbooks, tofu init+apply |
-| Extended | 1200s | PVE installation with reboot |
-
-### Core Utilities (common.py)
-
-| Function | Timeout | Interval | Notes |
-|----------|---------|----------|-------|
-| `run_command()` | 600s | - | General command execution |
-| `run_ssh()` | 60s | - | SSH command (also sets ConnectTimeout) |
-| `wait_for_ping()` | 60s | 2s | ICMP ping polling |
-| `wait_for_ssh()` | 60s | 3s | SSH availability polling |
-| `wait_for_guest_agent()` | 300s | 5s | QEMU guest agent polling |
-
-### Action Defaults (src/actions/)
-
-| Action | Parameter | Default | Notes |
-|--------|-----------|---------|-------|
-| `TofuApplyAction` | timeout_init | 120s | `tofu init` |
-| `TofuApplyAction` | timeout_apply | 300s | `tofu apply` |
-| `TofuDestroyAction` | timeout | 300s | `tofu destroy` |
-| `AnsiblePlaybookAction` | timeout | 600s | Playbook execution |
-| `AnsiblePlaybookAction` | ssh_timeout | 60s | Pre-playbook SSH wait |
-| `WaitForSSHAction` | timeout | 60s | SSH availability |
-| `WaitForSSHAction` | interval | 5s | Retry interval |
-| `WaitForFileAction` | timeout | 300s | File existence via SSH |
-| `WaitForFileAction` | interval | 10s | Retry interval |
-| `WaitForGuestAgentAction` | timeout | 300s | Guest agent |
-| `WaitForGuestAgentAction` | interval | 5s | Retry interval |
-| `SSHCommandAction` | timeout | 60s | Single SSH command |
-| `DownloadGitHubReleaseAction` | timeout | 300s | Asset download |
-| `VerifySSHChainAction` | timeout | 60s | Jump host verification |
-| `RecursiveScenarioAction` | timeout | 1200s | Subtree delegation via SSH |
-
-### Operator PVE Lifecycle Timeouts
-
-| Phase | Timeout | Rationale |
-|-------|---------|-----------|
-| wait_ip | 300s | Guest agent can be slow on first boot |
-| bootstrap | 600s | curl\|bash installer on remote host |
-| pve-setup (delegation) | 1200s | PVE install includes apt, kernel, reboot |
-| configure_bridge | 120s | Network bridge configuration |
-| download_images | 300s | ~200MB image from GitHub |
-| subtree_delegation | 1200s | SSH to inner PVE, run operator |
-| pull_config_complete | 300s | Poll for config-complete.json (pull mode) |
-
-### Tuning Guidelines
-
-- **Monitor actual durations**: integration test reports include phase timings - use these to tune
-- **Nested operations multiply**: Remote tofu = SSH + init + apply timeouts
-- **Guest agent is slow**: First boot can take 60-90s for agent to respond
-- **PVE install varies**: Network speed affects apt, allow 20+ min buffer
-- **Override in scenarios**: When a phase needs more time, override the default explicitly
-
-## integration Nested PVE Testing
-
-End-to-end testing uses nested virtualization to validate the full stack: VM provisioning → PVE installation → nested VM creation.
+## CLI Reference
 
 ### Architecture
 
@@ -834,218 +394,57 @@ Outer PVE Host (pve)
         └── Debian 12, 1 core, 4GB RAM
 ```
 
-### CLI
+### Commands
 
-The orchestrator uses verb commands for all operations. Run `./run.sh` with no arguments for top-level usage.
+Run `./run.sh` with no arguments for top-level usage, or `./run.sh scenario --help` for scenario list.
 
 ```bash
 # Verb commands (manifest-based)
-./run.sh create -M n2-tiered -H father              # Create infrastructure
-./run.sh destroy -M n2-tiered -H father --yes        # Destroy infrastructure
-./run.sh test -M n2-tiered -H father                 # Full roundtrip
+./run.sh create -M n2-tiered -H father
+./run.sh destroy -M n2-tiered -H father --yes
+./run.sh test -M n2-tiered -H father
 
 # Config verb (local execution)
-./run.sh config                                         # Apply spec to local host
-./run.sh config --fetch --insecure                      # Fetch spec from server + apply
-./run.sh config --spec /path/to/spec.yaml --dry-run     # Preview with custom spec
+./run.sh config --fetch --insecure
 
 # Scenario verb (standalone workflows)
-./run.sh scenario pve-setup --local                   # Install + configure PVE
-./run.sh scenario pve-setup --remote 192.0.2.10       # Remote PVE setup
-./run.sh scenario user-setup --local                  # Create homestak user
-./run.sh scenario --help                              # List available scenarios
+./run.sh scenario pve-setup --local
+./run.sh scenario user-setup --local
 
-# Top-level help
-./run.sh                                              # Show all commands
+# Preflight checks
+./run.sh --preflight --host father
 ```
 
-**Note:** The legacy `--scenario` flag is deprecated. Use `./run.sh scenario <name>` instead.
+Use `--json-output` for structured JSON to stdout (logs to stderr). Use `--dry-run` to preview without executing. Use `--verbose` for detailed logging.
 
-**CLI Options:**
-| Option | Description |
-|--------|-------------|
-| `--version` | Show CLI version |
-| `--scenario`, `-S` | Scenario to run (deprecated, use `scenario` verb) |
-| `--host`, `-H` | Target host: named host from site-config or raw IP |
-| `--context-file`, `-C` | Save/load context for chained runs |
-| `--verbose`, `-v` | Enable verbose logging |
-| `--skip`, `-s` | Phases to skip (repeatable) |
-| `--list-scenarios` | List available scenarios (or `scenario --help`) |
-| `--list-phases` | List phases for selected scenario |
-| `--local` | Run locally (for pve-setup, user-setup, packer-build) |
-| `--remote` | [Deprecated: use `-H <ip>`] Remote host IP |
-| `--templates` | Comma-separated packer templates (for packer-build) |
-| `--vm-ip` | [Deprecated: use `-H <ip>`] Target VM IP |
-| `--homestak-user` | User to create during bootstrap |
-| `--packer-release` | Packer release tag (e.g., v0.8.0-rc1, default: latest) |
-| `--timeout`, `-t` | Overall scenario timeout in seconds (checked between phases) |
-| `--yes`, `-y` | Skip confirmation prompt for destructive scenarios |
-| `--vm-id` | Override VM ID (repeatable): `--vm-id test=99990` |
-| `--dry-run` | Preview scenario phases without executing actions |
-| `--preflight` | Run preflight checks only (no scenario execution) |
-| `--skip-preflight` | Skip preflight checks before scenario execution |
-| `--json-output` | Output structured JSON to stdout (logs to stderr) |
-| `--manifest`, `-M` | Manifest name from site-config/manifests/ (for verb commands) |
-| `--manifest-file` | Path to manifest file (for verb commands) |
-| `--manifest-json` | Inline manifest JSON (for delegation) |
+### Available Scenarios
 
-**JSON Output (v0.38+):**
-
-The `--json-output` flag emits structured JSON for programmatic consumption:
-
-```bash
-./run.sh test -M n1-push -H father --json-output 2>/dev/null | jq .
-```
-
-Output schema:
-```json
-{
-  "scenario": "test",
-  "success": true,
-  "duration_seconds": 45.2,
-  "phases": [
-    {"name": "ensure_image", "status": "passed", "duration": 0.2},
-    {"name": "provision", "status": "passed", "duration": 6.8}
-  ],
-  "context": {
-    "vm_ip": "10.0.12.155",
-    "vm_id": 99900
-  }
-}
-```
-
-| Field | Description |
-|-------|-------------|
-| `scenario` | Scenario name |
-| `success` | Boolean result |
-| `duration_seconds` | Total runtime |
-| `phases[]` | Phase results (name, status, duration) |
-| `context` | Collected values (IPs, IDs, etc.) |
-| `error` | Error message (on failure only) |
-
-**Preflight Checks:**
-
-Preflight checks validate host prerequisites before running scenarios:
-
-```bash
-# Standalone preflight check (local)
-./run.sh --preflight --local
-
-# Standalone preflight check (remote)
-./run.sh --preflight --host mother
-
-# Skip preflight for faster iteration
-./run.sh --scenario pve-setup --host father --skip-preflight
-```
-
-Checks include:
-- Bootstrap installation (core repos present)
-- site-init completion (secrets.yaml decrypted, node config exists)
-- PVE API connectivity and token validity
-- Provider lockfile sync (auto-clears stale lockfiles in `.states/`)
-- Nested virtualization (for tiered manifests)
-
-**Packer Release:**
-
-The packer release tag for image downloads is resolved in this order (first match wins):
-1. CLI: `--packer-release v0.8.0-rc1`
-2. site.yaml: `defaults.packer_release: v0.8.0-rc1`
-3. Default: `latest` (points to most recent packer release with images)
-
-The `latest` tag is maintained by the packer release process (see packer#5).
-
-**Split File Handling:** Large images (>2GB) are split into parts on GitHub releases (e.g., `debian-13-pve.qcow2.partaa`, `.partab`). `DownloadGitHubReleaseAction` automatically detects split files, downloads all parts, reassembles them, and cleans up.
-
-**Available Scenarios:**
 | Scenario | Runtime | Description |
 |----------|---------|-------------|
+| `pve-setup` | ~3m | Install PVE (if needed), configure host, generate node config |
+| `user-setup` | ~30s | Create homestak user |
+| `push-vm-roundtrip` | ~3m | Spec discovery integration test (push verification) |
+| `pull-vm-roundtrip` | ~5m | Config phase integration test (pull verification) |
 | `packer-build` | ~3m | Build packer images (local or remote) |
 | `packer-build-fetch` | ~5m | Build remotely, fetch to local |
 | `packer-build-publish` | ~7m | Build and publish to PVE storage |
 | `packer-sync` | ~30s | Sync local packer to remote |
 | `packer-sync-build-fetch` | ~6m | Sync, build, fetch (dev workflow) |
-| `pve-setup` | ~3m | Install PVE (if needed), configure host, generate node config |
-| `push-vm-roundtrip` | ~3m | Spec discovery integration test (push verification) |
-| `pull-vm-roundtrip` | ~5m | Config phase integration test (pull verification) |
-| `user-setup` | ~30s | Create homestak user |
-
-**Retired Scenarios (v0.47+):** `vm-constructor`, `vm-destructor`, `vm-roundtrip`, `nested-pve-*`, `recursive-pve-*` — replaced by verb commands (`create`/`destroy`/`test`). `spec-vm-push-roundtrip` → `push-vm-roundtrip`, `spec-vm-pull-roundtrip` → `pull-vm-roundtrip` (homestak-dev#214). Running a retired scenario prints a migration hint.
-
-Runtime estimates are shown by `--list-scenarios` and used for `--timeout` defaults.
 
 ### Test Reports
 
 Reports are generated in `reports/` with format: `YYYYMMDD-HHMMSS.{passed|failed}.{md|json}`
 
-Both JSON and markdown reports are generated for each run.
+### Timeouts
 
-### Helper Scripts
+Operations use tiered timeouts (Quick: 5-30s through Extended: 1200s). Defaults are defined in `src/actions/*.py` and `src/common.py`. Override per-action in scenario definitions when needed.
 
-| Script | Purpose |
-|--------|---------|
-| `scripts/wait-for-guest-agent.sh` | Poll for VM IP (used by orchestrator) |
-| `scripts/setup-tools.sh` | Clone/update tool repos (ansible, tofu, packer, site-config) |
+### Claude Code Autonomy
 
-All helper scripts support `--help` for usage information.
-
-### Tofu Environments
-
-**nested-pve** - Inner PVE VM (in `../tofu/envs/nested-pve/`):
-
-| Property | Value |
-|----------|-------|
-| VM ID | 99913 |
-| Hostname | nested-pve |
-| CPU | 2 cores (faster packer builds) |
-| Memory | 8192 MB |
-| Disk | 64 GB on local-zfs |
-| Image | debian-13-custom.img |
-
-**test** - Parameterized test VM (in `../tofu/envs/test/`):
-
-Works on both outer and inner PVE via `-var="node=..."` override:
-
-```bash
-# Deploy to outer PVE (default)
-cd ../tofu/envs/test && tofu apply
-
-# Deploy to nested PVE
-tofu apply -var="node=nested-pve"
+For fully autonomous integration test runs, add these to Claude Code allowed tools:
 ```
-
-Configuration is loaded from `site-config/nodes/{node}.yaml` via ConfigResolver.
-
-### Ansible Collections
-
-Ansible roles are now organized in collections (see `ansible/CLAUDE.md` for details):
-
-| Collection | Roles | Purpose |
-|------------|-------|---------|
-| `homestak.debian` | base, users, security, iac_tools | Debian-generic configuration |
-| `homestak.proxmox` | install, configure, networking, api_token | PVE-specific roles |
-
-Playbooks use fully qualified collection names (FQCN):
-```yaml
-roles:
-  - homestak.debian.iac_tools
-  - homestak.proxmox.api_token
+Bash(ansible-playbook:*), Bash(ansible:*), Bash(rsync:*)
 ```
-
-### integration Testing Role
-
-**nested-pve** - integration test configuration (in `../ansible/roles/nested-pve/`):
-
-Depends on `homestak.debian.iac_tools` and `homestak.proxmox.api_token`:
-- `network.yml` - Configure vmbr0 bridge (required after Debian→PVE conversion)
-- `ssh-keys.yml` - Copy SSH keys for nested VM access
-- `copy-files.yml` - Sync homestak repos, create API token, configure test env
-
-Synced to inner PVE at `/opt/homestak/`:
-- `iac-driver/` - ConfigResolver for recursive deployment
-- `site-config/` - Configuration with test.yaml override (node: nested-pve)
-- `tofu/` - Modules and environments
-- `packer/` - Templates and scripts
-- API token created via `pveum` and injected into secrets.yaml
 
 ## Prerequisites
 
@@ -1054,6 +453,20 @@ Synced to inner PVE at `/opt/homestak/`:
 - age + sops for secrets decryption (see `make setup`)
 - age key at `~/.config/sops/age/keys.txt`
 - Nested virtualization enabled (`cat /sys/module/kvm_intel/parameters/nested` = Y)
+
+## Design Documents
+
+Detailed architecture and design rationale:
+
+| Document | Covers |
+|----------|--------|
+| [node-orchestration.md](../docs/designs/node-orchestration.md) | Topology patterns, execution models, system test catalog |
+| [server-daemon.md](../docs/designs/server-daemon.md) | Daemon architecture, PID management, operator integration |
+| [config-phase.md](../docs/designs/config-phase.md) | Push/pull execution, spec-to-ansible mapping |
+| [provisioning-token.md](../docs/designs/provisioning-token.md) | HMAC token format, signing, verification |
+| [scenario-consolidation.md](../docs/designs/scenario-consolidation.md) | Scenario migration, PVE lifecycle phases |
+| [node-lifecycle.md](../docs/designs/node-lifecycle.md) | Single-node lifecycle (create/config/run/destroy) |
+| [test-strategy.md](../docs/designs/test-strategy.md) | Test hierarchy, system test catalog (ST-1 through ST-8) |
 
 ## Tool Documentation
 
