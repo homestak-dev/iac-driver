@@ -96,11 +96,6 @@ class TestScenarioDefaults:
         scenario = get_scenario('pull-vm-roundtrip')
         assert getattr(scenario, 'requires_root', False) is False
 
-    def test_bootstrap_install_requires_host_config_by_default(self):
-        """bootstrap-install should require host config (no explicit attr)."""
-        scenario = get_scenario('bootstrap-install')
-        assert getattr(scenario, 'requires_host_config', True) is True
-
 
 class TestAllScenariosHaveRequiredAttrs:
     """Verify all scenarios have required base attributes."""

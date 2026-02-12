@@ -127,7 +127,7 @@ class TestListScenarios:
         assert result.returncode == 0
         output = result.stdout
         # Check runtime estimates are shown (format: ~Nm or ~Ns)
-        assert '~2m' in output  # bootstrap-install
+        assert '~3m' in output  # pve-setup, push-vm-roundtrip
         assert '~30s' in output  # user-setup, packer-sync
 
 
