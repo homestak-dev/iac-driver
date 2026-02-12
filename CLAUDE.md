@@ -88,7 +88,6 @@ All repos are siblings in a common parent directory:
 │   │   ├── scenarios/    # Workflow definitions
 │   │   │   ├── pve_setup.py         # pve-setup (local/remote)
 │   │   │   ├── user_setup.py        # user-setup (local/remote)
-│   │   │   ├── bootstrap.py         # bootstrap-install
 │   │   │   └── vm_roundtrip.py       # push-vm-roundtrip, pull-vm-roundtrip
 │   │   └── reporting/    # Test report generation (JSON + markdown)
 │   ├── reports/          # Generated test reports
@@ -625,7 +624,7 @@ Key features:
 
 | Type | Pattern | Examples |
 |------|---------|----------|
-| **Scenarios** | `noun-verb` | `pve-setup`, `user-setup`, `bootstrap-install`, `push-vm-roundtrip` |
+| **Scenarios** | `noun-verb` | `pve-setup`, `user-setup`, `push-vm-roundtrip` |
 | **Phases** | `verb_noun` | `ensure_pve`, `setup_pve`, `provision_vm`, `create_user` |
 | **Actions** | `VerbNounAction` | `EnsurePVEAction`, `StartVMAction`, `WaitForSSHAction` |
 
@@ -854,7 +853,6 @@ The orchestrator uses verb commands for all operations. Run `./run.sh` with no a
 ./run.sh scenario pve-setup --local                   # Install + configure PVE
 ./run.sh scenario pve-setup --remote 192.0.2.10       # Remote PVE setup
 ./run.sh scenario user-setup --local                  # Create homestak user
-./run.sh scenario bootstrap-install --vm-ip 192.0.2.20 # Test bootstrap
 ./run.sh scenario --help                              # List available scenarios
 
 # Top-level help
@@ -961,7 +959,6 @@ The `latest` tag is maintained by the packer release process (see packer#5).
 **Available Scenarios:**
 | Scenario | Runtime | Description |
 |----------|---------|-------------|
-| `bootstrap-install` | ~2m | Run bootstrap, verify installation and user |
 | `packer-build` | ~3m | Build packer images (local or remote) |
 | `packer-build-fetch` | ~5m | Build remotely, fetch to local |
 | `packer-build-publish` | ~7m | Build and publish to PVE storage |
