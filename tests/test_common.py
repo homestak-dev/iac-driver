@@ -80,29 +80,29 @@ class TestRunSSH:
         """Should build correct SSH command."""
         with patch('common.run_command') as mock_run:
             mock_run.return_value = (0, 'output', '')
-            rc, stdout, stderr = run_ssh('10.0.12.100', 'echo hello')
+            rc, stdout, stderr = run_ssh('198.51.100.10', 'echo hello')
 
             # Verify SSH was called with correct args
             mock_run.assert_called_once()
             cmd = mock_run.call_args[0][0]
             assert 'ssh' in cmd
-            assert 'root@10.0.12.100' in cmd
+            assert 'root@198.51.100.10' in cmd
             assert 'echo hello' in cmd
 
     def test_uses_custom_user(self):
         """Should use specified user."""
         with patch('common.run_command') as mock_run:
             mock_run.return_value = (0, 'output', '')
-            run_ssh('10.0.12.100', 'cmd', user='admin')
+            run_ssh('198.51.100.10', 'cmd', user='admin')
 
             cmd = mock_run.call_args[0][0]
-            assert 'admin@10.0.12.100' in cmd
+            assert 'admin@198.51.100.10' in cmd
 
     def test_includes_relaxed_host_checking(self):
         """Should include StrictHostKeyChecking=no."""
         with patch('common.run_command') as mock_run:
             mock_run.return_value = (0, 'output', '')
-            run_ssh('10.0.12.100', 'cmd')
+            run_ssh('198.51.100.10', 'cmd')
 
             cmd = mock_run.call_args[0][0]
             cmd_str = ' '.join(cmd)
@@ -112,14 +112,14 @@ class TestRunSSH:
         """Should build nested SSH command for jump host."""
         with patch('common.run_command') as mock_run:
             mock_run.return_value = (0, 'output', '')
-            run_ssh('10.0.12.200', 'cmd', jump_host='10.0.12.100')
+            run_ssh('198.51.100.20', 'cmd', jump_host='198.51.100.10')
 
             cmd = mock_run.call_args[0][0]
             cmd_str = ' '.join(cmd)
             # Should connect to jump host first
-            assert 'root@10.0.12.100' in cmd_str
+            assert 'root@198.51.100.10' in cmd_str
             # Then to target
-            assert 'root@10.0.12.200' in cmd_str
+            assert 'root@198.51.100.20' in cmd_str
 
 
 class TestWaitForPing:
@@ -129,14 +129,14 @@ class TestWaitForPing:
         """Should return True when host is pingable."""
         with patch('common.run_command') as mock_run:
             mock_run.return_value = (0, '', '')
-            result = wait_for_ping('10.0.12.100', timeout=5)
+            result = wait_for_ping('198.51.100.10', timeout=5)
             assert result is True
 
     def test_returns_false_on_timeout(self):
         """Should return False when timeout reached."""
         with patch('common.run_command') as mock_run:
             mock_run.return_value = (1, '', 'timeout')
-            result = wait_for_ping('10.0.12.100', timeout=1, interval=0.1)
+            result = wait_for_ping('198.51.100.10', timeout=1, interval=0.1)
             assert result is False
 
     def test_retries_on_failure(self):
@@ -148,7 +148,7 @@ class TestWaitForPing:
                 (1, '', 'fail'),
                 (0, '', ''),
             ]
-            result = wait_for_ping('10.0.12.100', timeout=5, interval=0.1)
+            result = wait_for_ping('198.51.100.10', timeout=5, interval=0.1)
             assert result is True
             assert mock_run.call_count == 3
 
@@ -161,7 +161,7 @@ class TestWaitForSSH:
         with patch('common.wait_for_ping', return_value=True), \
              patch('common.run_ssh') as mock_ssh:
             mock_ssh.return_value = (0, 'ready', '')
-            result = wait_for_ssh('10.0.12.100', timeout=5)
+            result = wait_for_ssh('198.51.100.10', timeout=5)
             assert result is True
 
     def test_returns_false_on_timeout(self):
@@ -169,7 +169,7 @@ class TestWaitForSSH:
         with patch('common.wait_for_ping', return_value=False), \
              patch('common.run_ssh') as mock_ssh:
             mock_ssh.return_value = (1, '', 'connection refused')
-            result = wait_for_ssh('10.0.12.100', timeout=1, interval=0.1)
+            result = wait_for_ssh('198.51.100.10', timeout=1, interval=0.1)
             assert result is False
 
     def test_retries_on_ssh_failure(self):
@@ -183,7 +183,7 @@ class TestWaitForSSH:
                 (1, '', 'refused'),
                 (0, 'ready', ''),
             ]
-            result = wait_for_ssh('10.0.12.100', timeout=10, interval=0.1)
+            result = wait_for_ssh('198.51.100.10', timeout=10, interval=0.1)
             assert result is True
 
     def test_checks_for_ready_in_output(self):
@@ -196,7 +196,7 @@ class TestWaitForSSH:
                 (0, 'ready', ''),  # Has 'ready'
             ]
             with patch('time.sleep'):
-                result = wait_for_ssh('10.0.12.100', timeout=5, interval=0.1)
+                result = wait_for_ssh('198.51.100.10', timeout=5, interval=0.1)
             assert result is True
             assert mock_ssh.call_count == 2
 

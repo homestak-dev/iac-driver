@@ -51,20 +51,20 @@ class TestIPValidation:
 
     def test_validate_ip_accepts_valid_cidr(self, resolver):
         """Valid CIDR notation should be accepted."""
-        resolver._validate_ip('10.0.12.100/24', 'test-vm')
+        resolver._validate_ip('198.51.100.10/24', 'test-vm')
         resolver._validate_ip('192.168.1.1/16', 'test-vm')
         resolver._validate_ip('172.16.0.1/32', 'test-vm')
 
     def test_validate_ip_rejects_bare_ip(self, resolver):
         """IP without CIDR prefix should be rejected."""
         with pytest.raises(ConfigError) as exc_info:
-            resolver._validate_ip('10.0.12.100', 'test-vm')
+            resolver._validate_ip('198.51.100.10', 'test-vm')
         assert 'CIDR notation' in str(exc_info.value)
 
     def test_validate_ip_rejects_invalid_prefix(self, resolver):
         """CIDR prefix > 32 should be rejected."""
         with pytest.raises(ConfigError) as exc_info:
-            resolver._validate_ip('10.0.12.100/33', 'test-vm')
+            resolver._validate_ip('198.51.100.10/33', 'test-vm')
         assert 'prefix' in str(exc_info.value)
 
     def test_validate_ip_rejects_non_string(self, resolver):

@@ -29,6 +29,9 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
   - Deleted: packer-build, packer-build-publish, packer-build-fetch, packer-sync, packer-sync-build-fetch
   - Release workflow uses `gh release` commands; builds run directly via `packer/build.sh`
 
+### Testing
+- Replace `10.0.12.x` test IPs with RFC 5737 TEST-NET-2 addresses (`198.51.100.x`) in 9 test files (#182)
+
 ### Theme: Server Daemon Robustness (#177)
 
 Proper daemonization replacing nohup/Popen hack with double-fork, PID files,

@@ -58,7 +58,7 @@ defaults:
   timezone: America/Denver
   bridge: vmbr0
   ssh_user: root
-  gateway: 10.0.12.1
+  gateway: 198.51.100.1
   packages:
     - htop
     - curl
@@ -83,7 +83,7 @@ auth:
     # Create node config (datastore required)
     (tmp_path / 'nodes/test-node.yaml').write_text("""
 node: test-node
-api_endpoint: https://10.0.12.100:8006
+api_endpoint: https://198.51.100.10:8006
 api_token: test-node
 datastore: local-zfs
 """)
@@ -155,7 +155,7 @@ vmid_base: 99900
 vms:
   - name: test1
     template: debian-12
-    ip: 10.0.12.100/24
+    ip: 198.51.100.10/24
   - name: test2
     template: debian-12
     ip: dhcp
@@ -186,7 +186,7 @@ api_tokens: {}
     # Node WITHOUT datastore - should trigger error
     (tmp_path / 'nodes/bad-node.yaml').write_text("""
 node: bad-node
-api_endpoint: https://10.0.12.100:8006
+api_endpoint: https://198.51.100.10:8006
 """)
 
     (tmp_path / 'envs/test.yaml').write_text("""
@@ -217,7 +217,7 @@ ssh_keys: {}
 
     (tmp_path / 'nodes/test-node.yaml').write_text("""
 node: test-node
-api_endpoint: https://10.0.12.100:8006
+api_endpoint: https://198.51.100.10:8006
 datastore: local-zfs
 """)
 
@@ -245,7 +245,7 @@ vms: []
 def mock_context():
     """Common context dict for action tests."""
     return {
-        'inner_ip': '10.0.12.100',
+        'inner_ip': '198.51.100.10',
         'provisioned_vms': [
             {'name': 'test1', 'vmid': 99900},
         ],
