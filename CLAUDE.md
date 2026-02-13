@@ -267,13 +267,14 @@ nodes:
       mode: pull  # Default: push
 ```
 
-### Verb Commands
+### Noun-Action Commands
 
 ```bash
-./run.sh create -M n2-tiered -H father [--dry-run] [--json-output] [--verbose]
-./run.sh destroy -M n2-tiered -H father [--dry-run] [--yes]
-./run.sh test -M n2-tiered -H father [--dry-run] [--json-output]
-./run.sh config [--fetch] [--insecure] [--spec /path.yaml] [--dry-run]
+./run.sh manifest apply -M n2-tiered -H father [--dry-run] [--json-output] [--verbose]
+./run.sh manifest destroy -M n2-tiered -H father [--dry-run] [--yes]
+./run.sh manifest test -M n2-tiered -H father [--dry-run] [--json-output]
+./run.sh config fetch [--insecure]
+./run.sh config apply [--spec /path.yaml] [--dry-run]
 ```
 
 ### Error Handling
@@ -288,7 +289,7 @@ nodes:
 
 Root nodes (depth 0) are handled locally. PVE nodes with children trigger:
 1. PVE lifecycle setup (bootstrap, secrets, bridge, API token, image download)
-2. Subtree delegation via SSH — `./run.sh create --manifest-json` on inner PVE
+2. Subtree delegation via SSH — `./run.sh manifest apply --manifest-json` on inner PVE
 
 This recursion handles arbitrary depth without limits.
 
@@ -308,11 +309,11 @@ PVE nodes always use push regardless of setting.
 Manifests define N-level nested PVE deployments using graph-based schema v2. Manifests are YAML files in `site-config/manifests/`.
 
 ```bash
-./run.sh create -M n2-tiered -H father
-./run.sh destroy -M n2-tiered -H father --yes
-./run.sh test -M n2-tiered -H father
-./run.sh create -M n2-tiered -H father --dry-run
-./run.sh test -M n1-push -H father --json-output
+./run.sh manifest apply -M n2-tiered -H father
+./run.sh manifest destroy -M n2-tiered -H father --yes
+./run.sh manifest test -M n2-tiered -H father
+./run.sh manifest apply -M n2-tiered -H father --dry-run
+./run.sh manifest test -M n1-push -H father --json-output
 ```
 
 `RecursiveScenarioAction` executes commands on remote hosts via SSH with PTY streaming. Used by the operator for subtree delegation. Supports `raw_command` for verb delegation and `scenario_name` for legacy scenarios. Extracts context keys from `--json-output` results.
@@ -399,17 +400,18 @@ Outer PVE Host (pve)
 Run `./run.sh` with no arguments for top-level usage, or `./run.sh scenario --help` for scenario list.
 
 ```bash
-# Verb commands (manifest-based)
-./run.sh create -M n2-tiered -H father
-./run.sh destroy -M n2-tiered -H father --yes
-./run.sh test -M n2-tiered -H father
+# Manifest commands (infrastructure lifecycle)
+./run.sh manifest apply -M n2-tiered -H father
+./run.sh manifest destroy -M n2-tiered -H father --yes
+./run.sh manifest test -M n2-tiered -H father
 
-# Config verb (local execution)
-./run.sh config --fetch --insecure
+# Config commands (spec fetch and apply)
+./run.sh config fetch --insecure
+./run.sh config apply
 
-# Scenario verb (standalone workflows)
-./run.sh scenario pve-setup --local
-./run.sh scenario user-setup --local
+# Scenario commands (standalone workflows)
+./run.sh scenario run pve-setup --local
+./run.sh scenario run user-setup --local
 
 # Preflight checks
 ./run.sh --preflight --host father
