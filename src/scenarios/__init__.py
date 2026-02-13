@@ -186,5 +186,4 @@ def list_scenarios() -> list[str]:
 # Import scenarios to trigger registration
 from scenarios import pve_setup  # noqa: E402, F401
 from scenarios import user_setup  # noqa: E402, F401
-from scenarios import packer_build  # noqa: E402, F401
 from scenarios import vm_roundtrip  # noqa: E402, F401

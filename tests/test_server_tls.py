@@ -233,7 +233,7 @@ class TestGenerateSelfSignedCert:
 
     def test_includes_san_with_ip(self, tmp_path):
         """Certificate includes IP address in SAN when available."""
-        with patch("server.tls.get_primary_ip", return_value="10.0.12.100"):
+        with patch("server.tls.get_primary_ip", return_value="198.51.100.10"):
             config = generate_self_signed_cert(
                 cert_dir=tmp_path, hostname="my-controller", key_size=2048
             )
@@ -251,7 +251,7 @@ class TestGenerateSelfSignedCert:
                 check=True,
             )
 
-            assert "IP Address:10.0.12.100" in result.stdout
+            assert "IP Address:198.51.100.10" in result.stdout
 
 
 class TestVerifyCertKeyMatch:

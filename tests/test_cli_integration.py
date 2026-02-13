@@ -52,46 +52,6 @@ class TestRequiresRoot:
         else:
             pytest.skip("Running as root - cannot test non-root failure")
 
-    def test_packer_build_local_does_not_require_root(self):
-        """packer-build --local should not fail due to root check."""
-        result = subprocess.run(
-            [str(RUN_SH), '--scenario', 'packer-build', '--local'],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        # Should NOT contain requires_root error
-        combined_output = result.stdout + result.stderr
-        assert "requires root privileges" not in combined_output
-
-
-class TestAutoDetectHost:
-    """Test CLI auto-detect host from hostname."""
-
-    @requires_infrastructure
-    def test_packer_build_local_auto_detects_host(self):
-        """packer-build --local should auto-detect host from hostname."""
-        # Get current hostname
-        hostname_result = subprocess.run(['hostname'], capture_output=True, text=True)
-        hostname = hostname_result.stdout.strip()
-
-        result = subprocess.run(
-            [str(RUN_SH), '--scenario', 'packer-build', '--local'],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        combined_output = result.stdout + result.stderr
-        # Should either auto-detect or fail gracefully
-        if f"Auto-detected host from hostname: {hostname}" in combined_output:
-            pass  # Success - auto-detected
-        elif "Could not auto-detect host" in combined_output:
-            pass  # Expected if hostname doesn't match a node
-        elif "No host config needed" in combined_output:
-            pass  # Expected if requires_host_config is False
-        else:
-            # If it starts running phases, that's also success
-            assert "Starting scenario" in combined_output or "Running phase" in combined_output
 
 
 class TestListScenarios:
@@ -109,8 +69,8 @@ class TestListScenarios:
         # Check active scenarios are listed
         assert 'pve-setup' in output
         assert 'user-setup' in output
-        assert 'packer-build' in output
-        # Retired scenarios should NOT appear (check with leading whitespace to avoid substring matches)
+        # Retired/removed scenarios should NOT appear
+        assert 'packer-build' not in output
         lines = output.split('\n')
         scenario_names = [line.strip().split()[0] for line in lines if line.strip() and not line.startswith('Available') and not line.startswith('Usage')]
         assert 'vm-roundtrip' not in scenario_names
@@ -249,8 +209,8 @@ class TestTopLevelUsage:
         )
         assert result.returncode == 0
         assert 'scenario' in result.stdout
-        assert 'create' in result.stdout
-        assert 'serve' in result.stdout
+        assert 'manifest' in result.stdout
+        assert 'config' in result.stdout
 
     def test_unknown_command_shows_error(self):
         """Unknown command shows error and usage."""
@@ -279,16 +239,17 @@ class TestTimeoutFlag:
     @requires_infrastructure
     def test_timeout_shown_in_log(self):
         """Timeout should be shown in log when scenario starts."""
-        # Use a scenario that doesn't require host config and will fail quickly
+        # Use scenario verb with --dry-run and -H to avoid root check
         result = subprocess.run(
-            [str(RUN_SH), '--scenario', 'packer-build', '--local', '--timeout', '5'],
+            [str(RUN_SH), 'scenario', 'pve-setup', '-H', 'father',
+             '--timeout', '5', '--dry-run', '--skip-preflight'],
             capture_output=True,
             text=True,
             timeout=30
         )
         combined = result.stdout + result.stderr
-        # Should show timeout in startup message
-        assert 'timeout: 5s' in combined or 'timeout' in combined.lower()
+        # Should show timeout in dry-run output
+        assert 'timeout' in combined.lower() or 'Timeout' in combined
 
 
 class TestVmIdFlag:

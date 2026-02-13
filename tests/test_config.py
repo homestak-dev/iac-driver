@@ -140,8 +140,8 @@ class TestListHosts:
         """Should list hosts from hosts/*.yaml (pre-PVE physical machines)."""
         hosts_dir = tmp_path / 'hosts'
         hosts_dir.mkdir()
-        (hosts_dir / 'host1.yaml').write_text('ip: 10.0.12.1')
-        (hosts_dir / 'host2.yaml').write_text('ip: 10.0.12.2')
+        (hosts_dir / 'host1.yaml').write_text('ip: 198.51.100.1')
+        (hosts_dir / 'host2.yaml').write_text('ip: 198.51.100.2')
 
         with patch('config.get_site_config_dir', return_value=tmp_path):
             hosts = list_hosts()
@@ -169,7 +169,7 @@ class TestLoadHostConfig:
         nodes_dir.mkdir()
         (nodes_dir / 'test.yaml').write_text("""
 node: test
-api_endpoint: https://10.0.12.100:8006
+api_endpoint: https://198.51.100.10:8006
 """)
         (tmp_path / 'site.yaml').write_text('defaults: {}')
         (tmp_path / 'secrets.yaml').write_text('api_tokens: {}')
@@ -177,7 +177,7 @@ api_endpoint: https://10.0.12.100:8006
         with patch('config.get_site_config_dir', return_value=tmp_path):
             config = load_host_config('test')
             assert config.name == 'test'
-            assert config.api_endpoint == 'https://10.0.12.100:8006'
+            assert config.api_endpoint == 'https://198.51.100.10:8006'
 
     def test_loads_host_yaml(self, tmp_path):
         """Should load from hosts/*.yaml (pre-PVE physical machines)."""
@@ -214,9 +214,9 @@ class TestHostConfig:
         config = HostConfig(
             name='test',
             config_file=config_file,
-            api_endpoint='https://10.0.12.100:8006'
+            api_endpoint='https://198.51.100.10:8006'
         )
-        assert config.ssh_host == '10.0.12.100'
+        assert config.ssh_host == '198.51.100.10'
 
     def test_tfvars_file_alias(self, tmp_path):
         """tfvars_file should be alias for config_file."""

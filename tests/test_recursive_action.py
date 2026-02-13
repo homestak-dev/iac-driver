@@ -26,7 +26,7 @@ from common import ActionResult
 class MockHostConfig:
     """Minimal host config for testing."""
     name: str = 'test-host'
-    ssh_host: str = '10.0.12.100'
+    ssh_host: str = '198.51.100.10'
     ssh_user: str = 'root'
     config_file: Path = Path('/tmp/test.yaml')
 
@@ -103,7 +103,7 @@ class TestRecursiveScenarioActionRun:
             context_keys=['vm_ip']
         )
         config = MockHostConfig()
-        context = {'inner_ip': '10.0.12.152'}
+        context = {'inner_ip': '198.51.100.52'}
 
         # Mock JSON result from inner scenario
         json_result = {
@@ -114,7 +114,7 @@ class TestRecursiveScenarioActionRun:
                 {'name': 'provision', 'status': 'passed', 'duration': 6.8},
             ],
             'context': {
-                'vm_ip': '10.0.12.155',
+                'vm_ip': '198.51.100.55',
                 'vm_id': 99900
             }
         }
@@ -125,7 +125,7 @@ class TestRecursiveScenarioActionRun:
 
         assert result.success is True
         assert 'vm-roundtrip' in result.message
-        assert result.context_updates.get('vm_ip') == '10.0.12.155'
+        assert result.context_updates.get('vm_ip') == '198.51.100.55'
 
     def test_failure_with_error_message(self):
         """Failed execution should extract error message."""
@@ -137,7 +137,7 @@ class TestRecursiveScenarioActionRun:
             host_attr='inner_ip'
         )
         config = MockHostConfig()
-        context = {'inner_ip': '10.0.12.152'}
+        context = {'inner_ip': '198.51.100.52'}
 
         json_result = {
             'scenario': 'vm-roundtrip',
@@ -198,12 +198,12 @@ class TestBuildSSHCommand:
 
         action = RecursiveScenarioAction(name='test', scenario_name='vm-roundtrip')
 
-        cmd = action._build_ssh_command('10.0.12.152', 'echo hello')
+        cmd = action._build_ssh_command('198.51.100.52', 'echo hello')
 
         assert 'ssh' in cmd
         assert '-o' in cmd
         assert 'StrictHostKeyChecking=no' in ' '.join(cmd)
-        assert 'root@10.0.12.152' in cmd
+        assert 'root@198.51.100.52' in cmd
         assert 'echo hello' in cmd
 
     def test_pty_flag_included(self):
@@ -212,7 +212,7 @@ class TestBuildSSHCommand:
 
         action = RecursiveScenarioAction(name='test', scenario_name='vm-roundtrip', use_pty=True)
 
-        cmd = action._build_ssh_command('10.0.12.152', 'echo hello')
+        cmd = action._build_ssh_command('198.51.100.52', 'echo hello')
 
         assert '-t' in cmd
 
@@ -222,7 +222,7 @@ class TestBuildSSHCommand:
 
         action = RecursiveScenarioAction(name='test', scenario_name='vm-roundtrip', use_pty=False)
 
-        cmd = action._build_ssh_command('10.0.12.152', 'echo hello')
+        cmd = action._build_ssh_command('198.51.100.52', 'echo hello')
 
         # Build without PTY, then manually check
         assert '-t' not in cmd or action.use_pty
@@ -237,9 +237,9 @@ class TestBuildSSHCommand:
             ssh_user='homestak'
         )
 
-        cmd = action._build_ssh_command('10.0.12.152', 'echo hello')
+        cmd = action._build_ssh_command('198.51.100.52', 'echo hello')
 
-        assert 'homestak@10.0.12.152' in cmd
+        assert 'homestak@198.51.100.52' in cmd
 
 
 class TestParseJSONResult:
@@ -326,7 +326,7 @@ class TestExtractContext:
 
         json_result = {
             'context': {
-                'vm_ip': '10.0.12.155',
+                'vm_ip': '198.51.100.55',
                 'vm_id': 99900,
                 'other_key': 'ignored'
             }
@@ -334,7 +334,7 @@ class TestExtractContext:
 
         context_updates = action._extract_context(json_result)
 
-        assert context_updates == {'vm_ip': '10.0.12.155', 'vm_id': 99900}
+        assert context_updates == {'vm_ip': '198.51.100.55', 'vm_id': 99900}
         assert 'other_key' not in context_updates
 
     def test_missing_keys_not_included(self):
@@ -349,13 +349,13 @@ class TestExtractContext:
 
         json_result = {
             'context': {
-                'vm_ip': '10.0.12.155'
+                'vm_ip': '198.51.100.55'
             }
         }
 
         context_updates = action._extract_context(json_result)
 
-        assert context_updates == {'vm_ip': '10.0.12.155'}
+        assert context_updates == {'vm_ip': '198.51.100.55'}
         assert 'nonexistent' not in context_updates
 
     def test_empty_context_keys(self):
@@ -370,7 +370,7 @@ class TestExtractContext:
 
         json_result = {
             'context': {
-                'vm_ip': '10.0.12.155'
+                'vm_ip': '198.51.100.55'
             }
         }
 
@@ -472,7 +472,7 @@ class TestTimeoutHandling:
             timeout=5
         )
         config = MockHostConfig()
-        context = {'inner_ip': '10.0.12.152'}
+        context = {'inner_ip': '198.51.100.52'}
 
         with patch.object(action, '_run_with_pty', side_effect=subprocess.TimeoutExpired('cmd', 5)):
             result = action.run(config, context)
@@ -496,7 +496,7 @@ class TestNonPTYMode:
             use_pty=False
         )
         config = MockHostConfig()
-        context = {'inner_ip': '10.0.12.152'}
+        context = {'inner_ip': '198.51.100.52'}
 
         json_result = {
             'scenario': 'vm-roundtrip',

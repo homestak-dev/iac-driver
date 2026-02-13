@@ -33,10 +33,10 @@ class TestNodeState:
     def test_complete(self):
         state = NodeState(name='test')
         state.start()
-        state.complete(vm_id=99001, ip='10.0.12.100')
+        state.complete(vm_id=99001, ip='198.51.100.10')
         assert state.status == 'completed'
         assert state.vm_id == 99001
-        assert state.ip == '10.0.12.100'
+        assert state.ip == '198.51.100.10'
         assert state.completed_at is not None
         assert state.duration is not None
         assert state.duration >= 0
@@ -57,12 +57,12 @@ class TestNodeState:
         assert state.status == 'destroyed'
 
     def test_to_dict(self):
-        state = NodeState(name='test', status='completed', vm_id=99001, ip='10.0.12.100')
+        state = NodeState(name='test', status='completed', vm_id=99001, ip='198.51.100.10')
         d = state.to_dict()
         assert d['name'] == 'test'
         assert d['status'] == 'completed'
         assert d['vm_id'] == 99001
-        assert d['ip'] == '10.0.12.100'
+        assert d['ip'] == '198.51.100.10'
 
     def test_to_dict_minimal(self):
         state = NodeState(name='test')
@@ -70,7 +70,7 @@ class TestNodeState:
         assert d == {'name': 'test', 'status': 'pending'}
 
     def test_from_dict_roundtrip(self):
-        original = NodeState(name='test', status='completed', vm_id=99001, ip='10.0.12.100')
+        original = NodeState(name='test', status='completed', vm_id=99001, ip='198.51.100.10')
         original.started_at = 1000.0
         original.completed_at = 1010.0
         d = original.to_dict()
@@ -105,16 +105,16 @@ class TestExecutionState:
     def test_to_context(self):
         state = ExecutionState('test-manifest', 'father')
         ns = state.add_node('pve')
-        ns.complete(vm_id=99001, ip='10.0.12.100')
+        ns.complete(vm_id=99001, ip='198.51.100.10')
 
         ns2 = state.add_node('test')
-        ns2.complete(vm_id=99002, ip='10.0.12.101')
+        ns2.complete(vm_id=99002, ip='198.51.100.11')
 
         ctx = state.to_context()
         assert ctx['pve_vm_id'] == 99001
-        assert ctx['pve_ip'] == '10.0.12.100'
+        assert ctx['pve_ip'] == '198.51.100.10'
         assert ctx['test_vm_id'] == 99002
-        assert ctx['test_ip'] == '10.0.12.101'
+        assert ctx['test_ip'] == '198.51.100.11'
 
     def test_to_context_skips_pending(self):
         state = ExecutionState('test-manifest', 'father')
@@ -137,7 +137,7 @@ class TestExecutionState:
         state.start()
         ns = state.add_node('test')
         ns.start()
-        ns.complete(vm_id=99001, ip='10.0.12.100')
+        ns.complete(vm_id=99001, ip='198.51.100.10')
         state.finish()
 
         save_path = tmp_path / 'execution.json'
@@ -153,7 +153,7 @@ class TestExecutionState:
         loaded_node = loaded.get_node('test')
         assert loaded_node.status == 'completed'
         assert loaded_node.vm_id == 99001
-        assert loaded_node.ip == '10.0.12.100'
+        assert loaded_node.ip == '198.51.100.10'
 
     def test_save_creates_directory(self, tmp_path):
         state = ExecutionState('test-manifest', 'father')
@@ -173,7 +173,7 @@ class TestExecutionState:
 
         ns1 = state.add_node('pve')
         ns1.start()
-        ns1.complete(vm_id=99001, ip='10.0.12.50')
+        ns1.complete(vm_id=99001, ip='198.51.100.50')
 
         ns2 = state.add_node('test')
         ns2.start()

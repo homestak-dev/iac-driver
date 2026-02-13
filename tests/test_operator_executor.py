@@ -34,7 +34,7 @@ def _make_config():
     """Create a mock HostConfig."""
     config = MagicMock()
     config.name = 'test-host'
-    config.ssh_host = '10.0.12.61'
+    config.ssh_host = '198.51.100.61'
     config.ssh_user = 'root'
     config.automation_user = 'homestak'
     return config
@@ -109,7 +109,7 @@ class TestNodeExecutorCreate:
         graph = ManifestGraph(manifest)
         config = _make_config()
 
-        mock_create.return_value = _success_result(test_vm_id=99001, test_ip='10.0.12.100')
+        mock_create.return_value = _success_result(test_vm_id=99001, test_ip='198.51.100.10')
 
         executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
         success, state = executor.create({})
@@ -128,8 +128,8 @@ class TestNodeExecutorCreate:
         graph = ManifestGraph(manifest)
         config = _make_config()
 
-        mock_create.return_value = _success_result(pve_vm_id=99001, pve_ip='10.0.12.100')
-        mock_delegate.return_value = _success_result(test_vm_id=99002, test_ip='10.0.12.101')
+        mock_create.return_value = _success_result(pve_vm_id=99001, pve_ip='198.51.100.10')
+        mock_delegate.return_value = _success_result(test_vm_id=99002, test_ip='198.51.100.11')
 
         executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
         success, state = executor.create({})
@@ -171,7 +171,7 @@ class TestNodeExecutorCreate:
         graph = ManifestGraph(manifest)
         config = _make_config()
 
-        mock_create.return_value = _success_result(pve_vm_id=99001, pve_ip='10.0.12.100')
+        mock_create.return_value = _success_result(pve_vm_id=99001, pve_ip='198.51.100.10')
         mock_delegate.return_value = _fail_result('delegation failed')
         mock_destroy.return_value = _success_result()
         mock_delegate_destroy.return_value = _success_result()
@@ -199,7 +199,7 @@ class TestNodeExecutorCreate:
         def create_side_effect(exec_node, context):
             call_count[0] += 1
             if call_count[0] == 1:
-                return _success_result(vm1_vm_id=99001, vm1_ip='10.0.12.100')
+                return _success_result(vm1_vm_id=99001, vm1_ip='198.51.100.10')
             return _fail_result('provision failed')
 
         mock_create.side_effect = create_side_effect
@@ -227,7 +227,7 @@ class TestNodeExecutorCreate:
             call_count[0] += 1
             if call_count[0] == 1:
                 return _fail_result('vm1 failed')
-            return _success_result(vm2_vm_id=99002, vm2_ip='10.0.12.101')
+            return _success_result(vm2_vm_id=99002, vm2_ip='198.51.100.11')
 
         mock_create.side_effect = side_effect
 
@@ -284,7 +284,7 @@ class TestNodeExecutorDestroy:
 
         executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
         # Put PVE IP in context so delegation can find it
-        success, state = executor.destroy({'pve_ip': '10.0.12.100'})
+        success, state = executor.destroy({'pve_ip': '198.51.100.10'})
 
         assert success is True
         assert mock_delegate_destroy.call_count == 1  # Children delegated
@@ -305,8 +305,8 @@ class TestNodeExecutorDelegation:
         graph = ManifestGraph(manifest)
         config = _make_config()
 
-        mock_create.return_value = _success_result(pve_vm_id=99001, pve_ip='10.0.12.100')
-        mock_delegate.return_value = _success_result(test_vm_id=99002, test_ip='10.0.12.101')
+        mock_create.return_value = _success_result(pve_vm_id=99001, pve_ip='198.51.100.10')
+        mock_delegate.return_value = _success_result(test_vm_id=99002, test_ip='198.51.100.11')
 
         executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
         success, state = executor.create({})
@@ -325,7 +325,7 @@ class TestNodeExecutorDelegation:
         graph = ManifestGraph(manifest)
         config = _make_config()
 
-        mock_create.return_value = _success_result(test_vm_id=99001, test_ip='10.0.12.100')
+        mock_create.return_value = _success_result(test_vm_id=99001, test_ip='198.51.100.10')
 
         executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
         success, state = executor.create({})
@@ -344,7 +344,7 @@ class TestNodeExecutorDelegation:
         graph = ManifestGraph(manifest)
         config = _make_config()
 
-        mock_create.return_value = _success_result(pve_vm_id=99001, pve_ip='10.0.12.100')
+        mock_create.return_value = _success_result(pve_vm_id=99001, pve_ip='198.51.100.10')
         mock_delegate.return_value = _fail_result('SSH connection refused')
 
         executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
@@ -370,13 +370,13 @@ class TestNodeExecutorDelegation:
 
         def side_effect(exec_node, context):
             created_names.append(exec_node.name)
-            return _success_result(**{f'{exec_node.name}_vm_id': exec_node.manifest_node.vmid, f'{exec_node.name}_ip': '10.0.12.100'})
+            return _success_result(**{f'{exec_node.name}_vm_id': exec_node.manifest_node.vmid, f'{exec_node.name}_ip': '198.51.100.10'})
 
         mock_create.side_effect = side_effect
 
         # Mock _delegate_subtree since root has children
         with patch.object(NodeExecutor, '_delegate_subtree') as mock_delegate:
-            mock_delegate.return_value = _success_result(leaf_vm_id=99002, leaf_ip='10.0.12.101', test_vm_id=99003, test_ip='10.0.12.102')
+            mock_delegate.return_value = _success_result(leaf_vm_id=99002, leaf_ip='198.51.100.11', test_vm_id=99003, test_ip='198.51.100.12')
             executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
             success, state = executor.create({})
 
@@ -398,7 +398,7 @@ class TestNodeExecutorTest:
 
         from manifest_opr.state import ExecutionState
         state = ExecutionState('test', 'test-host')
-        state.add_node('test').complete(vm_id=99001, ip='10.0.12.100')
+        state.add_node('test').complete(vm_id=99001, ip='198.51.100.10')
 
         mock_create.return_value = (True, state)
         mock_destroy.return_value = (True, state)

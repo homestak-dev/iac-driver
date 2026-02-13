@@ -683,7 +683,7 @@ class NodeExecutor:
         """Delegate creation of a PVE node's children to the inner PVE host.
 
         Extracts the subtree as a new manifest, SSHs to the PVE node, and
-        runs './run.sh create --manifest-json <json> -H <hostname> --json-output'
+        runs './run.sh manifest apply --manifest-json <json> -H <hostname> --json-output'
         on the inner host. Uses RecursiveScenarioAction for PTY streaming
         and JSON result parsing.
 
@@ -726,7 +726,7 @@ class NodeExecutor:
         # Build raw command for delegation
         raw_cmd = (
             f'cd /usr/local/lib/homestak/iac-driver && '
-            f'sudo ./run.sh create '
+            f'sudo ./run.sh manifest apply '
             f'--manifest-json {shlex.quote(subtree_json)} '
             f'-H {shlex.quote(inner_hostname)} '
             f'--json-output'
@@ -776,7 +776,7 @@ class NodeExecutor:
 
         raw_cmd = (
             f'cd /usr/local/lib/homestak/iac-driver && '
-            f'sudo ./run.sh destroy '
+            f'sudo ./run.sh manifest destroy '
             f'--manifest-json {shlex.quote(subtree_json)} '
             f'-H {shlex.quote(inner_hostname)} '
             f'--json-output --yes'

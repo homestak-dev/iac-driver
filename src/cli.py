@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """CLI entry point for iac-driver.
 
-Supports both scenario-based workflows and verb-based subcommands:
-- Scenarios: ./run.sh --scenario <name> --host <host>
-- Verbs: ./run.sh create [options]
+Supports noun-action subcommands and legacy scenario workflows:
+- Noun-action: ./run.sh manifest apply -M n2 -H father
+- Scenarios: ./run.sh scenario run pve-setup -H father
 
-Verb commands (4-phase lifecycle):
+Nouns:
+- manifest: Infrastructure lifecycle (apply/destroy/test)
+- config: Specification management (fetch/apply)
 - server: Server daemon management (start/stop/status)
-- create: Create infrastructure from manifest
-- destroy: Destroy infrastructure from manifest
-- test: Create, verify, and destroy infrastructure
-- config: Apply specification to the local host
+- scenario: Standalone scenario workflows (run)
+- token: Provisioning token utilities (inspect)
 """
 
 import argparse
@@ -28,28 +28,27 @@ from config import list_hosts, load_host_config, get_base_dir
 from scenarios import Orchestrator, get_scenario, list_scenarios
 from validation import validate_readiness, run_preflight_checks, format_preflight_results
 
-# Verb commands (subcommands for 4-phase lifecycle)
-VERB_COMMANDS = {
+# Noun commands (noun-action subcommands)
+NOUN_COMMANDS = {
+    "manifest": "Infrastructure lifecycle (apply/destroy/test)",
+    "config": "Specification management (fetch/apply)",
     "server": "Server daemon management (start/stop/status)",
-    "create": "Create infrastructure from manifest",
-    "destroy": "Destroy infrastructure from manifest",
-    "test": "Create, verify, and destroy infrastructure from manifest",
-    "config": "Apply specification to the local host",
+    "scenario": "Standalone scenario workflows (run)",
     "token": "Provisioning token utilities (inspect)",
 }
 
 # Scenarios retired in v0.47 (scenario consolidation)
 # Maps old scenario names to migration hints
 RETIRED_SCENARIOS = {
-    "vm-constructor": "Use: ./run.sh create -M n1-push -H <host>",
-    "vm-destructor": "Use: ./run.sh destroy -M n1-push -H <host>",
-    "vm-roundtrip": "Use: ./run.sh test -M n1-push -H <host>",
-    "nested-pve-constructor": "Use: ./run.sh create -M n2-tiered -H <host>",
-    "nested-pve-destructor": "Use: ./run.sh destroy -M n2-tiered -H <host>",
-    "nested-pve-roundtrip": "Use: ./run.sh test -M n2-tiered -H <host>",
-    "recursive-pve-constructor": "Use: ./run.sh create -M <manifest> -H <host>",
-    "recursive-pve-destructor": "Use: ./run.sh destroy -M <manifest> -H <host>",
-    "recursive-pve-roundtrip": "Use: ./run.sh test -M <manifest> -H <host>",
+    "vm-constructor": "Use: ./run.sh manifest apply -M n1-push -H <host>",
+    "vm-destructor": "Use: ./run.sh manifest destroy -M n1-push -H <host>",
+    "vm-roundtrip": "Use: ./run.sh manifest test -M n1-push -H <host>",
+    "nested-pve-constructor": "Use: ./run.sh manifest apply -M n2-tiered -H <host>",
+    "nested-pve-destructor": "Use: ./run.sh manifest destroy -M n2-tiered -H <host>",
+    "nested-pve-roundtrip": "Use: ./run.sh manifest test -M n2-tiered -H <host>",
+    "recursive-pve-constructor": "Use: ./run.sh manifest apply -M <manifest> -H <host>",
+    "recursive-pve-destructor": "Use: ./run.sh manifest destroy -M <manifest> -H <host>",
+    "recursive-pve-roundtrip": "Use: ./run.sh manifest test -M <manifest> -H <host>",
     "spec-vm-push-roundtrip": "Renamed to: push-vm-roundtrip",
     "spec-vm-pull-roundtrip": "Renamed to: pull-vm-roundtrip",
 }
@@ -83,41 +82,71 @@ def _create_ip_config(ip: str, ssh_user: str | None = None):
     return config
 
 
-def dispatch_verb(verb: str, argv: list) -> int:
-    """Dispatch to verb-specific CLI handler.
+def dispatch_manifest(argv: list) -> int:
+    """Dispatch 'manifest' noun to action-specific handler.
 
     Args:
-        verb: The verb command (e.g., "server")
+        argv: Arguments after 'manifest' (e.g., ['apply', '-M', 'n1', '-H', 'father'])
+
+    Returns:
+        Exit code
+    """
+    if not argv or argv[0].startswith('-'):
+        print("Usage: ./run.sh manifest <action> [options]")
+        print()
+        print("Actions:")
+        print("  apply     Create infrastructure from manifest")
+        print("  destroy   Destroy infrastructure from manifest")
+        print("  test      Create, verify, and destroy infrastructure")
+        print()
+        print("Run './run.sh manifest <action> --help' for action-specific options.")
+        return 1 if not argv else 0
+
+    action = argv[0]
+    rest = argv[1:]
+
+    if action == "apply":
+        from manifest_opr.cli import apply_main
+        return apply_main(rest)
+    elif action == "destroy":
+        from manifest_opr.cli import destroy_main
+        return destroy_main(rest)
+    elif action == "test":
+        from manifest_opr.cli import test_main
+        return test_main(rest)
+    else:
+        print(f"Error: Unknown manifest action '{action}'")
+        print("Available actions: apply, destroy, test")
+        return 1
+
+
+def dispatch_noun(noun: str, argv: list) -> int:
+    """Dispatch to noun-specific CLI handler.
+
+    Args:
+        noun: The noun command (e.g., "manifest", "server")
         argv: Remaining command line arguments
 
     Returns:
         Exit code
     """
-    if verb == "server":
+    if noun == "manifest":
+        return dispatch_manifest(argv)
+
+    if noun == "server":
         from server.cli import main as server_main
         return server_main(argv)
 
-    if verb == "create":
-        from manifest_opr.cli import create_main
-        return create_main(argv)
-
-    if verb == "destroy":
-        from manifest_opr.cli import destroy_main
-        return destroy_main(argv)
-
-    if verb == "test":
-        from manifest_opr.cli import test_main
-        return test_main(argv)
-
-    if verb == "config":
+    if noun == "config":
         from config_apply import config_main
         return config_main(argv)
 
-    if verb == "token":
+    if noun == "token":
         from token_cli import main as token_main
         return token_main(argv)
 
-    print(f"Error: Verb '{verb}' not yet implemented")
+    # 'scenario' noun is handled in main() before reaching here
+    print(f"Error: Noun '{noun}' not yet implemented")
     return 1
 
 
@@ -180,24 +209,24 @@ def create_local_config():
 
 
 def print_usage():
-    """Print top-level usage showing verbs and scenario command."""
+    """Print top-level usage showing noun commands."""
     print(f"iac-driver {get_version()}")
     print()
-    print("Usage: ./run.sh <command> [options]")
+    print("Usage: ./run.sh <noun> <action> [options]")
     print()
     print("Commands:")
-    print(f"  {'scenario':<12} Run a standalone scenario workflow")
-    for verb, desc in VERB_COMMANDS.items():
-        print(f"  {verb:<12} {desc}")
+    for noun, desc in NOUN_COMMANDS.items():
+        print(f"  {noun:<12} {desc}")
     print()
-    print("Run './run.sh <command> --help' for command-specific options.")
+    print("Run './run.sh <noun> --help' for command-specific options.")
     print()
     print("Examples:")
-    print("  ./run.sh scenario pve-setup -H father")
-    print("  ./run.sh create -M n1-push -H father")
-    print("  ./run.sh test -M n2-tiered -H father")
+    print("  ./run.sh manifest apply -M n1-push -H father")
+    print("  ./run.sh manifest test -M n2-tiered -H father")
+    print("  ./run.sh config fetch --insecure")
+    print("  ./run.sh config apply")
     print("  ./run.sh server start --port 44443")
-    print("  ./run.sh config --fetch --insecure")
+    print("  ./run.sh scenario run pve-setup -H father")
 
 
 def main():
@@ -206,26 +235,34 @@ def main():
     if len(sys.argv) > 1:
         first_arg = sys.argv[1]
 
-        # Handle 'scenario' verb: rewrite to legacy --scenario format
+        # Handle 'scenario' noun: rewrite to legacy --scenario format
         if first_arg == 'scenario':
             from_verb = True
-            if len(sys.argv) < 3 or sys.argv[2].startswith('-'):
+            # Handle 'scenario run <name>' (new) or 'scenario <name>' (old)
+            if len(sys.argv) >= 3 and sys.argv[2] == 'run':
+                # New syntax: scenario run pve-setup -H father
+                if len(sys.argv) < 4 or sys.argv[3].startswith('-'):
+                    print("Usage: ./run.sh scenario run <name> [options]")
+                    print("\nRun './run.sh scenario run --help' to list available scenarios.")
+                    return 1 if len(sys.argv) < 4 else 0
+                sys.argv = [sys.argv[0], '--scenario', sys.argv[3]] + sys.argv[4:]
+            elif len(sys.argv) < 3 or sys.argv[2].startswith('-'):
                 # Show scenario list or help
                 if '--help' in sys.argv or '-h' in sys.argv:
                     # Rewrite as --list-scenarios for help
                     sys.argv = [sys.argv[0], '--list-scenarios']
                 else:
-                    print("Usage: ./run.sh scenario <name> [options]")
+                    print("Usage: ./run.sh scenario run <name> [options]")
                     print("\nRun './run.sh scenario --help' to list available scenarios.")
                     return 1 if len(sys.argv) < 3 else 0
             else:
-                # Transform: "scenario pve-setup -H father" -> "--scenario pve-setup -H father"
+                # Legacy syntax: scenario pve-setup -H father (still supported)
                 sys.argv = [sys.argv[0], '--scenario', sys.argv[2]] + sys.argv[3:]
             # Fall through to legacy scenario parser below
 
-        # Handle other verbs (serve, create, destroy, test, config)
-        elif first_arg in VERB_COMMANDS:
-            return dispatch_verb(first_arg, sys.argv[2:])
+        # Handle other nouns (manifest, server, config, token)
+        elif first_arg in NOUN_COMMANDS:
+            return dispatch_noun(first_arg, sys.argv[2:])
 
         # Show usage when no recognized command
         elif not first_arg.startswith('-'):
@@ -246,12 +283,12 @@ def main():
                 hint = RETIRED_SCENARIOS[scenario_name]
                 print(f"Error: Scenario '{scenario_name}' was retired in v0.47.")
                 print(f"  {hint}")
-                print(f"\nSee: ./run.sh create --help")
+                print(f"\nSee: ./run.sh manifest apply --help")
                 return 1
 
     # Deprecation notice for legacy --scenario flag (skip if invoked via verb)
     if not from_verb and any(arg in ('--scenario', '-S') for arg in sys.argv[1:]):
-        logger.warning("--scenario is deprecated. Use: ./run.sh scenario <name> [options]")
+        logger.warning("--scenario is deprecated. Use: ./run.sh scenario run <name> [options]")
 
     # Scenario-based CLI continues below
     available_hosts = list_hosts()
@@ -308,15 +345,11 @@ def main():
     parser.add_argument(
         '--local',
         action='store_true',
-        help='Run scenario locally (for pve-setup, packer-build)'
+        help='Run scenario locally (for pve-setup, user-setup)'
     )
     parser.add_argument(
         '--remote',
         help='[Deprecated: use -H <ip>] Target host IP for remote execution'
-    )
-    parser.add_argument(
-        '--templates',
-        help='Comma-separated list of packer templates to build (for packer-build)'
     )
     parser.add_argument(
         '--vm-ip',
@@ -603,13 +636,11 @@ def main():
     if args.inner_ip:
         orchestrator.context['inner_ip'] = args.inner_ip
 
-    # Pre-populate context for pve-setup and packer-build scenarios
+    # Pre-populate context for pve-setup and user-setup scenarios
     if args.local:
         orchestrator.context['local_mode'] = True
     if args.remote:
         orchestrator.context['remote_ip'] = args.remote
-    if args.templates:
-        orchestrator.context['templates'] = [t.strip() for t in args.templates.split(',')]
 
     # Pre-populate context for bootstrap-install scenario
     if args.vm_ip:

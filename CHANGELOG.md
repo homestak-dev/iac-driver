@@ -25,6 +25,27 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 - Remove `get_auth_method()` from SpecResolver (#187)
 - Remove `get_auth_token()`, `get_site_token()`, `get_node_token()` from ResolverBase (#187)
 - Remove `bootstrap-install` scenario — migrated to bootstrap repo as `tests/test-install-remote.sh` (bootstrap#45)
+- Remove 5 packer-build scenarios and `--templates` flag (#195)
+  - Deleted: packer-build, packer-build-publish, packer-build-fetch, packer-sync, packer-sync-build-fetch
+  - Release workflow uses `gh release` commands; builds run directly via `packer/build.sh`
+
+### Added
+- Add preflight checks to manifest verb commands (apply/destroy/test) (#193)
+  - Calls `validate_readiness()` before execution (API token, SSH, nested virt, lockfiles)
+  - Add `--skip-preflight` flag to bypass checks
+  - Derive `requires_nested_virt` from manifest topology (PVE nodes with children)
+  - Skipped automatically for `--dry-run`
+
+### Changed
+- Restructure CLI from verb-first to noun-action pattern (#184)
+  - `create/destroy/test` → `manifest apply/destroy/test`
+  - `config --fetch` → `config fetch` + `config apply` (split into two commands)
+  - `scenario <name>` → `scenario run <name>` (legacy syntax still supported)
+  - Update subtree delegation and cloud-init runcmd for new syntax
+
+### Testing
+- Replace `10.0.12.x` test IPs with RFC 5737 TEST-NET-2 addresses (`198.51.100.x`) in 9 test files (#182)
+- Add 9 unit tests for verb preflight integration (#193)
 
 ### Theme: Server Daemon Robustness (#177)
 

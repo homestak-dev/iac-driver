@@ -46,7 +46,7 @@ class TestEnsureImageAction:
 
         action = EnsureImageAction(name='test-ensure')
         config = MagicMock()
-        config.ssh_host = '10.0.12.61'
+        config.ssh_host = '198.51.100.61'
         config.ssh_user = 'root'
 
         result = action.run(config, {})
@@ -61,7 +61,7 @@ class TestEnsureImageAction:
 
         action = EnsureImageAction(name='test-ensure')
         config = MagicMock()
-        config.ssh_host = '10.0.12.61'
+        config.ssh_host = '198.51.100.61'
         config.ssh_user = 'root'
 
         result = action.run(config, {})
@@ -94,7 +94,7 @@ class TestBootstrapAction:
         config = MagicMock()
         config.ssh_user = 'root'
 
-        result = action.run(config, {'pve_ip': '10.0.12.100'})
+        result = action.run(config, {'pve_ip': '198.51.100.10'})
         assert result.success is True
 
 

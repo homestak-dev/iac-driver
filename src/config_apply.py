@@ -1,13 +1,13 @@
-"""Config phase: apply a specification to the local host.
+"""Config phase: fetch and apply a specification to the local host.
 
 Reads a resolved spec and maps it to ansible variables, then runs the
 config-apply.yml playbook to reach "platform ready".
 
 Usage:
-    ./run.sh config                     # Apply from default state dir
-    ./run.sh config --fetch             # Fetch spec from server, then apply
-    ./run.sh config --spec /path.yaml   # Apply from explicit path
-    ./run.sh config --dry-run           # Preview what would be applied
+    ./run.sh config fetch [--insecure]       # Fetch spec from server
+    ./run.sh config apply                    # Apply from default state dir
+    ./run.sh config apply --spec /path.yaml  # Apply from explicit path
+    ./run.sh config apply --dry-run          # Preview what would be applied
 
 The config phase is step 2 of the 4-phase node lifecycle:
     create -> config -> run -> destroy
@@ -421,11 +421,53 @@ def _fetch_spec(insecure: bool = False) -> Optional[Path]:
         return None
 
 
-def config_main(argv: list) -> int:
-    """CLI entry point for the config verb.
+def fetch_main(argv: list) -> int:
+    """CLI entry point for 'config fetch'.
+
+    Downloads spec from server and saves to state directory.
 
     Args:
-        argv: Command line arguments after 'config'
+        argv: Command line arguments after 'config fetch'
+
+    Returns:
+        Exit code (0=success, 1=error)
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog='run.sh config fetch',
+        description='Fetch specification from server',
+    )
+    parser.add_argument(
+        '--insecure', '-k',
+        action='store_true',
+        help='Skip SSL certificate verification (for self-signed certs)',
+    )
+    parser.add_argument(
+        '--verbose', '-v',
+        action='store_true',
+        help='Enable verbose logging',
+    )
+
+    args = parser.parse_args(argv)
+
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    spec_path = _fetch_spec(insecure=args.insecure)
+    if spec_path is None:
+        return 1
+
+    return 0
+
+
+def apply_main(argv: list) -> int:
+    """CLI entry point for 'config apply'.
+
+    Loads spec from state directory and applies it via ansible.
+
+    Args:
+        argv: Command line arguments after 'config apply'
 
     Returns:
         Exit code (0=success, 1=spec error, 2=apply error)
@@ -433,24 +475,13 @@ def config_main(argv: list) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(
-        prog='run.sh config',
+        prog='run.sh config apply',
         description='Apply a specification to the local host',
     )
     parser.add_argument(
         '--spec',
         type=Path,
         help=f'Path to spec file (default: {DEFAULT_SPEC_PATH})',
-    )
-    parser.add_argument(
-        '--fetch',
-        action='store_true',
-        help='Fetch spec from server before applying '
-             '(uses HOMESTAK_SERVER + HOMESTAK_TOKEN env vars)',
-    )
-    parser.add_argument(
-        '--insecure', '-k',
-        action='store_true',
-        help='Skip SSL certificate verification (for self-signed certs)',
     )
     parser.add_argument(
         '--dry-run',
@@ -473,15 +504,8 @@ def config_main(argv: list) -> int:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # Fetch spec from server if requested
-    spec_path = args.spec
-    if args.fetch and spec_path is None:
-        spec_path = _fetch_spec(insecure=args.insecure)
-        if spec_path is None:
-            return 1
-
     result = apply_config(
-        spec_path=spec_path,
+        spec_path=args.spec,
         dry_run=args.dry_run,
         json_output=args.json_output,
     )
@@ -494,3 +518,37 @@ def config_main(argv: list) -> int:
         if not args.json_output:
             print(f"Error: {result.message}", file=__import__('sys').stderr)
         return 1 if 'not found' in result.message.lower() else 2
+
+
+def config_main(argv: list) -> int:
+    """CLI dispatcher for 'config' noun.
+
+    Routes to fetch_main or apply_main based on subcommand.
+
+    Args:
+        argv: Command line arguments after 'config'
+
+    Returns:
+        Exit code
+    """
+    if not argv or argv[0].startswith('-'):
+        print("Usage: ./run.sh config <action> [options]")
+        print()
+        print("Actions:")
+        print("  fetch    Fetch specification from server")
+        print("  apply    Apply specification to local host")
+        print()
+        print("Run './run.sh config <action> --help' for action-specific options.")
+        return 1 if not argv else 0
+
+    action = argv[0]
+    rest = argv[1:]
+
+    if action == 'fetch':
+        return fetch_main(rest)
+    elif action == 'apply':
+        return apply_main(rest)
+    else:
+        print(f"Error: Unknown config action '{action}'")
+        print("Available actions: fetch, apply")
+        return 1
