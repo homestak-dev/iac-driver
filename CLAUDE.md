@@ -425,11 +425,6 @@ Use `--json-output` for structured JSON to stdout (logs to stderr). Use `--dry-r
 | `user-setup` | ~30s | Create homestak user |
 | `push-vm-roundtrip` | ~3m | Spec discovery integration test (push verification) |
 | `pull-vm-roundtrip` | ~5m | Config phase integration test (pull verification) |
-| `packer-build` | ~3m | Build packer images (local or remote) |
-| `packer-build-fetch` | ~5m | Build remotely, fetch to local |
-| `packer-build-publish` | ~7m | Build and publish to PVE storage |
-| `packer-sync` | ~30s | Sync local packer to remote |
-| `packer-sync-build-fetch` | ~6m | Sync, build, fetch (dev workflow) |
 
 ### Test Reports
 

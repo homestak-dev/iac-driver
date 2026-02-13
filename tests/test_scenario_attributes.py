@@ -40,35 +40,6 @@ class TestScenarioAttributes:
         scenario = get_scenario('user-setup')
         assert getattr(scenario, 'requires_host_config', True) is False
 
-    def test_packer_build_does_not_require_root(self):
-        """PackerBuild should not require root."""
-        scenario = get_scenario('packer-build')
-        assert getattr(scenario, 'requires_root', False) is False
-
-    def test_packer_build_does_not_require_host_config(self):
-        """PackerBuild should not require host config."""
-        scenario = get_scenario('packer-build')
-        assert getattr(scenario, 'requires_host_config', True) is False
-
-    def test_packer_build_publish_does_not_require_host_config(self):
-        """PackerBuildAndPublish should not require host config."""
-        scenario = get_scenario('packer-build-publish')
-        assert getattr(scenario, 'requires_host_config', True) is False
-
-    def test_packer_build_fetch_does_not_require_host_config(self):
-        """PackerBuildAndFetch should not require host config."""
-        scenario = get_scenario('packer-build-fetch')
-        assert getattr(scenario, 'requires_host_config', True) is False
-
-    def test_packer_sync_does_not_require_host_config(self):
-        """PackerSync should not require host config."""
-        scenario = get_scenario('packer-sync')
-        assert getattr(scenario, 'requires_host_config', True) is False
-
-    def test_packer_sync_build_fetch_does_not_require_host_config(self):
-        """PackerSyncBuildFetch should not require host config."""
-        scenario = get_scenario('packer-sync-build-fetch')
-        assert getattr(scenario, 'requires_host_config', True) is False
 
 
 class TestScenarioDefaults:
@@ -165,19 +136,10 @@ class TestExpectedRuntime:
         scenario = get_scenario('pull-vm-roundtrip')
         assert scenario.expected_runtime == 300  # 5 * 60
 
-    def test_packer_sync_runtime(self):
-        """packer-sync should have short runtime (~30s)."""
-        scenario = get_scenario('packer-sync')
-        assert scenario.expected_runtime == 30
 
 
 class TestRequiresConfirmation:
     """Test requires_confirmation attribute for destructive scenarios."""
-
-    def test_packer_build_does_not_require_confirmation(self):
-        """PackerBuild should not require confirmation (non-destructive)."""
-        scenario = get_scenario('packer-build')
-        assert getattr(scenario, 'requires_confirmation', False) is False
 
     def test_pve_setup_does_not_require_confirmation(self):
         """PVESetup should not require confirmation."""

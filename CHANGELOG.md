@@ -25,6 +25,9 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 - Remove `get_auth_method()` from SpecResolver (#187)
 - Remove `get_auth_token()`, `get_site_token()`, `get_node_token()` from ResolverBase (#187)
 - Remove `bootstrap-install` scenario — migrated to bootstrap repo as `tests/test-install-remote.sh` (bootstrap#45)
+- Remove 5 packer-build scenarios and `--templates` flag (#195)
+  - Deleted: packer-build, packer-build-publish, packer-build-fetch, packer-sync, packer-sync-build-fetch
+  - Release workflow uses `gh release` commands; builds run directly via `packer/build.sh`
 
 ### Theme: Server Daemon Robustness (#177)
 
