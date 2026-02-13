@@ -248,18 +248,6 @@ class BootstrapAction:
                 duration=time.time() - start
             )
 
-        # Wait for apt lock to be available (cloud-init may be running)
-        logger.info(f"[{self.name}] Waiting for apt lock on {host}...")
-        apt_wait_cmd = (
-            "while sudo fuser /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend "
-            "/var/cache/apt/archives/lock >/dev/null 2>&1; do sleep 5; done && echo 'apt ready'"
-        )
-        rc, out, err = run_ssh(host, apt_wait_cmd, user=config.automation_user, timeout=120)
-        if rc != 0:
-            logger.warning(f"[{self.name}] apt wait check failed (may be ok): {err or out}")
-        else:
-            logger.debug(f"[{self.name}] apt lock available")
-
         # Check for serve-repos env vars (dev workflow)
         env_source = os.environ.get('HOMESTAK_SOURCE')
         env_token = os.environ.get('HOMESTAK_TOKEN')

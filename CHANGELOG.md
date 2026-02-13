@@ -9,6 +9,9 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 ### Added
 - Auto-set `HOMESTAK_SOURCE` env var after server start so BootstrapAction and RecursiveScenarioAction use serve-repos instead of GitHub master (#189)
 
+### Removed
+- Remove fuser apt wait block from BootstrapAction — now handled by install.sh system-wide apt config (bootstrap#52, #198)
+
 ### Fixed
 - Fix BootstrapAction TLS for serve-repos: add `-k` to curl and `HOMESTAK_INSECURE=1` for self-signed server certs (#189)
 - Fix RepoManager to serve site-config from FHS path (`/usr/local/etc/homestak/`) via `extra_paths` (#189)
