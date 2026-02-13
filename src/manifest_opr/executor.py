@@ -10,6 +10,7 @@ handles them as its own root nodes.
 
 import json
 import logging
+import os
 import shlex
 import time
 from dataclasses import dataclass, field
@@ -78,6 +79,7 @@ class NodeExecutor:
                 if status.get('running') and status.get('healthy'):
                     logger.info("Server already running on %s:%d (reusing)", host, SERVER_PORT)
                     self._started_server = False
+                    self._set_source_env(host)
                     return
             except (json.JSONDecodeError, ValueError):
                 pass
@@ -95,17 +97,22 @@ class NodeExecutor:
             logger.info("Server started on %s:%d", host, SERVER_PORT)
 
         self._started_server = True
+        self._set_source_env(host)
 
     def _stop_server(self) -> None:
         """Stop the spec server if we started it.
 
         Only actually stops when the ref count reaches zero (outermost caller).
         Preserves user-managed servers (those we didn't start).
+        Always cleans up HOMESTAK_SOURCE env vars when ref count reaches zero.
         """
         self._server_refs = max(0, self._server_refs - 1)
         if self._server_refs > 0:
             # Inner caller returning; outer caller will handle stop
             return
+
+        # Clean up env vars regardless of whether we started the server
+        self._clear_source_env()
 
         if not self._started_server:
             return
@@ -125,6 +132,30 @@ class NodeExecutor:
             logger.info("Server stopped on %s:%d", host, SERVER_PORT)
 
         self._started_server = False
+
+    def _set_source_env(self, host: str) -> None:
+        """Set HOMESTAK_SOURCE env vars so downstream actions use serve-repos.
+
+        Called after the server is confirmed running (started or reused).
+        BootstrapAction and RecursiveScenarioAction read these env vars
+        to propagate serve-repos to inner hosts instead of falling back
+        to GitHub master.
+
+        Args:
+            host: IP or hostname of the server (typically self.config.ssh_host)
+        """
+        os.environ['HOMESTAK_SOURCE'] = f'https://{host}:{SERVER_PORT}'
+        os.environ.setdefault('HOMESTAK_REF', '_working')
+        logger.info(
+            "Set HOMESTAK_SOURCE=https://%s:%d (ref=%s)",
+            host, SERVER_PORT, os.environ.get('HOMESTAK_REF'),
+        )
+
+    def _clear_source_env(self) -> None:
+        """Clear HOMESTAK_SOURCE env vars set by _set_source_env."""
+        for var in ('HOMESTAK_SOURCE', 'HOMESTAK_REF'):
+            os.environ.pop(var, None)
+        logger.debug("Cleared HOMESTAK_SOURCE env vars")
 
     def create(self, context: dict) -> tuple[bool, ExecutionState]:
         """Execute create lifecycle: provision root nodes, delegate subtrees.

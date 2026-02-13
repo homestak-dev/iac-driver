@@ -4,6 +4,7 @@ Uses mocked action classes to test execution ordering, error handling,
 and dry-run behavior without real infrastructure.
 """
 
+import os
 import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -17,6 +18,10 @@ from common import ActionResult
 from manifest import Manifest
 from manifest_opr.executor import NodeExecutor
 from manifest_opr.graph import ManifestGraph
+
+# Save originals before any autouse fixtures patch them
+_original_ensure_server = NodeExecutor._ensure_server
+_original_stop_server = NodeExecutor._stop_server
 
 
 def _make_manifest(nodes_data, name='test', pattern='flat', on_error='stop'):
@@ -431,3 +436,140 @@ class TestNodeExecutorTest:
 
         assert success is False
         assert mock_destroy.call_count == 1  # Cleanup called
+
+
+class TestServerSourceEnv:
+    """Tests for HOMESTAK_SOURCE env var lifecycle in _ensure_server/_stop_server.
+
+    These tests do NOT use the autouse _skip_server fixture — they need
+    the real _ensure_server/_stop_server methods with SSH calls mocked.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clean_env(self):
+        """Ensure env vars are clean before and after each test."""
+        os.environ.pop('HOMESTAK_SOURCE', None)
+        os.environ.pop('HOMESTAK_REF', None)
+        yield
+        os.environ.pop('HOMESTAK_SOURCE', None)
+        os.environ.pop('HOMESTAK_REF', None)
+
+    @pytest.fixture(autouse=True)
+    def _override_skip_server(self, monkeypatch):
+        """Re-enable real _ensure_server/_stop_server for this class.
+
+        The module-level _skip_server fixture replaces them with no-ops.
+        We restore from _original_* saved at import time (before patching).
+        """
+        monkeypatch.setattr(
+            'manifest_opr.executor.NodeExecutor._ensure_server',
+            _original_ensure_server,
+        )
+        monkeypatch.setattr(
+            'manifest_opr.executor.NodeExecutor._stop_server',
+            _original_stop_server,
+        )
+
+    def _make_executor(self):
+        manifest = _make_manifest([
+            {'name': 'test', 'type': 'vm', 'vmid': 99001, 'image': 'debian-12', 'preset': 'vm-small'},
+        ])
+        graph = ManifestGraph(manifest)
+        config = _make_config()
+        return NodeExecutor(manifest=manifest, graph=graph, config=config)
+
+    @patch('manifest_opr.executor.run_ssh')
+    def test_ensure_server_sets_env_on_fresh_start(self, mock_ssh):
+        """When server is not running, start it and set HOMESTAK_SOURCE."""
+        # First call: status check → not running
+        # Second call: server start → success
+        mock_ssh.side_effect = [
+            (1, '', 'not running'),  # status check fails
+            (0, '', ''),             # server start succeeds
+        ]
+
+        executor = self._make_executor()
+        executor._ensure_server()
+
+        assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.61:44443'
+        assert os.environ.get('HOMESTAK_REF') == '_working'
+
+    @patch('manifest_opr.executor.run_ssh')
+    def test_ensure_server_sets_env_on_reuse(self, mock_ssh):
+        """When server is already running, reuse it and still set HOMESTAK_SOURCE."""
+        mock_ssh.return_value = (0, '{"running": true, "healthy": true}', '')
+
+        executor = self._make_executor()
+        executor._ensure_server()
+
+        assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.61:44443'
+        assert executor._started_server is False  # Didn't start it ourselves
+
+    @patch('manifest_opr.executor.run_ssh')
+    def test_stop_server_clears_env(self, mock_ssh):
+        """_stop_server clears HOMESTAK_SOURCE when ref count drops to zero."""
+        # Start: not running → start
+        mock_ssh.side_effect = [
+            (1, '', 'not running'),  # status check
+            (0, '', ''),             # start
+            (0, '', ''),             # stop
+        ]
+
+        executor = self._make_executor()
+        executor._ensure_server()
+        assert 'HOMESTAK_SOURCE' in os.environ
+
+        executor._stop_server()
+        assert 'HOMESTAK_SOURCE' not in os.environ
+        assert 'HOMESTAK_REF' not in os.environ
+
+    @patch('manifest_opr.executor.run_ssh')
+    def test_ref_counting_preserves_env(self, mock_ssh):
+        """Nested _ensure_server calls preserve env until outermost _stop_server."""
+        mock_ssh.side_effect = [
+            (1, '', ''),   # status check (first ensure)
+            (0, '', ''),   # start
+        ]
+
+        executor = self._make_executor()
+        executor._ensure_server()  # refs=1, starts server
+        executor._ensure_server()  # refs=2, no-op
+
+        assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.61:44443'
+
+        # Inner stop: decrements but doesn't clear
+        executor._stop_server()  # refs=1
+        assert 'HOMESTAK_SOURCE' in os.environ
+
+        # Outer stop: clears env and stops server
+        mock_ssh.side_effect = [(0, '', '')]  # stop call
+        executor._stop_server()  # refs=0
+        assert 'HOMESTAK_SOURCE' not in os.environ
+
+    @patch('manifest_opr.executor.run_ssh')
+    def test_stop_clears_env_even_for_reused_server(self, mock_ssh):
+        """Env vars are cleared on stop even when we didn't start the server."""
+        mock_ssh.return_value = (0, '{"running": true, "healthy": true}', '')
+
+        executor = self._make_executor()
+        executor._ensure_server()
+        assert executor._started_server is False  # Reused
+
+        executor._stop_server()
+        assert 'HOMESTAK_SOURCE' not in os.environ
+
+    @patch('manifest_opr.executor.run_ssh')
+    def test_existing_homestak_ref_preserved(self, mock_ssh):
+        """If HOMESTAK_REF is already set, _set_source_env doesn't overwrite it."""
+        os.environ['HOMESTAK_REF'] = 'custom-branch'
+
+        mock_ssh.side_effect = [
+            (1, '', ''),   # status check
+            (0, '', ''),   # start
+        ]
+
+        executor = self._make_executor()
+        executor._ensure_server()
+
+        assert os.environ.get('HOMESTAK_REF') == 'custom-branch'  # Preserved
+        assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.61:44443'

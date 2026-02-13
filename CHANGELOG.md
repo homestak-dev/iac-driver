@@ -7,6 +7,7 @@
 HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 
 ### Added
+- Auto-set `HOMESTAK_SOURCE` env var after server start so BootstrapAction and RecursiveScenarioAction use serve-repos instead of GitHub master (#189)
 - Add `_mint_provisioning_token()` in ConfigResolver — mints HMAC-signed token at create time (#187)
 - Add `verify_provisioning_token()` in server/auth — verifies HMAC, extracts spec FK from `s` claim (#187)
 - Add `token inspect` CLI verb — decode/verify provisioning tokens (#187)
