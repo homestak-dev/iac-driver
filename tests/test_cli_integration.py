@@ -209,8 +209,8 @@ class TestTopLevelUsage:
         )
         assert result.returncode == 0
         assert 'scenario' in result.stdout
-        assert 'create' in result.stdout
-        assert 'serve' in result.stdout
+        assert 'manifest' in result.stdout
+        assert 'config' in result.stdout
 
     def test_unknown_command_shows_error(self):
         """Unknown command shows error and usage."""

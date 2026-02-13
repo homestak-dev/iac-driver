@@ -1,9 +1,9 @@
-"""CLI handlers for manifest-based verb commands (create, destroy, test).
+"""CLI handlers for manifest-based verb commands (apply, destroy, test).
 
 Usage:
-    ./run.sh create -M <manifest> -H <host> [--dry-run] [--json-output] [--verbose]
-    ./run.sh destroy -M <manifest> -H <host> [--dry-run] [--yes]
-    ./run.sh test -M <manifest> -H <host> [--dry-run] [--json-output]
+    ./run.sh manifest apply -M <manifest> -H <host> [--dry-run] [--json-output] [--verbose]
+    ./run.sh manifest destroy -M <manifest> -H <host> [--dry-run] [--yes]
+    ./run.sh manifest test -M <manifest> -H <host> [--dry-run] [--json-output]
 """
 
 import argparse
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 def _common_parser(verb: str) -> argparse.ArgumentParser:
     """Build argument parser with common options for all verbs."""
     parser = argparse.ArgumentParser(
-        prog=f'run.sh {verb}',
+        prog=f'run.sh manifest {verb}',
         description=f'{verb.capitalize()} infrastructure from manifest',
     )
     parser.add_argument(
@@ -203,9 +203,9 @@ def _emit_json(verb: str, success: bool, state, duration: float) -> None:
     print(json.dumps(output, indent=2))
 
 
-def create_main(argv: list) -> int:
-    """Handle 'create' verb."""
-    parser = _common_parser('create')
+def apply_main(argv: list) -> int:
+    """Handle 'manifest apply' verb."""
+    parser = _common_parser('apply')
     args = parser.parse_args(argv)
     _setup_logging(args.verbose, args.json_output)
 
@@ -233,13 +233,13 @@ def create_main(argv: list) -> int:
     duration = time.time() - start
 
     if args.json_output:
-        _emit_json('create', success, state, duration)
+        _emit_json('apply', success, state, duration)
 
     return 0 if success else 1
 
 
 def destroy_main(argv: list) -> int:
-    """Handle 'destroy' verb."""
+    """Handle 'manifest destroy' verb."""
     parser = _common_parser('destroy')
     parser.add_argument(
         '--yes', '-y',
@@ -289,7 +289,7 @@ def destroy_main(argv: list) -> int:
 
 
 def test_main(argv: list) -> int:
-    """Handle 'test' verb."""
+    """Handle 'manifest test' verb."""
     parser = _common_parser('test')
     args = parser.parse_args(argv)
     _setup_logging(args.verbose, args.json_output)

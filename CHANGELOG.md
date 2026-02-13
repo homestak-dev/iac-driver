@@ -30,11 +30,18 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
   - Release workflow uses `gh release` commands; builds run directly via `packer/build.sh`
 
 ### Added
-- Add preflight checks to verb commands (create/destroy/test) (#193)
+- Add preflight checks to manifest verb commands (apply/destroy/test) (#193)
   - Calls `validate_readiness()` before execution (API token, SSH, nested virt, lockfiles)
   - Add `--skip-preflight` flag to bypass checks
   - Derive `requires_nested_virt` from manifest topology (PVE nodes with children)
   - Skipped automatically for `--dry-run`
+
+### Changed
+- Restructure CLI from verb-first to noun-action pattern (#184)
+  - `create/destroy/test` → `manifest apply/destroy/test`
+  - `config --fetch` → `config fetch` + `config apply` (split into two commands)
+  - `scenario <name>` → `scenario run <name>` (legacy syntax still supported)
+  - Update subtree delegation and cloud-init runcmd for new syntax
 
 ### Testing
 - Replace `10.0.12.x` test IPs with RFC 5737 TEST-NET-2 addresses (`198.51.100.x`) in 9 test files (#182)
