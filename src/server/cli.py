@@ -136,9 +136,17 @@ def _create_server(args) -> Server:
     repo_token = ""
     if args.repos:
         repos_dir = args.repos_dir or get_default_repos_dir()
+        # Detect site-config at FHS path (separate from code repos)
+        extra_paths = {}
+        if not (repos_dir / 'site-config' / '.git').is_dir():
+            fhs_etc = Path('/usr/local/etc/homestak')
+            if (fhs_etc / '.git').is_dir():
+                extra_paths['site-config'] = fhs_etc
+                logger.debug("Using FHS site-config at %s", fhs_etc)
         repo_manager = RepoManager(
             repos_dir=repos_dir,
             exclude_repos=args.exclude,
+            extra_paths=extra_paths,
         )
         repo_token = (
             args.repo_token

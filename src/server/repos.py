@@ -32,15 +32,18 @@ class RepoManager:
         self,
         repos_dir: Path,
         exclude_repos: Optional[List[str]] = None,
+        extra_paths: Optional[Dict[str, Path]] = None,
     ):
         """Initialize repo manager.
 
         Args:
             repos_dir: Directory containing source repos
             exclude_repos: List of repo names to exclude
+            extra_paths: Map of repo names to alternate paths (e.g., site-config at FHS etc/)
         """
         self.repos_dir = repos_dir
         self.exclude_repos = set(exclude_repos or [])
+        self.extra_paths = extra_paths or {}
         self.serve_dir: Optional[Path] = None
         self.repo_status: Dict[str, dict] = {}
 
@@ -98,7 +101,7 @@ class RepoManager:
             FileNotFoundError: If source repo not found
             subprocess.CalledProcessError: If git commands fail
         """
-        repo_path = self.repos_dir / repo_name
+        repo_path = self.extra_paths.get(repo_name, self.repos_dir / repo_name)
         bare_path = self.serve_dir / f"{repo_name}.git"
 
         # Check source exists

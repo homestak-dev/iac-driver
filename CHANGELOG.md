@@ -11,6 +11,8 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 
 ### Fixed
 - Fix BootstrapAction TLS for serve-repos: add `-k` to curl and `HOMESTAK_INSECURE=1` for self-signed server certs (#189)
+- Fix RepoManager to serve site-config from FHS path (`/usr/local/etc/homestak/`) via `extra_paths` (#189)
+- Fix SyncDriverCodeAction to also sync `run.sh` so inner PVE gets the `manifest` CLI verb (#189)
 - Add `_mint_provisioning_token()` in ConfigResolver — mints HMAC-signed token at create time (#187)
 - Add `verify_provisioning_token()` in server/auth — verifies HMAC, extracts spec FK from `s` claim (#187)
 - Add `token inspect` CLI verb — decode/verify provisioning tokens (#187)
