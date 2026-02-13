@@ -16,6 +16,7 @@ from config import load_host_config, list_hosts
 from manifest import load_manifest
 from manifest_opr.executor import NodeExecutor
 from manifest_opr.graph import ManifestGraph
+from validation import validate_readiness
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,11 @@ def _common_parser(verb: str) -> argparse.ArgumentParser:
         '--depth',
         type=int,
         help='Limit manifest to first N levels',
+    )
+    parser.add_argument(
+        '--skip-preflight',
+        action='store_true',
+        help='Skip pre-flight validation checks',
     )
     return parser
 
@@ -135,6 +141,44 @@ def _load_manifest_and_config(args):
     return manifest, config
 
 
+def _manifest_requires_nested_virt(manifest) -> bool:
+    """Check if manifest has PVE nodes with children (requires nested virt)."""
+    pve_names = {n.name for n in manifest.nodes if n.type == 'pve'}
+    for node in manifest.nodes:
+        if node.parent in pve_names:
+            return True
+    return False
+
+
+def _run_preflight(args, config, manifest) -> int | None:
+    """Run preflight checks for verb commands.
+
+    Returns:
+        None if checks pass, exit code (1) if checks fail.
+    """
+    if args.skip_preflight or args.dry_run:
+        return None
+
+    # Build a namespace with requirement attributes for validate_readiness()
+    class _VerbRequirements:
+        requires_api = True
+        requires_host_ssh = True
+        requires_nested_virt = _manifest_requires_nested_virt(manifest)
+
+    errors = validate_readiness(config, _VerbRequirements)
+    if errors:
+        print("\nPre-flight validation failed:")
+        for error in errors:
+            for i, line in enumerate(error.split('\n')):
+                prefix = "  \u2717 " if i == 0 else "    "
+                print(f"{prefix}{line}")
+        print("\nUse --skip-preflight to bypass these checks")
+        print()
+        return 1
+    logger.info("Pre-flight validation passed")
+    return None
+
+
 def _emit_json(verb: str, success: bool, state, duration: float) -> None:
     """Emit structured JSON output."""
     nodes = []
@@ -166,6 +210,11 @@ def create_main(argv: list) -> int:
     _setup_logging(args.verbose, args.json_output)
 
     manifest, config = _load_manifest_and_config(args)
+
+    preflight_rc = _run_preflight(args, config, manifest)
+    if preflight_rc is not None:
+        return preflight_rc
+
     graph = ManifestGraph(manifest)
 
     logger.info(f"Creating infrastructure from manifest '{manifest.name}' on {config.name}")
@@ -201,6 +250,11 @@ def destroy_main(argv: list) -> int:
     _setup_logging(args.verbose, args.json_output)
 
     manifest, config = _load_manifest_and_config(args)
+
+    preflight_rc = _run_preflight(args, config, manifest)
+    if preflight_rc is not None:
+        return preflight_rc
+
     graph = ManifestGraph(manifest)
 
     # Confirmation for destructive operation
@@ -241,6 +295,11 @@ def test_main(argv: list) -> int:
     _setup_logging(args.verbose, args.json_output)
 
     manifest, config = _load_manifest_and_config(args)
+
+    preflight_rc = _run_preflight(args, config, manifest)
+    if preflight_rc is not None:
+        return preflight_rc
+
     graph = ManifestGraph(manifest)
 
     logger.info(f"Testing infrastructure from manifest '{manifest.name}' on {config.name}")
