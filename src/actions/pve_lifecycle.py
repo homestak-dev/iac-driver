@@ -276,10 +276,13 @@ class BootstrapAction:
             if env_token:
                 env_prefix += f' HOMESTAK_TOKEN={env_token}'
             env_prefix += f' HOMESTAK_REF={env_ref}'
+            # Serve-repos uses self-signed TLS; pass -k to curl and
+            # HOMESTAK_INSECURE=1 so install.sh sets git http.sslVerify=false
+            env_prefix += ' HOMESTAK_INSECURE=1'
             # Include Bearer token in curl header (serve-repos requires auth)
             auth_header = f'-H "Authorization: Bearer {env_token}"' if env_token else ''
             # Use 'sudo env' to pass vars through sudo's environment reset
-            bootstrap_cmd = f'curl -fsSL {auth_header} {env_source}/bootstrap.git/install.sh | sudo env {env_prefix} bash'
+            bootstrap_cmd = f'curl -fsSLk {auth_header} {env_source}/bootstrap.git/install.sh | sudo env {env_prefix} bash'
             logger.info(f"[{self.name}] Using serve-repos source: {env_source} (ref={env_ref})")
         elif self.source_url:
             # Explicit source_url parameter (legacy)
