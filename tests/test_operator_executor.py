@@ -388,6 +388,35 @@ class TestNodeExecutorDelegation:
         assert success is True
         assert created_names == ['root']  # Only root created locally
 
+    def test_delegate_subtree_passes_self_addr(self):
+        """Delegation command should include --self-addr with PVE node's IP (#200)."""
+        manifest = _make_manifest([
+            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve', 'preset': 'vm-large'},
+            {'name': 'test', 'type': 'vm', 'vmid': 99002, 'image': 'debian-12', 'preset': 'vm-small', 'parent': 'pve'},
+        ], pattern='tiered')
+        graph = ManifestGraph(manifest)
+        config = _make_config()
+
+        executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
+        from manifest_opr.state import ExecutionState
+        state = ExecutionState('test', 'test-host')
+        state.add_node('pve')
+        state.add_node('test')
+
+        context = {'pve_ip': '10.0.12.153'}
+
+        with patch('actions.recursive.RecursiveScenarioAction') as MockAction:
+            mock_instance = MagicMock()
+            mock_instance.run.return_value = _success_result()
+            MockAction.return_value = mock_instance
+
+            executor._delegate_subtree(graph.get_node('pve'), context, state)
+
+            # Verify RecursiveScenarioAction was called with --self-addr in raw_command
+            assert MockAction.called
+            raw_cmd = MockAction.call_args.kwargs['raw_command']
+            assert '--self-addr 10.0.12.153' in raw_cmd
+
 
 class TestNodeExecutorTest:
     """Tests for test lifecycle (create + verify + destroy)."""
@@ -448,11 +477,11 @@ class TestServerSourceEnv:
     @pytest.fixture(autouse=True)
     def _clean_env(self):
         """Ensure env vars are clean before and after each test."""
-        os.environ.pop('HOMESTAK_SOURCE', None)
-        os.environ.pop('HOMESTAK_REF', None)
+        for var in ('HOMESTAK_SOURCE', 'HOMESTAK_REF', 'HOMESTAK_SELF_ADDR'):
+            os.environ.pop(var, None)
         yield
-        os.environ.pop('HOMESTAK_SOURCE', None)
-        os.environ.pop('HOMESTAK_REF', None)
+        for var in ('HOMESTAK_SOURCE', 'HOMESTAK_REF', 'HOMESTAK_SELF_ADDR'):
+            os.environ.pop(var, None)
 
     @pytest.fixture(autouse=True)
     def _override_skip_server(self, monkeypatch):
@@ -573,3 +602,161 @@ class TestServerSourceEnv:
 
         assert os.environ.get('HOMESTAK_REF') == 'custom-branch'  # Preserved
         assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.61:44443'
+
+    def test_set_source_env_uses_self_addr_for_localhost(self):
+        """When host is localhost and self_addr is set, use self_addr (#200)."""
+        manifest = _make_manifest([
+            {'name': 'test', 'type': 'vm', 'vmid': 99001, 'image': 'debian-12', 'preset': 'vm-small'},
+        ])
+        graph = ManifestGraph(manifest)
+        config = _make_config()
+        config.ssh_host = 'localhost'
+
+        executor = NodeExecutor(
+            manifest=manifest, graph=graph, config=config,
+            self_addr='10.0.12.153',
+        )
+        executor._set_source_env('localhost')
+
+        assert os.environ.get('HOMESTAK_SOURCE') == 'https://10.0.12.153:44443'
+
+    def test_set_source_env_uses_self_addr_for_127(self):
+        """When host is 127.0.0.1 and self_addr is set, use self_addr (#200)."""
+        manifest = _make_manifest([
+            {'name': 'test', 'type': 'vm', 'vmid': 99001, 'image': 'debian-12', 'preset': 'vm-small'},
+        ])
+        graph = ManifestGraph(manifest)
+        config = _make_config()
+
+        executor = NodeExecutor(
+            manifest=manifest, graph=graph, config=config,
+            self_addr='10.0.12.153',
+        )
+        executor._set_source_env('127.0.0.1')
+
+        assert os.environ.get('HOMESTAK_SOURCE') == 'https://10.0.12.153:44443'
+
+    def test_set_source_env_ignores_self_addr_for_routable_host(self):
+        """When host is already routable, self_addr is not used."""
+        manifest = _make_manifest([
+            {'name': 'test', 'type': 'vm', 'vmid': 99001, 'image': 'debian-12', 'preset': 'vm-small'},
+        ])
+        graph = ManifestGraph(manifest)
+        config = _make_config()
+
+        executor = NodeExecutor(
+            manifest=manifest, graph=graph, config=config,
+            self_addr='10.0.12.153',
+        )
+        executor._set_source_env('198.51.100.61')
+
+        assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.61:44443'
+
+    def test_set_source_env_localhost_falls_back_to_detect(self):
+        """When host is localhost and no self_addr, detect external IP (#200)."""
+        manifest = _make_manifest([
+            {'name': 'test', 'type': 'vm', 'vmid': 99001, 'image': 'debian-12', 'preset': 'vm-small'},
+        ])
+        graph = ManifestGraph(manifest)
+        config = _make_config()
+
+        executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
+        with patch.object(NodeExecutor, '_detect_external_ip', return_value='10.0.12.61'):
+            executor._set_source_env('localhost')
+
+        assert os.environ.get('HOMESTAK_SOURCE') == 'https://10.0.12.61:44443'
+
+    def test_set_source_env_localhost_detect_fails_uses_localhost(self):
+        """When detection fails and no self_addr, fall back to localhost."""
+        manifest = _make_manifest([
+            {'name': 'test', 'type': 'vm', 'vmid': 99001, 'image': 'debian-12', 'preset': 'vm-small'},
+        ])
+        graph = ManifestGraph(manifest)
+        config = _make_config()
+
+        executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
+        with patch.object(NodeExecutor, '_detect_external_ip', return_value=None):
+            executor._set_source_env('localhost')
+
+        assert os.environ.get('HOMESTAK_SOURCE') == 'https://localhost:44443'
+
+    def test_detect_external_ip_returns_address(self):
+        """_detect_external_ip returns a non-loopback address."""
+        manifest = _make_manifest([
+            {'name': 'test', 'type': 'vm', 'vmid': 99001, 'image': 'debian-12', 'preset': 'vm-small'},
+        ])
+        graph = ManifestGraph(manifest)
+        config = _make_config()
+        executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
+
+        result = executor._detect_external_ip()
+        # On a machine with network, this should return a real IP
+        # On CI without network, it may return None
+        if result is not None:
+            assert result != '0.0.0.0'
+            assert result != '127.0.0.1'
+
+    def test_set_source_env_uses_env_var_for_localhost(self):
+        """HOMESTAK_SELF_ADDR env var overrides localhost when no --self-addr (#200)."""
+        manifest = _make_manifest([
+            {'name': 'test', 'type': 'vm', 'vmid': 99001, 'image': 'debian-12', 'preset': 'vm-small'},
+        ])
+        graph = ManifestGraph(manifest)
+        config = _make_config()
+
+        os.environ['HOMESTAK_SELF_ADDR'] = '10.0.12.99'
+        executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
+        executor._set_source_env('localhost')
+
+        assert os.environ.get('HOMESTAK_SOURCE') == 'https://10.0.12.99:44443'
+
+    def test_self_addr_takes_precedence_over_env_var(self):
+        """--self-addr CLI arg takes priority over HOMESTAK_SELF_ADDR env var."""
+        manifest = _make_manifest([
+            {'name': 'test', 'type': 'vm', 'vmid': 99001, 'image': 'debian-12', 'preset': 'vm-small'},
+        ])
+        graph = ManifestGraph(manifest)
+        config = _make_config()
+
+        os.environ['HOMESTAK_SELF_ADDR'] = '10.0.12.99'
+        executor = NodeExecutor(
+            manifest=manifest, graph=graph, config=config,
+            self_addr='10.0.12.153',
+        )
+        executor._set_source_env('localhost')
+
+        assert os.environ.get('HOMESTAK_SOURCE') == 'https://10.0.12.153:44443'
+
+    def test_validate_addr_rejects_loopback(self):
+        """_validate_addr raises ValueError for loopback addresses."""
+        with pytest.raises(ValueError, match='loopback'):
+            NodeExecutor._validate_addr('localhost', '--self-addr')
+        with pytest.raises(ValueError, match='loopback'):
+            NodeExecutor._validate_addr('127.0.0.1', 'HOMESTAK_SELF_ADDR')
+
+    def test_validate_addr_rejects_empty(self):
+        """_validate_addr raises ValueError for empty addresses."""
+        with pytest.raises(ValueError, match='empty'):
+            NodeExecutor._validate_addr('', '--self-addr')
+        with pytest.raises(ValueError, match='empty'):
+            NodeExecutor._validate_addr('   ', '--self-addr')
+
+    def test_validate_addr_accepts_routable(self):
+        """_validate_addr returns stripped address for valid inputs."""
+        assert NodeExecutor._validate_addr('10.0.12.61', 'test') == '10.0.12.61'
+        assert NodeExecutor._validate_addr('  10.0.12.61  ', 'test') == '10.0.12.61'
+
+    def test_set_source_env_rejects_loopback_self_addr(self):
+        """Passing localhost as --self-addr raises ValueError, not silent fallback."""
+        manifest = _make_manifest([
+            {'name': 'test', 'type': 'vm', 'vmid': 99001, 'image': 'debian-12', 'preset': 'vm-small'},
+        ])
+        graph = ManifestGraph(manifest)
+        config = _make_config()
+
+        executor = NodeExecutor(
+            manifest=manifest, graph=graph, config=config,
+            self_addr='localhost',
+        )
+        with pytest.raises(ValueError, match='loopback'):
+            executor._set_source_env('127.0.0.1')

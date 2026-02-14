@@ -13,6 +13,7 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 - Remove fuser apt wait block from BootstrapAction — now handled by install.sh system-wide apt config (bootstrap#52, #198)
 
 ### Fixed
+- Fix HOMESTAK_SOURCE propagation at depth 2+: use `--self-addr` from parent instead of localhost for server address; auto-detect external IP as fallback; override with `HOMESTAK_SELF_ADDR` env var (#200)
 - Fix BootstrapAction TLS for serve-repos: add `-k` to curl and `HOMESTAK_INSECURE=1` for self-signed server certs (#189)
 - Fix RepoManager to serve site-config from FHS path (`/usr/local/etc/homestak/`) via `extra_paths` (#189)
 - Fix SyncDriverCodeAction to also sync `run.sh` so inner PVE gets the `manifest` CLI verb (#189)

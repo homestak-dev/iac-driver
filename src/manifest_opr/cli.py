@@ -69,6 +69,11 @@ def _common_parser(verb: str) -> argparse.ArgumentParser:
         action='store_true',
         help='Skip pre-flight validation checks',
     )
+    parser.add_argument(
+        '--self-addr',
+        help='Routable address of this host for HOMESTAK_SOURCE '
+             '(override: HOMESTAK_SELF_ADDR env var)',
+    )
     return parser
 
 
@@ -225,6 +230,7 @@ def apply_main(argv: list) -> int:
         config=config,
         dry_run=args.dry_run,
         json_output=args.json_output,
+        self_addr=getattr(args, 'self_addr', None),
     )
 
     start = time.time()
@@ -275,6 +281,7 @@ def destroy_main(argv: list) -> int:
         config=config,
         dry_run=args.dry_run,
         json_output=args.json_output,
+        self_addr=getattr(args, 'self_addr', None),
     )
 
     start = time.time()
@@ -310,6 +317,7 @@ def test_main(argv: list) -> int:
         config=config,
         dry_run=args.dry_run,
         json_output=args.json_output,
+        self_addr=getattr(args, 'self_addr', None),
     )
 
     start = time.time()

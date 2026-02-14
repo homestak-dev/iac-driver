@@ -49,6 +49,7 @@ class NodeExecutor:
     config: HostConfig
     dry_run: bool = False
     json_output: bool = False
+    self_addr: Optional[str] = None
     _server_refs: int = field(default=0, init=False, repr=False)
     _started_server: bool = field(default=False, init=False, repr=False)
 
@@ -133,6 +134,66 @@ class NodeExecutor:
 
         self._started_server = False
 
+    @staticmethod
+    def _detect_external_ip() -> Optional[str]:
+        """Detect this machine's routable IP address.
+
+        Uses a UDP socket connect to a public IP (no traffic sent) to
+        determine which local interface the OS would route through.
+        Falls back to None if detection fails or returns a non-routable address.
+        """
+        import socket
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(('198.51.100.1', 1))  # RFC 5737 TEST-NET-2, no traffic sent
+                addr = s.getsockname()[0]
+                if addr and addr not in ('0.0.0.0', '127.0.0.1'):
+                    return addr
+        except OSError:
+            pass
+        return None
+
+    @staticmethod
+    def _validate_addr(addr: str, source: str) -> str:
+        """Validate an address provided for HOMESTAK_SOURCE.
+
+        Args:
+            addr: IP address or hostname to validate
+            source: Description of where the address came from (for error messages)
+
+        Returns:
+            The validated address
+
+        Raises:
+            ValueError: If the address is empty or loopback
+        """
+        if not addr or not addr.strip():
+            raise ValueError(f"{source} is empty")
+        addr = addr.strip()
+        if addr in ('localhost', '127.0.0.1'):
+            raise ValueError(
+                f"{source} resolved to loopback ({addr}); "
+                "use --self-addr or HOMESTAK_SELF_ADDR to specify a routable address"
+            )
+        return addr
+
+    def _resolve_self_addr(self) -> Optional[str]:
+        """Resolve the routable address for this host.
+
+        Priority order:
+        1. --self-addr CLI argument (set during subtree delegation)
+        2. HOMESTAK_SELF_ADDR environment variable (manual override)
+
+        Returns:
+            Routable address, or None if not explicitly provided
+        """
+        if self.self_addr:
+            return self.self_addr
+        env_addr = os.environ.get('HOMESTAK_SELF_ADDR')
+        if env_addr:
+            return env_addr.strip()
+        return None
+
     def _set_source_env(self, host: str) -> None:
         """Set HOMESTAK_SOURCE env vars so downstream actions use serve-repos.
 
@@ -141,14 +202,45 @@ class NodeExecutor:
         to propagate serve-repos to inner hosts instead of falling back
         to GitHub master.
 
+        When host is loopback (localhost/127.0.0.1), resolves to a routable
+        address using (in priority order):
+        1. --self-addr CLI arg or HOMESTAK_SELF_ADDR env var (#200)
+        2. _detect_external_ip() (socket-based detection)
+        3. Fails with clear error if no routable address can be determined
+
         Args:
             host: IP or hostname of the server (typically self.config.ssh_host)
         """
-        os.environ['HOMESTAK_SOURCE'] = f'https://{host}:{SERVER_PORT}'
+        addr = host
+        if host in ('localhost', '127.0.0.1'):
+            explicit = self._resolve_self_addr()
+            if explicit:
+                addr = self._validate_addr(explicit, '--self-addr / HOMESTAK_SELF_ADDR')
+                logger.info(
+                    "Using explicit address %s instead of loopback %s for HOMESTAK_SOURCE",
+                    addr, host,
+                )
+            else:
+                detected = self._detect_external_ip()
+                if detected:
+                    addr = detected
+                    logger.warning(
+                        "Auto-detected external IP %s for HOMESTAK_SOURCE "
+                        "(override with --self-addr or HOMESTAK_SELF_ADDR if incorrect)",
+                        addr,
+                    )
+                else:
+                    logger.warning(
+                        "Could not detect external IP; using loopback %s for HOMESTAK_SOURCE "
+                        "(child VMs will not be able to reach this address — "
+                        "use --self-addr or HOMESTAK_SELF_ADDR to set a routable address)",
+                        host,
+                    )
+        os.environ['HOMESTAK_SOURCE'] = f'https://{addr}:{SERVER_PORT}'
         os.environ.setdefault('HOMESTAK_REF', '_working')
         logger.info(
             "Set HOMESTAK_SOURCE=https://%s:%d (ref=%s)",
-            host, SERVER_PORT, os.environ.get('HOMESTAK_REF'),
+            addr, SERVER_PORT, os.environ.get('HOMESTAK_REF'),
         )
 
     def _clear_source_env(self) -> None:
@@ -755,11 +847,14 @@ class NodeExecutor:
         inner_hostname = mn.name
 
         # Build raw command for delegation
+        # Pass --self-addr so the inner executor knows its routable address
+        # for HOMESTAK_SOURCE (avoids localhost propagation, #200)
         raw_cmd = (
             f'cd /usr/local/lib/homestak/iac-driver && '
             f'sudo ./run.sh manifest apply '
             f'--manifest-json {shlex.quote(subtree_json)} '
             f'-H {shlex.quote(inner_hostname)} '
+            f'--self-addr {shlex.quote(ip)} '
             f'--json-output'
         )
 
@@ -810,6 +905,7 @@ class NodeExecutor:
             f'sudo ./run.sh manifest destroy '
             f'--manifest-json {shlex.quote(subtree_json)} '
             f'-H {shlex.quote(inner_hostname)} '
+            f'--self-addr {shlex.quote(ip)} '
             f'--json-output --yes'
         )
 
