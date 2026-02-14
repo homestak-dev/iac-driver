@@ -49,7 +49,8 @@ class ServerHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        if not getattr(self, '_head_only', False):
+            self.wfile.write(body)
 
     def send_bytes(self, content: bytes, status: int, content_type: str):
         """Send bytes response."""
@@ -57,7 +58,8 @@ class ServerHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
-        self.wfile.write(content)
+        if not getattr(self, '_head_only', False):
+            self.wfile.write(content)
 
     def do_GET(self):
         """Handle GET requests."""
@@ -87,9 +89,19 @@ class ServerHandler(BaseHTTPRequestHandler):
         self.send_json({"error": {"code": "E100", "message": f"Unknown endpoint: {path}"}}, 400)
 
     def do_HEAD(self):
-        """Handle HEAD requests (for git dumb protocol)."""
-        # Just route to GET handler for now (could optimize)
-        self.do_GET()
+        """Handle HEAD requests — return headers only, no body.
+
+        Git dumb HTTP protocol uses HEAD to check if objects/refs exist.
+        Per HTTP spec, HEAD must return the same headers as GET but no body.
+        Sending a body corrupts persistent connections (the client reads
+        leftover body bytes as the next response, causing empty/corrupt
+        git objects).
+        """
+        self._head_only = True
+        try:
+            self.do_GET()
+        finally:
+            self._head_only = False
 
     def _handle_spec(self, path: str):
         """Handle /spec/{identity} request."""
@@ -133,7 +145,8 @@ class ServerHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(content)))
             self.end_headers()
-            self.wfile.write(content)
+            if not getattr(self, '_head_only', False):
+                self.wfile.write(content)
         else:
             self.send_bytes(content, status, content_type)
 
