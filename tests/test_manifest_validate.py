@@ -157,7 +157,8 @@ class TestValidateMainCli:
             '    preset: vm-small\n'
         )
 
-        with patch('config.get_site_config_dir', return_value=site):
+        with patch('manifest.get_site_config_dir', return_value=site), \
+             patch('config.get_site_config_dir', return_value=site):
             rc = validate_main(['--manifest-file', str(manifest_file)])
 
         assert rc == 0
@@ -181,7 +182,8 @@ class TestValidateMainCli:
             '    spec: nonexistent\n'
         )
 
-        with patch('config.get_site_config_dir', return_value=site):
+        with patch('manifest.get_site_config_dir', return_value=site), \
+             patch('config.get_site_config_dir', return_value=site):
             rc = validate_main(['--manifest-file', str(manifest_file)])
 
         assert rc == 1
