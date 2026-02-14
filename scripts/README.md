@@ -13,7 +13,7 @@ Generates a markdown summary of an integration test run.
 ./generate-test-summary.sh
 
 # Specify test name and PVE node IP
-./generate-test-summary.sh nested-pve-integration 10.0.12.195
+./generate-test-summary.sh nested-pve-integration 198.51.100.195
 ```
 
 ### Output

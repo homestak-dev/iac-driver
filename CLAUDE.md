@@ -375,7 +375,7 @@ API tokens are stored separately in `site-config/secrets.yaml` and resolved by k
 ```yaml
 # nodes/father.yaml
 host: father                      # FK -> hosts/father.yaml
-api_endpoint: https://10.0.12.61:8006
+api_endpoint: https://198.51.100.61:8006
 api_token: father                 # FK -> secrets.api_tokens.father
 ```
 
@@ -387,7 +387,7 @@ api_token: father                 # FK -> secrets.api_tokens.father
 
 ```
 PVE Host (father)
-├── IP: 10.0.12.x
+├── IP: 198.51.100.x
 └── VM 99011 (root-pve) - PVE node
     ├── Debian 13 + Proxmox VE
     ├── 4 cores, 8GB RAM, 64GB disk
