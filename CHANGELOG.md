@@ -7,6 +7,18 @@
 HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 
 ### Added
+- Auto-set `HOMESTAK_SOURCE` env var after server start so BootstrapAction and RecursiveScenarioAction use serve-repos instead of GitHub master (#189)
+
+### Removed
+- Remove fuser apt wait block from BootstrapAction — now handled by install.sh system-wide apt config (bootstrap#52, #198)
+
+### Fixed
+- Fix HOMESTAK_SOURCE propagation at depth 2+: use `--self-addr` from parent instead of localhost for server address; auto-detect external IP as fallback; override with `HOMESTAK_SELF_ADDR` env var (#200)
+- Fix BootstrapAction TLS for serve-repos: add `-k` to curl and `HOMESTAK_INSECURE=1` for self-signed server certs (#189)
+- Fix RepoManager to serve site-config from FHS path (`/usr/local/etc/homestak/`) via `extra_paths` (#189)
+- Fix HTTP HEAD responses sending body which corrupted git clone persistent connections (#200)
+- Fix `git commit-tree` failing on bootstrapped VMs with no git identity — set env vars for ephemeral commits in bare repo prep (#200)
+- Fix SyncDriverCodeAction to also sync `run.sh` so inner PVE gets the `manifest` CLI verb (#189)
 - Add `_mint_provisioning_token()` in ConfigResolver — mints HMAC-signed token at create time (#187)
 - Add `verify_provisioning_token()` in server/auth — verifies HMAC, extracts spec FK from `s` claim (#187)
 - Add `token inspect` CLI verb — decode/verify provisioning tokens (#187)

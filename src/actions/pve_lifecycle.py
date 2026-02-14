@@ -248,18 +248,6 @@ class BootstrapAction:
                 duration=time.time() - start
             )
 
-        # Wait for apt lock to be available (cloud-init may be running)
-        logger.info(f"[{self.name}] Waiting for apt lock on {host}...")
-        apt_wait_cmd = (
-            "while sudo fuser /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend "
-            "/var/cache/apt/archives/lock >/dev/null 2>&1; do sleep 5; done && echo 'apt ready'"
-        )
-        rc, out, err = run_ssh(host, apt_wait_cmd, user=config.automation_user, timeout=120)
-        if rc != 0:
-            logger.warning(f"[{self.name}] apt wait check failed (may be ok): {err or out}")
-        else:
-            logger.debug(f"[{self.name}] apt lock available")
-
         # Check for serve-repos env vars (dev workflow)
         env_source = os.environ.get('HOMESTAK_SOURCE')
         env_token = os.environ.get('HOMESTAK_TOKEN')
@@ -276,10 +264,13 @@ class BootstrapAction:
             if env_token:
                 env_prefix += f' HOMESTAK_TOKEN={env_token}'
             env_prefix += f' HOMESTAK_REF={env_ref}'
+            # Serve-repos uses self-signed TLS; pass -k to curl and
+            # HOMESTAK_INSECURE=1 so install.sh sets git http.sslVerify=false
+            env_prefix += ' HOMESTAK_INSECURE=1'
             # Include Bearer token in curl header (serve-repos requires auth)
             auth_header = f'-H "Authorization: Bearer {env_token}"' if env_token else ''
             # Use 'sudo env' to pass vars through sudo's environment reset
-            bootstrap_cmd = f'curl -fsSL {auth_header} {env_source}/bootstrap.git/install.sh | sudo env {env_prefix} bash'
+            bootstrap_cmd = f'curl -fsSLk {auth_header} {env_source}/bootstrap.git/install.sh | sudo env {env_prefix} bash'
             logger.info(f"[{self.name}] Using serve-repos source: {env_source} (ref={env_ref})")
         elif self.source_url:
             # Explicit source_url parameter (legacy)
@@ -352,19 +343,21 @@ class SyncDriverCodeAction:
 
         remote_driver = '/usr/local/lib/homestak/iac-driver'
 
-        # Rsync src/ and run.sh to inner host
-        cmd = [
+        ssh_opts = 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR'
+
+        logger.info(f"[{self.name}] Syncing iac-driver to {host}...")
+
+        # Rsync src/ directory
+        cmd_src = [
             'rsync', '-az', '--delete',
-            '-e', 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR',
+            '-e', ssh_opts,
             f'{local_driver}/src/',
             f'root@{host}:{remote_driver}/src/',
         ]
 
-        logger.info(f"[{self.name}] Syncing iac-driver to {host}...")
-
         try:
             result = subprocess.run(
-                cmd,
+                cmd_src,
                 capture_output=True,
                 text=True,
                 timeout=self.timeout,
@@ -372,13 +365,41 @@ class SyncDriverCodeAction:
             if result.returncode != 0:
                 return ActionResult(
                     success=False,
-                    message=f"rsync failed: {result.stderr}",
+                    message=f"rsync src/ failed: {result.stderr}",
                     duration=time.time() - start
                 )
         except subprocess.TimeoutExpired:
             return ActionResult(
                 success=False,
                 message=f"rsync timed out after {self.timeout}s",
+                duration=time.time() - start
+            )
+
+        # Copy run.sh (CLI entry point needed for delegation)
+        cmd_run = [
+            'rsync', '-az',
+            '-e', ssh_opts,
+            f'{local_driver}/run.sh',
+            f'root@{host}:{remote_driver}/run.sh',
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd_run,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode != 0:
+                return ActionResult(
+                    success=False,
+                    message=f"rsync run.sh failed: {result.stderr}",
+                    duration=time.time() - start
+                )
+        except subprocess.TimeoutExpired:
+            return ActionResult(
+                success=False,
+                message=f"rsync run.sh timed out",
                 duration=time.time() - start
             )
 

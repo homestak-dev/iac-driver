@@ -97,6 +97,26 @@ class TestBootstrapAction:
         result = action.run(config, {'pve_ip': '198.51.100.10'})
         assert result.success is True
 
+    @patch('actions.pve_lifecycle.run_ssh')
+    @patch.dict('os.environ', {'HOMESTAK_SOURCE': 'https://198.51.100.61:44443', 'HOMESTAK_REF': '_working'}, clear=False)
+    def test_serve_repos_uses_insecure_tls(self, mock_ssh):
+        """Serve-repos path must pass -k to curl and HOMESTAK_INSECURE=1."""
+        from actions.pve_lifecycle import BootstrapAction
+
+        mock_ssh.return_value = (0, 'Bootstrap complete', '')
+
+        action = BootstrapAction(name='test-bootstrap', host_attr='pve_ip')
+        config = MagicMock()
+        config.automation_user = 'homestak'
+
+        result = action.run(config, {'pve_ip': '198.51.100.10'})
+        assert result.success is True
+
+        # Verify the SSH command used curl -k and HOMESTAK_INSECURE=1
+        ssh_cmd = mock_ssh.call_args_list[-1][0][1]  # last call, second positional arg
+        assert 'curl -fsSLk' in ssh_cmd, f"Expected curl -k flag in: {ssh_cmd}"
+        assert 'HOMESTAK_INSECURE=1' in ssh_cmd, f"Expected HOMESTAK_INSECURE=1 in: {ssh_cmd}"
+
 
 class TestCopySecretsAction:
     """Tests for CopySecretsAction."""

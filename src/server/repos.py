@@ -32,15 +32,18 @@ class RepoManager:
         self,
         repos_dir: Path,
         exclude_repos: Optional[List[str]] = None,
+        extra_paths: Optional[Dict[str, Path]] = None,
     ):
         """Initialize repo manager.
 
         Args:
             repos_dir: Directory containing source repos
             exclude_repos: List of repo names to exclude
+            extra_paths: Map of repo names to alternate paths (e.g., site-config at FHS etc/)
         """
         self.repos_dir = repos_dir
         self.exclude_repos = set(exclude_repos or [])
+        self.extra_paths = extra_paths or {}
         self.serve_dir: Optional[Path] = None
         self.repo_status: Dict[str, dict] = {}
 
@@ -98,7 +101,7 @@ class RepoManager:
             FileNotFoundError: If source repo not found
             subprocess.CalledProcessError: If git commands fail
         """
-        repo_path = self.repos_dir / repo_name
+        repo_path = self.extra_paths.get(repo_name, self.repos_dir / repo_name)
         bare_path = self.serve_dir / f"{repo_name}.git"
 
         # Check source exists
@@ -196,12 +199,22 @@ class RepoManager:
                 check=True,
             ).stdout.strip()
 
+            # Set author/committer identity for commit-tree — freshly bootstrapped
+            # VMs may not have git user.name/user.email configured
+            commit_env = {
+                **os.environ,
+                "GIT_AUTHOR_NAME": "homestak-server",
+                "GIT_AUTHOR_EMAIL": "server@localhost",
+                "GIT_COMMITTER_NAME": "homestak-server",
+                "GIT_COMMITTER_EMAIL": "server@localhost",
+            }
             commit = subprocess.run(
                 ["git", "-C", str(repo_path), "commit-tree", tree, "-p", head, "-m",
                  "Working tree snapshot for server"],
                 capture_output=True,
                 text=True,
                 check=True,
+                env=commit_env,
             ).stdout.strip()
 
             # Restore index
