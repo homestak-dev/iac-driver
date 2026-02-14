@@ -510,12 +510,12 @@ class CopySecretsAction:
 class InjectSSHKeyAction:
     """Inject driver host's SSH public key into target PVE node's secrets.yaml.
 
-    This is critical for SSH access to leaf VMs - the outer host's key must
+    This is critical for SSH access to leaf VMs - the driver host's key must
     be in secrets.yaml so ConfigResolver includes it in cloud-init.
     """
     name: str
     host_attr: str = 'vm_ip'
-    key_name: str = 'outer_host'  # Key name in secrets.yaml ssh_keys
+    key_name: str = 'driver'  # Key name in secrets.yaml ssh_keys
     timeout: int = 60
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
@@ -549,7 +549,7 @@ class InjectSSHKeyAction:
         escaped_key = pubkey.replace('/', r'\/').replace('&', r'\&')
 
         # Inject key into secrets.yaml using sed
-        # First check if outer_host already exists
+        # First check if key already exists
         check_cmd = f"sudo grep -q '^\\s*{self.key_name}:' /usr/local/etc/homestak/secrets.yaml"
         rc, _, _ = run_ssh(host, check_cmd, user=config.automation_user, timeout=30)
 
@@ -686,7 +686,7 @@ class InjectSelfSSHKeyAction:
     """
     name: str
     host_attr: str = 'vm_ip'
-    key_name: str = 'inner_host'  # Key name in secrets.yaml ssh_keys
+    key_name: str = 'self'  # Key name in secrets.yaml ssh_keys
     timeout: int = 60
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
