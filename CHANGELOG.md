@@ -12,6 +12,7 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 - Auto-set `HOMESTAK_SOURCE` env var after server start so BootstrapAction and RecursiveScenarioAction use serve-repos instead of GitHub master (#189)
 
 ### Fixed
+- Fix pull-mode spec_server in nested PVE — use `HOMESTAK_SOURCE` env var so VMs reach the local server, not the outer host from site.yaml
 - Fix push-mode config to run ansible from controller instead of inside VM (#206)
 - Fix pre-existing pylint/mypy warnings across cli.py, actions, config.py, executor.py (#209)
 - Extract ServerManager from executor to bring module under 1000-line limit (#209)

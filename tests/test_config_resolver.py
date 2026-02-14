@@ -236,8 +236,9 @@ class TestListPostures:
 class TestSpecServerResolution:
     """Test spec_server resolution for Create → Specify flow (v0.45+)."""
 
-    def test_resolve_inline_vm_includes_spec_server(self, site_config_dir):
+    def test_resolve_inline_vm_includes_spec_server(self, site_config_dir, monkeypatch):
         """resolve_inline_vm should include spec_server from site.yaml defaults."""
+        monkeypatch.delenv('HOMESTAK_SOURCE', raising=False)
         resolver = ConfigResolver(str(site_config_dir))
         config = resolver.resolve_inline_vm(
             node='test-node',
@@ -248,6 +249,34 @@ class TestSpecServerResolution:
         )
 
         assert 'spec_server' in config
+        assert config['spec_server'] == 'https://controller:44443'
+
+    def test_homestak_source_overrides_spec_server(self, site_config_dir, monkeypatch):
+        """HOMESTAK_SOURCE env var overrides spec_server from site.yaml."""
+        monkeypatch.setenv('HOMESTAK_SOURCE', 'https://10.0.12.138:44443')
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_inline_vm(
+            node='test-node',
+            vm_name='inline-vm',
+            vmid=99900,
+            vm_preset='vm-small',
+            image='debian-12-custom.img'
+        )
+
+        assert config['spec_server'] == 'https://10.0.12.138:44443'
+
+    def test_spec_server_falls_back_to_site_yaml(self, site_config_dir, monkeypatch):
+        """Without HOMESTAK_SOURCE, spec_server comes from site.yaml."""
+        monkeypatch.delenv('HOMESTAK_SOURCE', raising=False)
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_inline_vm(
+            node='test-node',
+            vm_name='inline-vm',
+            vmid=99900,
+            vm_preset='vm-small',
+            image='debian-12-custom.img'
+        )
+
         assert config['spec_server'] == 'https://controller:44443'
 
 
@@ -288,8 +317,9 @@ class TestProvisioningTokenResolution:
 
         assert config['vms'][0]['auth_token'] == ''
 
-    def test_resolve_inline_vm_empty_token_without_spec_server(self, site_config_dir):
+    def test_resolve_inline_vm_empty_token_without_spec_server(self, site_config_dir, monkeypatch):
         """resolve_inline_vm returns empty token when no spec_server configured."""
+        monkeypatch.delenv('HOMESTAK_SOURCE', raising=False)
         # Override site.yaml to remove spec_server
         (site_config_dir / 'site.yaml').write_text(yaml.dump({
             "defaults": {"domain": "test.local", "timezone": "UTC"}
