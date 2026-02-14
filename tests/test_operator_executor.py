@@ -767,9 +767,9 @@ class TestPushConfig:
     """Tests for push-mode config phase (_push_config)."""
 
     @patch('manifest_opr.executor.run_ssh')
-    @patch('subprocess.run')
-    def test_push_config_success(self, mock_subprocess, mock_ssh):
-        """Push config resolves spec, SCPs, runs config apply, verifies marker."""
+    @patch('manifest_opr.executor.run_command')
+    def test_push_config_success(self, mock_run_command, mock_ssh):
+        """Push config resolves spec, runs ansible from controller, writes marker."""
         manifest = _make_manifest([
             {'name': 'edge', 'type': 'vm', 'spec': 'base', 'preset': 'vm-small'},
         ])
@@ -779,13 +779,15 @@ class TestPushConfig:
         executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
         exec_node = graph.get_node('edge')
 
-        # Mock SCP success
-        mock_subprocess.return_value = MagicMock(returncode=0, stderr='')
+        # Mock ansible-playbook success
+        mock_run_command.return_value = (0, 'ok', '')
 
-        # Mock SSH config apply success
-        mock_ssh.return_value = (0, 'config applied', '')
+        # Mock SSH marker write success
+        mock_ssh.return_value = (0, '', '')
 
         with patch('resolver.spec_resolver.SpecResolver') as MockResolver, \
+             patch('config_apply.spec_to_ansible_vars') as mock_s2a, \
+             patch('manifest_opr.executor.get_sibling_dir') as mock_dir, \
              patch('actions.ssh.WaitForFileAction') as MockWait:
             mock_resolver = MagicMock()
             mock_resolver.resolve.return_value = {
@@ -794,6 +796,10 @@ class TestPushConfig:
                 'access': {'posture': 'dev'},
             }
             MockResolver.return_value = mock_resolver
+            mock_s2a.return_value = {'packages': ['htop'], 'timezone': 'UTC'}
+            mock_ansible_dir = MagicMock()
+            mock_ansible_dir.exists.return_value = True
+            mock_dir.return_value = mock_ansible_dir
 
             mock_wait_instance = MagicMock()
             mock_wait_instance.run.return_value = ActionResult(
@@ -806,10 +812,11 @@ class TestPushConfig:
         assert result.success is True
         assert 'Push config complete' in result.message
         mock_resolver.resolve.assert_called_once_with('base')
+        mock_run_command.assert_called_once()
 
     @patch('manifest_opr.executor.run_ssh')
-    @patch('subprocess.run')
-    def test_push_config_spec_resolve_failure(self, mock_subprocess, mock_ssh):
+    @patch('manifest_opr.executor.run_command')
+    def test_push_config_spec_resolve_failure(self, mock_run_command, mock_ssh):
         """Push config fails gracefully when spec resolution fails."""
         manifest = _make_manifest([
             {'name': 'edge', 'type': 'vm', 'spec': 'nonexistent', 'preset': 'vm-small'},
@@ -831,9 +838,9 @@ class TestPushConfig:
         assert "resolve spec" in result.message.lower()
 
     @patch('manifest_opr.executor.run_ssh')
-    @patch('subprocess.run')
-    def test_push_config_apply_failure(self, mock_subprocess, mock_ssh):
-        """Push config reports failure when config apply fails on VM."""
+    @patch('manifest_opr.executor.run_command')
+    def test_push_config_apply_failure(self, mock_run_command, mock_ssh):
+        """Push config reports failure when ansible-playbook fails."""
         manifest = _make_manifest([
             {'name': 'edge', 'type': 'vm', 'spec': 'base', 'preset': 'vm-small'},
         ])
@@ -843,16 +850,19 @@ class TestPushConfig:
         executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
         exec_node = graph.get_node('edge')
 
-        # Mock SCP success
-        mock_subprocess.return_value = MagicMock(returncode=0, stderr='')
+        # Mock ansible-playbook failure
+        mock_run_command.return_value = (1, '', 'ansible playbook failed')
 
-        # Mock SSH config apply failure
-        mock_ssh.return_value = (1, '', 'ansible playbook failed')
-
-        with patch('resolver.spec_resolver.SpecResolver') as MockResolver:
+        with patch('resolver.spec_resolver.SpecResolver') as MockResolver, \
+             patch('config_apply.spec_to_ansible_vars') as mock_s2a, \
+             patch('manifest_opr.executor.get_sibling_dir') as mock_dir:
             mock_resolver = MagicMock()
             mock_resolver.resolve.return_value = {'schema_version': 1}
             MockResolver.return_value = mock_resolver
+            mock_s2a.return_value = {}
+            mock_ansible_dir = MagicMock()
+            mock_ansible_dir.exists.return_value = True
+            mock_dir.return_value = mock_ansible_dir
 
             result = executor._push_config(exec_node, '198.51.100.10', {})
 

@@ -8,10 +8,11 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 
 ### Added
 - Add `./run.sh manifest validate` verb for FK validation against site-config (#207)
-- Add push-mode config phase for leaf VMs in operator — resolves spec locally, SCPs to VM, triggers `config apply` (#206)
+- Add push-mode config phase for leaf VMs in operator — resolves spec locally, runs ansible from controller targeting VM over SSH (#206)
 - Auto-set `HOMESTAK_SOURCE` env var after server start so BootstrapAction and RecursiveScenarioAction use serve-repos instead of GitHub master (#189)
 
 ### Fixed
+- Fix push-mode config to run ansible from controller instead of inside VM (#206)
 - Fix pre-existing pylint/mypy warnings across cli.py, actions, config.py, executor.py (#209)
 - Extract ServerManager from executor to bring module under 1000-line limit (#209)
 - Remove implicit `DEFAULT_MANIFEST` fallback — all verbs now require explicit `-M` flag

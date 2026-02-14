@@ -14,8 +14,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional, Protocol, runtime_checkable
 
-from common import ActionResult, run_ssh
-from config import HostConfig
+from common import ActionResult, run_command, run_ssh
+from config import HostConfig, get_sibling_dir
 from manifest import Manifest
 from manifest_opr.graph import ExecutionNode, ManifestGraph
 from manifest_opr.server_mgmt import ServerManager
@@ -575,17 +575,18 @@ class NodeExecutor:
     def _push_config(
         self, exec_node: ExecutionNode, ip: str, context: dict, timeout: int = 300
     ) -> ActionResult:
-        """Push resolved spec to a VM and trigger config apply.
+        """Push config to a VM by running ansible from the controller.
 
-        True push semantics: the operator resolves the spec locally, pushes it
-        via SCP, then triggers ./run.sh config apply over SSH. No server
-        dependency — the operator has direct access to site-config.
+        True push semantics: the operator resolves the spec locally, maps it
+        to ansible variables, and runs ansible-playbook from the controller
+        targeting the VM over SSH. No iac-driver/ansible needed on the VM.
 
         Steps:
         1. Resolve spec via SpecResolver
-        2. SCP resolved spec to VM:/tmp/spec.yaml
-        3. SSH: move spec to state dir, run config apply
-        4. Wait for config-complete marker
+        2. Map spec to ansible vars via spec_to_ansible_vars()
+        3. Run ansible-playbook from controller targeting VM
+        4. Write config-complete marker on VM via SSH
+        5. Verify marker
 
         Args:
             exec_node: The ExecutionNode being configured
@@ -596,7 +597,7 @@ class NodeExecutor:
         Returns:
             ActionResult indicating success/failure
         """
-        import subprocess
+        import json
         import tempfile
         from actions.ssh import WaitForFileAction
 
@@ -622,70 +623,77 @@ class NodeExecutor:
             resolved_spec['identity'] = {}
         resolved_spec['identity']['hostname'] = mn.name
 
-        # 2. Write resolved spec to temp file and SCP to VM
-        try:
-            import yaml
-        except ImportError:
+        # 2. Map spec to ansible vars
+        from config_apply import spec_to_ansible_vars
+        ansible_vars = spec_to_ansible_vars(resolved_spec)
+
+        # 3. Write vars to temp file and run ansible-playbook from controller
+        ansible_dir = get_sibling_dir('ansible')
+        if not ansible_dir.exists():
             return ActionResult(
                 success=False,
-                message="PyYAML not installed (needed for spec serialization)",
+                message=f"Ansible directory not found: {ansible_dir}",
                 duration=time.time() - start,
             )
+
+        with tempfile.NamedTemporaryFile(
+            mode='w', suffix='.json', delete=False, prefix='config-vars-'
+        ) as f:
+            json.dump(ansible_vars, f, indent=2)
+            vars_file = f.name
 
         user = self.config.automation_user
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=True) as f:
-            yaml.dump(resolved_spec, f, default_flow_style=False)
-            f.flush()
-
-            scp_cmd = [
-                'scp',
-                '-o', 'StrictHostKeyChecking=no',
-                '-o', 'UserKnownHostsFile=/dev/null',
-                '-o', 'LogLevel=ERROR',
-                f.name,
-                f'{user}@{ip}:/tmp/spec.yaml',
+        try:
+            cmd = [
+                'ansible-playbook',
+                '-i', 'inventory/remote-dev.yml',
+                'playbooks/config-apply.yml',
+                '-e', f'ansible_host={ip}',
+                '-e', f'ansible_user={user}',
+                '--become',
+                '-e', f'@{vars_file}',
             ]
 
-            try:
-                result = subprocess.run(
-                    scp_cmd, capture_output=True, text=True, timeout=60,
-                    check=False,
-                )
-                if result.returncode != 0:
-                    return ActionResult(
-                        success=False,
-                        message=f"SCP spec failed: {result.stderr}",
-                        duration=time.time() - start,
-                    )
-            except subprocess.TimeoutExpired:
+            # Disable host key checking for dynamically provisioned VMs
+            import os
+            ansible_env = {**os.environ, 'ANSIBLE_HOST_KEY_CHECKING': 'False'}
+
+            logger.debug(f"[push] Running ansible-playbook for {mn.name}...")
+            rc, out, err = run_command(
+                cmd, cwd=ansible_dir, timeout=timeout, env=ansible_env
+            )
+            if rc != 0:
+                error_detail = err.strip() or out.strip() or 'unknown error'
+                if len(error_detail) > 300:
+                    error_detail = error_detail[:300] + '...'
                 return ActionResult(
                     success=False,
-                    message="SCP spec timed out",
+                    message=f"Config apply failed on {mn.name}: {error_detail}",
                     duration=time.time() - start,
                 )
+        finally:
+            import os
+            os.unlink(vars_file)
 
-        logger.debug(f"[push] Spec '{mn.spec}' pushed to {mn.name}")
+        logger.debug(f"[push] Ansible completed for {mn.name}")
 
-        # 3. Move spec to state dir and trigger config apply
-        install_and_apply = (
+        # 4. Write config-complete marker on VM via SSH
+        marker_json = json.dumps({
+            'phase': 'config',
+            'status': 'complete',
+            'spec': mn.spec,
+            'mode': 'push',
+        })
+        marker_cmd = (
             'sudo mkdir -p /usr/local/etc/homestak/state'
-            ' && sudo mv /tmp/spec.yaml /usr/local/etc/homestak/state/spec.yaml'
-            ' && sudo /usr/local/lib/homestak/iac-driver/run.sh config apply'
+            f" && echo '{marker_json}'"
+            ' | sudo tee /usr/local/etc/homestak/state/config-complete.json > /dev/null'
         )
-
-        rc, out, err = run_ssh(ip, install_and_apply, user=user, timeout=timeout)
+        rc, _, err = run_ssh(ip, marker_cmd, user=user, timeout=30)
         if rc != 0:
-            error_detail = err.strip() or out.strip() or 'unknown error'
-            # Truncate long output
-            if len(error_detail) > 300:
-                error_detail = error_detail[:300] + '...'
-            return ActionResult(
-                success=False,
-                message=f"Config apply failed on {mn.name}: {error_detail}",
-                duration=time.time() - start,
-            )
+            logger.warning(f"[push] Failed to write marker on {mn.name}: {err}")
 
-        # 4. Verify config-complete marker
+        # 5. Verify config-complete marker
         context[f'{mn.name}_ip'] = ip
         wait_config = WaitForFileAction(
             name=f'wait-config-{mn.name}',
