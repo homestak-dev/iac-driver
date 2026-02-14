@@ -73,7 +73,8 @@ class SpecResolver(ResolverBase):
         spec_path = self.etc_path / "specs" / f"{identity}.yaml"
         if not spec_path.exists():
             raise SpecNotFoundError(identity)
-        return self._load_yaml(spec_path)
+        result: dict = self._load_yaml(spec_path)
+        return result
 
     def _apply_site_defaults(self, spec: dict) -> dict:
         """Apply site.yaml defaults to spec.
@@ -127,7 +128,8 @@ class SpecResolver(ResolverBase):
         """
         # Check cache first
         if identity in self._spec_cache:
-            return self._spec_cache[identity]
+            cached: dict = self._spec_cache[identity]
+            return cached
 
         # Load raw spec
         spec = self._load_spec(identity)
@@ -172,7 +174,6 @@ class SpecResolver(ResolverBase):
         return sorted([p.stem for p in specs_dir.glob("*.yaml")])
 
 
-# Re-export for backward compatibility
 __all__ = [
     "SpecResolver",
     "SpecNotFoundError",

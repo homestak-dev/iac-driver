@@ -7,9 +7,17 @@
 HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 
 ### Added
+- Add `./run.sh manifest validate` verb for FK validation against site-config (#207)
+- Add push-mode config phase for leaf VMs in operator — resolves spec locally, runs ansible from controller targeting VM over SSH (#206)
 - Auto-set `HOMESTAK_SOURCE` env var after server start so BootstrapAction and RecursiveScenarioAction use serve-repos instead of GitHub master (#189)
 
 ### Fixed
+- Fix pull-mode spec_server in nested PVE — use `HOMESTAK_SOURCE` env var so VMs reach the local server, not the outer host from site.yaml
+- Fix push-mode config to run ansible from controller instead of inside VM (#206)
+- Fix push-mode cloud-init race — skip spec injection for push-mode nodes so cloud-init doesn't bootstrap in parallel with operator config
+- Fix pre-existing pylint/mypy warnings across cli.py, actions, config.py, executor.py (#209)
+- Extract ServerManager from executor to bring module under 1000-line limit (#209)
+- Remove implicit `DEFAULT_MANIFEST` fallback — all verbs now require explicit `-M` flag
 - Restrict secrets.yaml to 600 permissions after SCP copy to bootstrapped hosts (#199)
   - CopySecretsAction now runs `chmod 600` + `chown root:root` after `sudo mv`
 - Improve "secrets.yaml not found" error to suggest `make decrypt` when `.enc` exists (#202)
@@ -21,6 +29,7 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
   - Pre-commit hooks (pylint, mypy) trigger on git commit
 
 ### Removed
+- Remove dead tfvars input path (`_load_from_tfvars`, `_parse_tfvars`) from config.py (#209)
 - Remove fuser apt wait block from BootstrapAction — now handled by install.sh system-wide apt config (bootstrap#52, #198)
 
 ### Fixed

@@ -1,9 +1,10 @@
-"""CLI handlers for manifest-based verb commands (apply, destroy, test).
+"""CLI handlers for manifest-based verb commands (apply, destroy, test, validate).
 
 Usage:
     ./run.sh manifest apply -M <manifest> -H <host> [--dry-run] [--json-output] [--verbose]
     ./run.sh manifest destroy -M <manifest> -H <host> [--dry-run] [--yes]
     ./run.sh manifest test -M <manifest> -H <host> [--dry-run] [--json-output]
+    ./run.sh manifest validate -M <manifest> [--verbose]
 """
 
 import argparse
@@ -115,6 +116,12 @@ def _load_manifest_and_config(args):
     Raises:
         SystemExit: On validation errors
     """
+    # Require explicit manifest source
+    if not args.manifest and not args.manifest_file and not args.manifest_json:
+        print("Error: specify a manifest with -M, --manifest-file, or --manifest-json",
+              file=sys.stderr)
+        sys.exit(1)
+
     # Load manifest
     try:
         manifest = load_manifest(
@@ -329,3 +336,117 @@ def test_main(argv: list) -> int:
         _emit_json('test', success, state, duration)
 
     return 0 if success else 1
+
+
+def validate_main(argv: list) -> int:
+    """Handle 'manifest validate' verb.
+
+    Validates manifest structure and FK references against site-config:
+    - Schema and graph validation (existing _validate_graph)
+    - spec FK: specs/{value}.yaml exists
+    - preset FK: presets/{value}.yaml exists
+    """
+    parser = argparse.ArgumentParser(
+        prog='run.sh manifest validate',
+        description='Validate manifest structure and FK references',
+    )
+    parser.add_argument(
+        '--manifest', '-M',
+        help='Manifest name from site-config/manifests/',
+    )
+    parser.add_argument(
+        '--manifest-file',
+        help='Path to manifest file',
+    )
+    parser.add_argument(
+        '--manifest-json',
+        help='Inline manifest JSON',
+    )
+    parser.add_argument(
+        '--verbose', '-v',
+        action='store_true',
+        help='Show resolved FK paths',
+    )
+    args = parser.parse_args(argv)
+
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    # Require explicit manifest source (no implicit default)
+    if not args.manifest and not args.manifest_file and not args.manifest_json:
+        print("Error: specify a manifest with -M, --manifest-file, or --manifest-json",
+              file=sys.stderr)
+        return 1
+
+    # Load manifest (validates schema + graph)
+    try:
+        manifest = load_manifest(
+            name=args.manifest,
+            file_path=args.manifest_file,
+            json_str=args.manifest_json,
+        )
+    except Exception as e:
+        print(f"Error loading manifest: {e}", file=sys.stderr)
+        return 1
+
+    if manifest.schema_version != 2 or not manifest.nodes:
+        print("Error: validate requires a v2 manifest with nodes[]", file=sys.stderr)
+        return 1
+
+    # Validate FK references
+    from config import get_site_config_dir
+    site_config = get_site_config_dir()
+    errors = validate_manifest_fks(manifest, site_config)
+
+    if errors:
+        print(f"Manifest '{manifest.name}' has {len(errors)} validation error(s):", file=sys.stderr)
+        for error in errors:
+            print(f"  \u2717 {error}", file=sys.stderr)
+        return 1
+
+    node_count = len(manifest.nodes)
+    print(f"Manifest '{manifest.name}' is valid ({node_count} node{'s' if node_count != 1 else ''})")
+    return 0
+
+
+def validate_manifest_fks(manifest, site_config_dir) -> list[str]:
+    """Validate FK references in manifest nodes against site-config.
+
+    Checks:
+    - spec: X → specs/X.yaml exists
+    - preset: Y → presets/Y.yaml exists
+
+    Args:
+        manifest: Loaded Manifest instance
+        site_config_dir: Path to site-config directory
+
+    Returns:
+        List of error messages (empty = valid)
+    """
+    from pathlib import Path
+    errors = []
+    specs_dir = Path(site_config_dir) / 'specs'
+    presets_dir = Path(site_config_dir) / 'presets'
+
+    for node in manifest.nodes:
+        if node.spec:
+            spec_path = specs_dir / f'{node.spec}.yaml'
+            if not spec_path.exists():
+                errors.append(
+                    f"Node '{node.name}' references unknown spec '{node.spec}' "
+                    f"\u2014 no file at specs/{node.spec}.yaml"
+                )
+            else:
+                logger.debug(f"Node '{node.name}' spec '{node.spec}' -> {spec_path}")
+
+        if node.preset:
+            preset_path = presets_dir / f'{node.preset}.yaml'
+            if not preset_path.exists():
+                errors.append(
+                    f"Node '{node.name}' references unknown preset '{node.preset}' "
+                    f"\u2014 no file at presets/{node.preset}.yaml"
+                )
+            else:
+                logger.debug(f"Node '{node.name}' preset '{node.preset}' -> {preset_path}")
+
+    return errors

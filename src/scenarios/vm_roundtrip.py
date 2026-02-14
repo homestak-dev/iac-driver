@@ -9,7 +9,6 @@ Includes push (verify env vars) and pull (verify autonomous config) modes.
 import logging
 import time
 from dataclasses import dataclass
-from typing import Optional
 
 from actions import (
     TofuApplyAction,
@@ -18,13 +17,16 @@ from actions import (
     WaitForProvisionedVMsAction,
     WaitForSSHAction,
     WaitForFileAction,
-    SSHCommandAction,
 )
-from common import ActionResult, run_ssh
-from config import HostConfig
-from config_resolver import ConfigResolver
-from scenarios import register_scenario
 from actions.pve_lifecycle import EnsureImageAction
+from common import ActionResult, run_ssh
+from config import HostConfig, get_site_config_dir
+from scenarios import register_scenario
+
+try:
+    import yaml
+except ImportError:
+    yaml = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -34,13 +36,14 @@ class CheckSpecServerConfigAction:
     """Verify spec_server is configured in site.yaml."""
     name: str
 
-    def run(self, config: HostConfig, context: dict) -> ActionResult:
+    def run(self, _config: HostConfig, _context: dict) -> ActionResult:
         """Check that spec_server is configured."""
         start = time.time()
 
         try:
-            resolver = ConfigResolver()
-            site_config = resolver._load_yaml('site.yaml')
+            site_file = get_site_config_dir() / 'site.yaml'
+            with open(site_file, encoding='utf-8') as f:
+                site_config = yaml.safe_load(f) or {}
             spec_server = site_config.get('defaults', {}).get('spec_server', '')
 
             if not spec_server:
@@ -75,7 +78,7 @@ class StartServerAction:
     serve_repos: bool = False
     repo_token: str | None = None  # None = don't pass flag, "" = disable auth
 
-    def run(self, config: HostConfig, context: dict) -> ActionResult:
+    def run(self, config: HostConfig, _context: dict) -> ActionResult:
         """Start server on PVE host via ./run.sh server start."""
         start = time.time()
 
@@ -146,10 +149,6 @@ class StartServerAction:
         )
 
 
-# Backward compatibility alias
-StartSpecServerAction = StartServerAction
-
-
 @dataclass
 class VerifyEnvVarsAction:
     """Verify HOMESTAK_* env vars are present in /etc/profile.d/homestak.sh."""
@@ -172,7 +171,7 @@ class VerifyEnvVarsAction:
         # Read the profile.d file
         cmd = 'cat /etc/profile.d/homestak.sh 2>/dev/null || echo "FILE_NOT_FOUND"'
         logger.info(f"[{self.name}] Checking env vars on {host}...")
-        rc, out, err = run_ssh(host, cmd, user=config.automation_user, timeout=self.timeout)
+        _, out, _ = run_ssh(host, cmd, user=config.automation_user, timeout=self.timeout)
 
         if 'FILE_NOT_FOUND' in out:
             return ActionResult(
@@ -238,7 +237,7 @@ class VerifyServerReachableAction:
         # Curl the health endpoint (allow self-signed cert)
         cmd = f'curl -sk {spec_server}/health 2>&1 || echo "CURL_FAILED"'
         logger.info(f"[{self.name}] Testing connectivity to {spec_server} from {host}...")
-        rc, out, err = run_ssh(host, cmd, user=config.automation_user, timeout=self.timeout)
+        rc, out, _ = run_ssh(host, cmd, user=config.automation_user, timeout=self.timeout)
 
         if 'CURL_FAILED' in out or rc != 0:
             return ActionResult(
@@ -269,7 +268,7 @@ class StopServerAction:
     server_port: int = 44443
     timeout: int = 30
 
-    def run(self, config: HostConfig, context: dict) -> ActionResult:
+    def run(self, config: HostConfig, _context: dict) -> ActionResult:
         """Stop server via ./run.sh server stop."""
         start = time.time()
 
@@ -289,10 +288,6 @@ class StopServerAction:
             message=out.strip() if out.strip() else "Server stopped",
             duration=time.time() - start
         )
-
-
-# Backward compatibility alias
-StopSpecServerAction = StopServerAction
 
 
 @dataclass
@@ -381,7 +376,7 @@ class SpecVMPushRoundtrip:
     description = 'Deploy VM with spec server vars, verify env injection via SSH, destroy'
     expected_runtime = 180  # ~3 min
 
-    def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
+    def get_phases(self, _config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for spec VM push roundtrip test."""
         return [
             # Prerequisites
@@ -458,7 +453,7 @@ class SpecVMPullRoundtrip:
     description = 'Deploy VM with pull mode, verify autonomous spec fetch + config apply, destroy'
     expected_runtime = 300  # ~5 min (includes waiting for cloud-init config)
 
-    def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
+    def get_phases(self, _config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for spec VM pull roundtrip test."""
         return [
             # Prerequisites

@@ -8,23 +8,28 @@ delegated to the PVE node via SSH, where a new operator instance
 handles them as its own root nodes.
 """
 
-import json
 import logging
-import os
 import shlex
 import time
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Protocol, runtime_checkable
 
-from common import ActionResult, run_ssh
-from config import HostConfig
+from common import ActionResult, run_command, run_ssh
+from config import HostConfig, get_sibling_dir
 from manifest import Manifest
 from manifest_opr.graph import ExecutionNode, ManifestGraph
+from manifest_opr.server_mgmt import ServerManager
 from manifest_opr.state import ExecutionState
 
 logger = logging.getLogger(__name__)
 
-SERVER_PORT = 44443
+
+@runtime_checkable
+class ActionRunner(Protocol):
+    """Protocol for action classes that implement run()."""
+
+    def run(self, config: HostConfig, context: dict) -> ActionResult:
+        """Execute the action."""
 
 
 @dataclass
@@ -50,222 +55,18 @@ class NodeExecutor:
     dry_run: bool = False
     json_output: bool = False
     self_addr: Optional[str] = None
-    _server_refs: int = field(default=0, init=False, repr=False)
-    _started_server: bool = field(default=False, init=False, repr=False)
+    _server: ServerManager = field(default=None, init=False, repr=False)  # type: ignore[assignment]
 
-    def _ensure_server(self) -> None:
-        """Ensure the spec server is running on the target host.
-
-        Uses reference counting so nested calls (test → create → destroy)
-        only start/stop once. First call starts if needed; subsequent calls
-        just increment the ref count.
-        """
-        self._server_refs += 1
-        if self._server_refs > 1:
-            # Already ensured by an outer caller
-            return
-
-        host = self.config.ssh_host
-        user = self.config.ssh_user
-
-        # Check current status
-        rc, stdout, _ = run_ssh(
-            host, f'cd /usr/local/lib/homestak/iac-driver && ./run.sh server status --json --port {SERVER_PORT}',
-            user=user, timeout=15,
+    def __post_init__(self) -> None:
+        """Initialize the server manager after dataclass init."""
+        self._server = ServerManager(
+            ssh_host=self.config.ssh_host,
+            ssh_user=self.config.ssh_user,
+            self_addr=self.self_addr,
         )
-
-        if rc == 0:
-            try:
-                status = json.loads(stdout.strip())
-                if status.get('running') and status.get('healthy'):
-                    logger.info("Server already running on %s:%d (reusing)", host, SERVER_PORT)
-                    self._started_server = False
-                    self._set_source_env(host)
-                    return
-            except (json.JSONDecodeError, ValueError):
-                pass
-
-        # Start the server (with repo serving for pull mode bootstrap, no auth)
-        logger.info("Starting server on %s:%d", host, SERVER_PORT)
-        rc, stdout, stderr = run_ssh(
-            host, f"cd /usr/local/lib/homestak/iac-driver && ./run.sh server start --port {SERVER_PORT} --repos --repo-token ''",
-            user=user, timeout=30,
-        )
-
-        if rc != 0:
-            logger.warning("Server start returned rc=%d: %s", rc, stderr.strip() or stdout.strip())
-        else:
-            logger.info("Server started on %s:%d", host, SERVER_PORT)
-
-        self._started_server = True
-        self._set_source_env(host)
-
-    def _stop_server(self) -> None:
-        """Stop the spec server if we started it.
-
-        Only actually stops when the ref count reaches zero (outermost caller).
-        Preserves user-managed servers (those we didn't start).
-        Always cleans up HOMESTAK_SOURCE env vars when ref count reaches zero.
-        """
-        self._server_refs = max(0, self._server_refs - 1)
-        if self._server_refs > 0:
-            # Inner caller returning; outer caller will handle stop
-            return
-
-        # Clean up env vars regardless of whether we started the server
-        self._clear_source_env()
-
-        if not self._started_server:
-            return
-
-        host = self.config.ssh_host
-        user = self.config.ssh_user
-
-        logger.info("Stopping server on %s:%d", host, SERVER_PORT)
-        rc, _, stderr = run_ssh(
-            host, f'cd /usr/local/lib/homestak/iac-driver && ./run.sh server stop --port {SERVER_PORT}',
-            user=user, timeout=15,
-        )
-
-        if rc != 0:
-            logger.warning("Server stop returned rc=%d: %s", rc, stderr.strip())
-        else:
-            logger.info("Server stopped on %s:%d", host, SERVER_PORT)
-
-        self._started_server = False
-
-    @staticmethod
-    def _detect_external_ip() -> Optional[str]:
-        """Detect this machine's routable IP address.
-
-        Uses a UDP socket connect to a public IP (no traffic sent) to
-        determine which local interface the OS would route through.
-        Falls back to None if detection fails or returns a non-routable address.
-        """
-        import socket
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                s.connect(('198.51.100.1', 1))  # RFC 5737 TEST-NET-2, no traffic sent
-                addr = s.getsockname()[0]
-                if addr and addr not in ('0.0.0.0', '127.0.0.1'):
-                    return addr
-        except OSError:
-            pass
-        return None
-
-    @staticmethod
-    def _validate_addr(addr: str, source: str) -> str:
-        """Validate an address provided for HOMESTAK_SOURCE.
-
-        Args:
-            addr: IP address or hostname to validate
-            source: Description of where the address came from (for error messages)
-
-        Returns:
-            The validated address
-
-        Raises:
-            ValueError: If the address is empty or loopback
-        """
-        if not addr or not addr.strip():
-            raise ValueError(f"{source} is empty")
-        addr = addr.strip()
-        if addr in ('localhost', '127.0.0.1'):
-            raise ValueError(
-                f"{source} resolved to loopback ({addr}); "
-                "use --self-addr or HOMESTAK_SELF_ADDR to specify a routable address"
-            )
-        return addr
-
-    def _resolve_self_addr(self) -> Optional[str]:
-        """Resolve the routable address for this host.
-
-        Priority order:
-        1. --self-addr CLI argument (set during subtree delegation)
-        2. HOMESTAK_SELF_ADDR environment variable (manual override)
-
-        Returns:
-            Routable address, or None if not explicitly provided
-        """
-        if self.self_addr:
-            return self.self_addr
-        env_addr = os.environ.get('HOMESTAK_SELF_ADDR')
-        if env_addr:
-            return env_addr.strip()
-        return None
-
-    def _set_source_env(self, host: str) -> None:
-        """Set HOMESTAK_SOURCE env vars so downstream actions use serve-repos.
-
-        Called after the server is confirmed running (started or reused).
-        BootstrapAction and RecursiveScenarioAction read these env vars
-        to propagate serve-repos to child hosts instead of falling back
-        to GitHub master.
-
-        When host is loopback (localhost/127.0.0.1), resolves to a routable
-        address using (in priority order):
-        1. --self-addr CLI arg or HOMESTAK_SELF_ADDR env var (#200)
-        2. _detect_external_ip() (socket-based detection)
-        3. Fails with clear error if no routable address can be determined
-
-        Args:
-            host: IP or hostname of the server (typically self.config.ssh_host)
-        """
-        addr = host
-        if host in ('localhost', '127.0.0.1'):
-            explicit = self._resolve_self_addr()
-            if explicit:
-                addr = self._validate_addr(explicit, '--self-addr / HOMESTAK_SELF_ADDR')
-                logger.info(
-                    "Using explicit address %s instead of loopback %s for HOMESTAK_SOURCE",
-                    addr, host,
-                )
-            else:
-                detected = self._detect_external_ip()
-                if detected:
-                    addr = detected
-                    logger.warning(
-                        "Auto-detected external IP %s for HOMESTAK_SOURCE "
-                        "(override with --self-addr or HOMESTAK_SELF_ADDR if incorrect)",
-                        addr,
-                    )
-                else:
-                    logger.warning(
-                        "Could not detect external IP; using loopback %s for HOMESTAK_SOURCE "
-                        "(child VMs will not be able to reach this address — "
-                        "use --self-addr or HOMESTAK_SELF_ADDR to set a routable address)",
-                        host,
-                    )
-        os.environ['HOMESTAK_SOURCE'] = f'https://{addr}:{SERVER_PORT}'
-        os.environ.setdefault('HOMESTAK_REF', '_working')
-        logger.info(
-            "Set HOMESTAK_SOURCE=https://%s:%d (ref=%s)",
-            addr, SERVER_PORT, os.environ.get('HOMESTAK_REF'),
-        )
-
-    def _clear_source_env(self) -> None:
-        """Clear HOMESTAK_SOURCE env vars set by _set_source_env."""
-        for var in ('HOMESTAK_SOURCE', 'HOMESTAK_REF'):
-            os.environ.pop(var, None)
-        logger.debug("Cleared HOMESTAK_SOURCE env vars")
 
     def create(self, context: dict) -> tuple[bool, ExecutionState]:
-        """Execute create lifecycle: provision root nodes, delegate subtrees.
-
-        For each root node:
-        1. Run tofu apply to provision the VM
-        2. Start the VM
-        3. Wait for guest agent / IP
-        4. Wait for SSH
-        5. If PVE type: run PVE lifecycle (bootstrap, secrets, bridge, etc.)
-        6. If PVE type with children: delegate subtree via SSH
-
-        Args:
-            context: Shared execution context
-
-        Returns:
-            (success, execution_state) tuple
-        """
+        """Execute create lifecycle: provision root nodes, delegate subtrees."""
         state = ExecutionState(self.manifest.name, self.config.name)
         state.start()
 
@@ -279,7 +80,7 @@ class NodeExecutor:
             return True, state
 
         # Ensure server is running for spec serving (pull mode, etc.)
-        self._ensure_server()
+        self._server.ensure()
 
         on_error = self.manifest.settings.on_error
         created_nodes: list[ExecutionNode] = []
@@ -295,68 +96,45 @@ class NodeExecutor:
                 node_state.start()
 
                 result = self._create_node(exec_node, context)
-                if result.success:
-                    context.update(result.context_updates or {})
-                    vm_id = result.context_updates.get(f'{exec_node.name}_vm_id')
-                    ip = result.context_updates.get(f'{exec_node.name}_ip')
-                    node_state.complete(vm_id=vm_id, ip=ip)
-                    created_nodes.append(exec_node)
-                    state.save()
-
-                    # If PVE node with children: delegate subtree
-                    if exec_node.manifest_node.type == 'pve' and exec_node.children:
-                        delegate_result = self._delegate_subtree(exec_node, context, state)
-                        if not delegate_result.success:
-                            # Mark all descendant nodes as failed
-                            for desc in self._get_descendants(exec_node):
-                                desc_state = state.get_node(desc.name)
-                                desc_state.fail(f"Delegation failed: {delegate_result.message}")
-                            success = False
-                            logger.error(f"Subtree delegation failed for '{exec_node.name}': {delegate_result.message}")
-                            if on_error == 'stop':
-                                break
-                            if on_error == 'rollback':
-                                self._rollback(created_nodes, context, state)
-                                break
-                        else:
-                            # Update state and context from delegation result
-                            context.update(delegate_result.context_updates or {})
-                            for desc in self._get_descendants(exec_node):
-                                desc_state = state.get_node(desc.name)
-                                desc_vm_id = (delegate_result.context_updates or {}).get(f'{desc.name}_vm_id')
-                                desc_ip = (delegate_result.context_updates or {}).get(f'{desc.name}_ip')
-                                desc_state.complete(vm_id=desc_vm_id, ip=desc_ip)
-                            state.save()
-                else:
+                if not result.success:
                     node_state.fail(result.message)
                     success = False
-                    logger.error(f"Create failed for node '{exec_node.name}': {result.message}")
-
+                    logger.error("Create failed for node '%s': %s",
+                                 exec_node.name, result.message)
                     if on_error == 'stop':
                         break
                     if on_error == 'rollback':
                         self._rollback(created_nodes, context, state)
                         break
-                    # on_error == 'continue': skip and continue
+                    continue  # on_error == 'continue'
+
+                context.update(result.context_updates or {})
+                vm_id = result.context_updates.get(f'{exec_node.name}_vm_id')
+                ip = result.context_updates.get(f'{exec_node.name}_ip')
+                node_state.complete(vm_id=vm_id, ip=ip)
+                created_nodes.append(exec_node)
+                state.save()
+
+                # If PVE node with children: delegate subtree
+                if exec_node.manifest_node.type == 'pve' and exec_node.children:
+                    ok = self._handle_subtree_delegation(
+                        exec_node, context, state)
+                    if not ok:
+                        success = False
+                        if on_error == 'stop':
+                            break
+                        if on_error == 'rollback':
+                            self._rollback(created_nodes, context, state)
+                            break
         finally:
-            self._stop_server()
+            self._server.stop()
 
         state.finish()
         state.save()
         return success, state
 
     def destroy(self, context: dict) -> tuple[bool, ExecutionState]:
-        """Execute destroy lifecycle: delegate subtree destruction, then destroy roots.
-
-        For root PVE nodes with children, delegates destruction to the inner
-        PVE host first, then destroys the root node locally.
-
-        Args:
-            context: Shared execution context (may contain IPs/IDs from create or loaded state)
-
-        Returns:
-            (success, execution_state) tuple
-        """
+        """Execute destroy lifecycle: delegate subtree destruction, then destroy roots."""
         # Try to load existing state for IPs/IDs
         state = self._load_or_create_state()
         state.start()
@@ -370,7 +148,7 @@ class NodeExecutor:
             return True, state
 
         # Ensure server is running (needed for subtree delegation)
-        self._ensure_server()
+        self._server.ensure()
 
         success = True
 
@@ -380,35 +158,26 @@ class NodeExecutor:
                 if exec_node.depth > 0:
                     continue
 
-                # If PVE node with children: delegate subtree destruction first
+                # If PVE node with children: delegate subtree destruction
                 if exec_node.manifest_node.type == 'pve' and exec_node.children:
-                    ip = context.get(f'{exec_node.name}_ip')
-                    if ip:
-                        delegate_result = self._delegate_subtree_destroy(exec_node, context)
-                        if not delegate_result.success:
-                            logger.error(f"Subtree destroy delegation failed for '{exec_node.name}': {delegate_result.message}")
-                            success = False
-                        else:
-                            # Mark descendant nodes as destroyed
-                            for desc in self._get_descendants(exec_node):
-                                desc_state = state.get_node(desc.name) if desc.name in state.nodes else state.add_node(desc.name)
-                                desc_state.mark_destroyed()
-                    else:
-                        logger.warning(f"No IP for PVE node '{exec_node.name}', skipping subtree delegation")
+                    if not self._handle_subtree_destroy(
+                            exec_node, context, state):
+                        success = False
 
                 # Now destroy the root node itself
-                node_state = state.get_node(exec_node.name) if exec_node.name in state.nodes else state.add_node(exec_node.name)
-                node_state.start()
+                ns = state.get_node(exec_node.name) if exec_node.name in state.nodes else state.add_node(exec_node.name)
+                ns.start()
 
                 result = self._destroy_node(exec_node, context)
                 if result.success:
-                    node_state.mark_destroyed()
+                    ns.mark_destroyed()
                 else:
-                    node_state.fail(result.message)
+                    ns.fail(result.message)
                     success = False
-                    logger.error(f"Destroy failed for node '{exec_node.name}': {result.message}")
+                    logger.error("Destroy failed for node '%s': %s",
+                                 exec_node.name, result.message)
         finally:
-            self._stop_server()
+            self._server.stop()
 
         state.finish()
         state.save()
@@ -416,18 +185,9 @@ class NodeExecutor:
 
     def test(self, context: dict) -> tuple[bool, ExecutionState]:
         """Execute test lifecycle: create, verify, destroy.
-
-        Manages server lifecycle at the outer level so create/destroy
-        don't each start/stop independently.
-
-        Args:
-            context: Shared execution context
-
-        Returns:
-            (success, execution_state) tuple
         """
         if not self.dry_run:
-            self._ensure_server()
+            self._server.ensure()
 
         try:
             # Create (server already running, create() will see it as healthy and reuse)
@@ -447,7 +207,7 @@ class NodeExecutor:
             return create_ok and verify_ok and destroy_ok, state
         finally:
             if not self.dry_run:
-                self._stop_server()
+                self._server.stop()
 
     def _create_node(self, exec_node: ExecutionNode, context: dict) -> ActionResult:
         """Create a single node: provision, start, wait for IP/SSH, PVE lifecycle.
@@ -481,13 +241,18 @@ class NodeExecutor:
         logger.info(f"[create] Provisioning node '{mn.name}' on {pve_host}")
 
         # 1. Tofu apply
+        # Only pass spec for pull-mode nodes — spec triggers cloud-init
+        # bootstrap (HOMESTAK_SERVER/HOMESTAK_TOKEN injection). Push-mode
+        # nodes get config from the operator, not from cloud-init.
+        exec_mode = mn.execution_mode or self.manifest.execution_mode
+        tofu_spec = mn.spec if exec_mode == 'pull' else None
         apply_action = TofuApplyAction(
             name=f'provision-{mn.name}',
             vm_name=mn.name,
             vmid=mn.vmid,
             vm_preset=mn.preset,
             image=mn.image,
-            spec=mn.spec,
+            spec=tofu_spec,
         )
         result = apply_action.run(self.config, context)
         if not result.success:
@@ -583,6 +348,16 @@ class NodeExecutor:
                     duration=time.time() - start,
                     context_updates=context_updates,
                 )
+        elif exec_mode == 'push' and ip and mn.type != 'pve' and mn.spec:
+            # Push mode: driver pushes resolved spec, triggers config apply
+            push_result = self._push_config(exec_node, ip, context)
+            if not push_result.success:
+                return ActionResult(
+                    success=False,
+                    message=f"Push config failed for {mn.name}: {push_result.message}",
+                    duration=time.time() - start,
+                    context_updates=context_updates,
+                )
 
         logger.info(f"[create] Node '{mn.name}' created successfully (ip={ip})")
 
@@ -594,28 +369,8 @@ class NodeExecutor:
         )
 
     def _run_pve_lifecycle(self, exec_node: ExecutionNode, ip: str, context: dict) -> ActionResult:
-        """Run PVE lifecycle phases on a freshly provisioned PVE node.
-
-        Phase sequence:
-        1. Bootstrap (curl|bash installer)
-        2. Copy secrets
-        3. Inject outer host SSH key
-        4. Copy SSH private key
-        5. Run pve-setup post-scenario
-        6. Configure vmbr0 bridge
-        7. Generate node config
-        8. Create API token
-        9. Inject self SSH key
-        10. Download packer images for children
-
-        Args:
-            exec_node: The PVE ExecutionNode
-            ip: IP address of the PVE node
-            context: Shared execution context
-
-        Returns:
-            ActionResult indicating overall success/failure
-        """
+        """Run PVE lifecycle phases: bootstrap, secrets, SSH keys, pve-setup,
+        bridge, node config, API token, self SSH key, image download."""
         from actions.pve_lifecycle import (
             BootstrapAction,
             SyncDriverCodeAction,
@@ -639,7 +394,7 @@ class NodeExecutor:
         context[host_key] = ip
 
         # Phase sequence: list of (name, action) tuples
-        phases: list[tuple[str, object]] = []
+        phases: list[tuple[str, ActionRunner]] = []
 
         # 1. Bootstrap
         phases.append(('bootstrap', BootstrapAction(
@@ -802,18 +557,220 @@ class NodeExecutor:
             duration=time.time() - start,
         )
 
-    def _delegate_subtree(self, exec_node: ExecutionNode, context: dict, state: ExecutionState) -> ActionResult:
-        """Delegate creation of a PVE node's children to the PVE host.
+    def _push_config(
+        self, exec_node: ExecutionNode, ip: str, context: dict, timeout: int = 300
+    ) -> ActionResult:
+        """Push config to a VM by running ansible from the controller.
 
-        Extracts the subtree as a new manifest, SSHs to the PVE node, and
-        runs './run.sh manifest apply --manifest-json <json> -H <hostname> --json-output'
-        on the target host. Uses RecursiveScenarioAction for PTY streaming
-        and JSON result parsing.
+        True push semantics: the operator resolves the spec locally, maps it
+        to ansible variables, and runs ansible-playbook from the controller
+        targeting the VM over SSH. No iac-driver/ansible needed on the VM.
+
+        Steps:
+        1. Resolve spec via SpecResolver
+        2. Map spec to ansible vars via spec_to_ansible_vars()
+        3. Run ansible-playbook from controller targeting VM
+        4. Write config-complete marker on VM via SSH
+        5. Verify marker
 
         Args:
-            exec_node: The PVE ExecutionNode whose children to delegate
+            exec_node: The ExecutionNode being configured
+            ip: IP address of the VM
             context: Shared execution context
-            state: Execution state for recording descendant status
+            timeout: Max seconds to wait for config completion
+
+        Returns:
+            ActionResult indicating success/failure
+        """
+        import json
+        import tempfile
+        from actions.ssh import WaitForFileAction
+
+        mn = exec_node.manifest_node
+        start = time.time()
+
+        logger.info(f"[push] Pushing config to {mn.name} ({ip})...")
+
+        # 1. Resolve spec locally
+        try:
+            from resolver.spec_resolver import SpecResolver
+            resolver = SpecResolver()
+            resolved_spec = resolver.resolve(mn.spec)
+        except Exception as e:
+            return ActionResult(
+                success=False,
+                message=f"Failed to resolve spec '{mn.spec}': {e}",
+                duration=time.time() - start,
+            )
+
+        # Set identity.hostname to match the node name
+        if 'identity' not in resolved_spec:
+            resolved_spec['identity'] = {}
+        resolved_spec['identity']['hostname'] = mn.name
+
+        # 2. Map spec to ansible vars
+        from config_apply import spec_to_ansible_vars
+        ansible_vars = spec_to_ansible_vars(resolved_spec)
+
+        # 3. Write vars to temp file and run ansible-playbook from controller
+        ansible_dir = get_sibling_dir('ansible')
+        if not ansible_dir.exists():
+            return ActionResult(
+                success=False,
+                message=f"Ansible directory not found: {ansible_dir}",
+                duration=time.time() - start,
+            )
+
+        with tempfile.NamedTemporaryFile(
+            mode='w', suffix='.json', delete=False, prefix='config-vars-'
+        ) as f:
+            json.dump(ansible_vars, f, indent=2)
+            vars_file = f.name
+
+        user = self.config.automation_user
+
+        # Ensure apt cache is fresh — packer cleanup removes apt lists.
+        # Retry handles brief lock contention from cloud-init's apt module.
+        logger.debug(f"[push] Refreshing apt cache on {mn.name}...")
+        rc, _, err = run_ssh(
+            ip,
+            'for i in 1 2 3; do sudo apt-get update -qq 2>/dev/null && break || sleep 5; done',
+            user=user, timeout=120,
+        )
+        if rc != 0:
+            logger.warning(f"[push] apt-get update failed on {mn.name}: {err}")
+
+        try:
+            cmd = [
+                'ansible-playbook',
+                '-i', 'inventory/remote-dev.yml',
+                'playbooks/config-apply.yml',
+                '-e', f'ansible_host={ip}',
+                '-e', f'ansible_user={user}',
+                '--become',
+                '-e', f'@{vars_file}',
+            ]
+
+            # Disable host key checking for dynamically provisioned VMs
+            import os
+            ansible_env = {**os.environ, 'ANSIBLE_HOST_KEY_CHECKING': 'False'}
+
+            logger.debug(f"[push] Running ansible-playbook for {mn.name}...")
+            rc, out, err = run_command(
+                cmd, cwd=ansible_dir, timeout=timeout, env=ansible_env
+            )
+            if rc != 0:
+                error_detail = err.strip() or out.strip() or 'unknown error'
+                if len(error_detail) > 300:
+                    error_detail = error_detail[:300] + '...'
+                return ActionResult(
+                    success=False,
+                    message=f"Config apply failed on {mn.name}: {error_detail}",
+                    duration=time.time() - start,
+                )
+        finally:
+            import os
+            os.unlink(vars_file)
+
+        logger.debug(f"[push] Ansible completed for {mn.name}")
+
+        # 4. Write config-complete marker on VM via SSH
+        marker_json = json.dumps({
+            'phase': 'config',
+            'status': 'complete',
+            'spec': mn.spec,
+            'mode': 'push',
+        })
+        marker_cmd = (
+            'sudo mkdir -p /usr/local/etc/homestak/state'
+            f" && echo '{marker_json}'"
+            ' | sudo tee /usr/local/etc/homestak/state/config-complete.json > /dev/null'
+        )
+        rc, _, err = run_ssh(ip, marker_cmd, user=user, timeout=30)
+        if rc != 0:
+            logger.warning(f"[push] Failed to write marker on {mn.name}: {err}")
+
+        # 5. Verify config-complete marker
+        context[f'{mn.name}_ip'] = ip
+        wait_config = WaitForFileAction(
+            name=f'wait-config-{mn.name}',
+            host_key=f'{mn.name}_ip',
+            file_path='/usr/local/etc/homestak/state/config-complete.json',
+            timeout=60,
+            interval=5,
+        )
+        config_result = wait_config.run(self.config, context)
+        if not config_result.success:
+            return ActionResult(
+                success=False,
+                message=f"Config marker not found on {mn.name}: {config_result.message}",
+                duration=time.time() - start,
+            )
+
+        logger.info(f"[push] Node '{mn.name}' configured successfully")
+        return ActionResult(
+            success=True,
+            message=f"Push config complete for {mn.name}",
+            duration=time.time() - start,
+        )
+
+    def _handle_subtree_delegation(
+        self, exec_node: ExecutionNode, context: dict,
+        state: ExecutionState,
+    ) -> bool:
+        """Handle subtree delegation and state updates.
+
+        Returns True on success, False on failure.
+        """
+        delegate_result = self._delegate_subtree(exec_node, context)
+        if not delegate_result.success:
+            for desc in self._get_descendants(exec_node):
+                desc_state = state.get_node(desc.name)
+                desc_state.fail(
+                    f"Delegation failed: {delegate_result.message}")
+            logger.error("Subtree delegation failed for '%s': %s",
+                         exec_node.name, delegate_result.message)
+            return False
+
+        # Update state and context from delegation result
+        context.update(delegate_result.context_updates or {})
+        for desc in self._get_descendants(exec_node):
+            desc_state = state.get_node(desc.name)
+            updates = delegate_result.context_updates or {}
+            desc_state.complete(
+                vm_id=updates.get(f'{desc.name}_vm_id'),
+                ip=updates.get(f'{desc.name}_ip'),
+            )
+        state.save()
+        return True
+
+    def _handle_subtree_destroy(
+        self, exec_node: ExecutionNode, context: dict,
+        state: ExecutionState,
+    ) -> bool:
+        """Handle subtree destroy delegation and state updates.
+
+        Returns True on success, False on failure.
+        """
+        ip = context.get(f'{exec_node.name}_ip')
+        if not ip:
+            logger.warning("No IP for PVE node '%s', skipping subtree delegation",
+                           exec_node.name)
+            return True  # Not a failure — just nothing to delegate
+
+        result = self._delegate_subtree_destroy(exec_node, context)
+        if not result.success:
+            logger.error("Subtree destroy delegation failed for '%s': %s",
+                         exec_node.name, result.message)
+            return False
+
+        for desc in self._get_descendants(exec_node):
+            ds = state.get_node(desc.name) if desc.name in state.nodes else state.add_node(desc.name)
+            ds.mark_destroyed()
+        return True
+
+    def _delegate_subtree(self, exec_node: ExecutionNode, context: dict) -> ActionResult:
+        """Delegate creation of a PVE node's children to the PVE host.
 
         Returns:
             ActionResult with context_updates containing descendant IPs and VM IDs
@@ -828,8 +785,6 @@ class NodeExecutor:
                 message=f"No IP for PVE node '{mn.name}' in context",
                 duration=0,
             )
-
-        start = time.time()
 
         # Extract subtree manifest
         subtree = self.graph.extract_subtree(mn.name)
@@ -872,15 +827,7 @@ class NodeExecutor:
         return action.run(self.config, context)
 
     def _delegate_subtree_destroy(self, exec_node: ExecutionNode, context: dict) -> ActionResult:
-        """Delegate destruction of a PVE node's children to the PVE host.
-
-        Args:
-            exec_node: The PVE ExecutionNode whose children to destroy
-            context: Shared execution context
-
-        Returns:
-            ActionResult indicating success/failure
-        """
+        """Delegate destruction of a PVE node's children to the PVE host."""
         from actions.recursive import RecursiveScenarioAction
 
         mn = exec_node.manifest_node
@@ -891,8 +838,6 @@ class NodeExecutor:
                 message=f"No IP for PVE node '{mn.name}' in context",
                 duration=0,
             )
-
-        start = time.time()
 
         # Extract subtree manifest
         subtree = self.graph.extract_subtree(mn.name)
@@ -938,8 +883,6 @@ class NodeExecutor:
         from actions.tofu import TofuDestroyAction
 
         mn = exec_node.manifest_node
-        start = time.time()
-
         logger.info(f"[destroy] Destroying node '{mn.name}'")
 
         destroy_action = TofuDestroyAction(

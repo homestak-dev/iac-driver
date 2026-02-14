@@ -23,6 +23,7 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import re
 import time
 from pathlib import Path
@@ -64,7 +65,8 @@ class ConfigResolver:
         path = self.path / relative_path
         if not path.exists():
             return {}
-        return _parse_yaml(path)
+        result: dict = _parse_yaml(path)
+        return result
 
     def _load_dir(self, relative_path: str) -> dict:
         """Load all YAML files in a directory as dict keyed by filename stem."""
@@ -93,7 +95,7 @@ class ConfigResolver:
                 "auth.signing_key not found in secrets.yaml. "
                 "Generate with: python3 -c \"import secrets; print(secrets.token_hex(32))\""
             )
-        return key
+        return str(key)
 
     def _mint_provisioning_token(self, node_name: str, spec_name: str) -> str:
         """Mint a signed provisioning token for a VM.
@@ -181,7 +183,10 @@ class ConfigResolver:
         defaults = self.site.get("defaults", {})
 
         # Spec server for Create → Config flow (#231: HOMESTAK_SERVER)
-        spec_server = defaults.get("spec_server", "")
+        # In nested deployments, the inner operator sets HOMESTAK_SOURCE to
+        # the local server URL. Use it as override so VMs reach the nearest
+        # server, not the outer host from site.yaml.
+        spec_server = os.environ.get("HOMESTAK_SOURCE") or defaults.get("spec_server", "")
 
         # Build VM instance dict for _resolve_vm
         vm_instance = {
@@ -245,7 +250,7 @@ class ConfigResolver:
 
         if direct_vm_preset_name:
             # Preset mode: vm_preset → instance (no template)
-            base = self.vm_presets.get(direct_vm_preset_name, {}).copy()
+            base: dict = self.vm_presets.get(direct_vm_preset_name, {}).copy()
             if not base:
                 raise ConfigError(f"Preset not found: presets/{direct_vm_preset_name}.yaml")
         else:

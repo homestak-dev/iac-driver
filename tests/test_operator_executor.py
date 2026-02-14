@@ -18,10 +18,11 @@ from common import ActionResult
 from manifest import Manifest
 from manifest_opr.executor import NodeExecutor
 from manifest_opr.graph import ManifestGraph
+from manifest_opr.server_mgmt import ServerManager
 
 # Save originals before any autouse fixtures patch them
-_original_ensure_server = NodeExecutor._ensure_server
-_original_stop_server = NodeExecutor._stop_server
+_original_ensure = ServerManager.ensure
+_original_stop = ServerManager.stop
 
 
 def _make_manifest(nodes_data, name='test', pattern='flat', on_error='stop'):
@@ -59,10 +60,10 @@ def _fail_result(msg='failed'):
 def _skip_server(monkeypatch):
     """Prevent real SSH calls to start/stop the spec server in unit tests."""
     monkeypatch.setattr(
-        'manifest_opr.executor.NodeExecutor._ensure_server', lambda self: None,
+        'manifest_opr.server_mgmt.ServerManager.ensure', lambda self: None,
     )
     monkeypatch.setattr(
-        'manifest_opr.executor.NodeExecutor._stop_server', lambda self: None,
+        'manifest_opr.server_mgmt.ServerManager.stop', lambda self: None,
     )
 
 
@@ -410,7 +411,7 @@ class TestNodeExecutorDelegation:
             mock_instance.run.return_value = _success_result()
             MockAction.return_value = mock_instance
 
-            executor._delegate_subtree(graph.get_node('pve'), context, state)
+            executor._delegate_subtree(graph.get_node('pve'), context)
 
             # Verify RecursiveScenarioAction was called with --self-addr in raw_command
             assert MockAction.called
@@ -485,18 +486,18 @@ class TestServerSourceEnv:
 
     @pytest.fixture(autouse=True)
     def _override_skip_server(self, monkeypatch):
-        """Re-enable real _ensure_server/_stop_server for this class.
+        """Re-enable real ensure/stop for this class.
 
         The module-level _skip_server fixture replaces them with no-ops.
         We restore from _original_* saved at import time (before patching).
         """
         monkeypatch.setattr(
-            'manifest_opr.executor.NodeExecutor._ensure_server',
-            _original_ensure_server,
+            'manifest_opr.server_mgmt.ServerManager.ensure',
+            _original_ensure,
         )
         monkeypatch.setattr(
-            'manifest_opr.executor.NodeExecutor._stop_server',
-            _original_stop_server,
+            'manifest_opr.server_mgmt.ServerManager.stop',
+            _original_stop,
         )
 
     def _make_executor(self):
@@ -507,7 +508,7 @@ class TestServerSourceEnv:
         config = _make_config()
         return NodeExecutor(manifest=manifest, graph=graph, config=config)
 
-    @patch('manifest_opr.executor.run_ssh')
+    @patch('manifest_opr.server_mgmt.run_ssh')
     def test_ensure_server_sets_env_on_fresh_start(self, mock_ssh):
         """When server is not running, start it and set HOMESTAK_SOURCE."""
         # First call: status check → not running
@@ -518,23 +519,23 @@ class TestServerSourceEnv:
         ]
 
         executor = self._make_executor()
-        executor._ensure_server()
+        executor._server.ensure()
 
         assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.61:44443'
         assert os.environ.get('HOMESTAK_REF') == '_working'
 
-    @patch('manifest_opr.executor.run_ssh')
+    @patch('manifest_opr.server_mgmt.run_ssh')
     def test_ensure_server_sets_env_on_reuse(self, mock_ssh):
         """When server is already running, reuse it and still set HOMESTAK_SOURCE."""
         mock_ssh.return_value = (0, '{"running": true, "healthy": true}', '')
 
         executor = self._make_executor()
-        executor._ensure_server()
+        executor._server.ensure()
 
         assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.61:44443'
-        assert executor._started_server is False  # Didn't start it ourselves
+        assert executor._server._started is False  # Didn't start it ourselves
 
-    @patch('manifest_opr.executor.run_ssh')
+    @patch('manifest_opr.server_mgmt.run_ssh')
     def test_stop_server_clears_env(self, mock_ssh):
         """_stop_server clears HOMESTAK_SOURCE when ref count drops to zero."""
         # Start: not running → start
@@ -545,14 +546,14 @@ class TestServerSourceEnv:
         ]
 
         executor = self._make_executor()
-        executor._ensure_server()
+        executor._server.ensure()
         assert 'HOMESTAK_SOURCE' in os.environ
 
-        executor._stop_server()
+        executor._server.stop()
         assert 'HOMESTAK_SOURCE' not in os.environ
         assert 'HOMESTAK_REF' not in os.environ
 
-    @patch('manifest_opr.executor.run_ssh')
+    @patch('manifest_opr.server_mgmt.run_ssh')
     def test_ref_counting_preserves_env(self, mock_ssh):
         """Nested _ensure_server calls preserve env until outermost _stop_server."""
         mock_ssh.side_effect = [
@@ -561,33 +562,33 @@ class TestServerSourceEnv:
         ]
 
         executor = self._make_executor()
-        executor._ensure_server()  # refs=1, starts server
-        executor._ensure_server()  # refs=2, no-op
+        executor._server.ensure()  # refs=1, starts server
+        executor._server.ensure()  # refs=2, no-op
 
         assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.61:44443'
 
         # Inner stop: decrements but doesn't clear
-        executor._stop_server()  # refs=1
+        executor._server.stop()  # refs=1
         assert 'HOMESTAK_SOURCE' in os.environ
 
         # Outer stop: clears env and stops server
         mock_ssh.side_effect = [(0, '', '')]  # stop call
-        executor._stop_server()  # refs=0
+        executor._server.stop()  # refs=0
         assert 'HOMESTAK_SOURCE' not in os.environ
 
-    @patch('manifest_opr.executor.run_ssh')
+    @patch('manifest_opr.server_mgmt.run_ssh')
     def test_stop_clears_env_even_for_reused_server(self, mock_ssh):
         """Env vars are cleared on stop even when we didn't start the server."""
         mock_ssh.return_value = (0, '{"running": true, "healthy": true}', '')
 
         executor = self._make_executor()
-        executor._ensure_server()
-        assert executor._started_server is False  # Reused
+        executor._server.ensure()
+        assert executor._server._started is False  # Reused
 
-        executor._stop_server()
+        executor._server.stop()
         assert 'HOMESTAK_SOURCE' not in os.environ
 
-    @patch('manifest_opr.executor.run_ssh')
+    @patch('manifest_opr.server_mgmt.run_ssh')
     def test_existing_homestak_ref_preserved(self, mock_ssh):
         """If HOMESTAK_REF is already set, _set_source_env doesn't overwrite it."""
         os.environ['HOMESTAK_REF'] = 'custom-branch'
@@ -598,7 +599,7 @@ class TestServerSourceEnv:
         ]
 
         executor = self._make_executor()
-        executor._ensure_server()
+        executor._server.ensure()
 
         assert os.environ.get('HOMESTAK_REF') == 'custom-branch'  # Preserved
         assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.61:44443'
@@ -616,7 +617,7 @@ class TestServerSourceEnv:
             manifest=manifest, graph=graph, config=config,
             self_addr='198.51.100.153',
         )
-        executor._set_source_env('localhost')
+        executor._server._set_source_env('localhost')
 
         assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.153:44443'
 
@@ -632,7 +633,7 @@ class TestServerSourceEnv:
             manifest=manifest, graph=graph, config=config,
             self_addr='198.51.100.153',
         )
-        executor._set_source_env('127.0.0.1')
+        executor._server._set_source_env('127.0.0.1')
 
         assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.153:44443'
 
@@ -648,7 +649,7 @@ class TestServerSourceEnv:
             manifest=manifest, graph=graph, config=config,
             self_addr='198.51.100.153',
         )
-        executor._set_source_env('198.51.100.61')
+        executor._server._set_source_env('198.51.100.61')
 
         assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.61:44443'
 
@@ -661,8 +662,8 @@ class TestServerSourceEnv:
         config = _make_config()
 
         executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
-        with patch.object(NodeExecutor, '_detect_external_ip', return_value='198.51.100.61'):
-            executor._set_source_env('localhost')
+        with patch.object(ServerManager, 'detect_external_ip', return_value='198.51.100.61'):
+            executor._server._set_source_env('localhost')
 
         assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.61:44443'
 
@@ -675,8 +676,8 @@ class TestServerSourceEnv:
         config = _make_config()
 
         executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
-        with patch.object(NodeExecutor, '_detect_external_ip', return_value=None):
-            executor._set_source_env('localhost')
+        with patch.object(ServerManager, 'detect_external_ip', return_value=None):
+            executor._server._set_source_env('localhost')
 
         assert os.environ.get('HOMESTAK_SOURCE') == 'https://localhost:44443'
 
@@ -689,7 +690,7 @@ class TestServerSourceEnv:
         config = _make_config()
         executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
 
-        result = executor._detect_external_ip()
+        result = executor._server.detect_external_ip()
         # On a machine with network, this should return a real IP
         # On CI without network, it may return None
         if result is not None:
@@ -706,7 +707,7 @@ class TestServerSourceEnv:
 
         os.environ['HOMESTAK_SELF_ADDR'] = '198.51.100.99'
         executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
-        executor._set_source_env('localhost')
+        executor._server._set_source_env('localhost')
 
         assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.99:44443'
 
@@ -723,28 +724,28 @@ class TestServerSourceEnv:
             manifest=manifest, graph=graph, config=config,
             self_addr='198.51.100.153',
         )
-        executor._set_source_env('localhost')
+        executor._server._set_source_env('localhost')
 
         assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.153:44443'
 
     def test_validate_addr_rejects_loopback(self):
         """_validate_addr raises ValueError for loopback addresses."""
         with pytest.raises(ValueError, match='loopback'):
-            NodeExecutor._validate_addr('localhost', '--self-addr')
+            ServerManager.validate_addr('localhost', '--self-addr')
         with pytest.raises(ValueError, match='loopback'):
-            NodeExecutor._validate_addr('127.0.0.1', 'HOMESTAK_SELF_ADDR')
+            ServerManager.validate_addr('127.0.0.1', 'HOMESTAK_SELF_ADDR')
 
     def test_validate_addr_rejects_empty(self):
         """_validate_addr raises ValueError for empty addresses."""
         with pytest.raises(ValueError, match='empty'):
-            NodeExecutor._validate_addr('', '--self-addr')
+            ServerManager.validate_addr('', '--self-addr')
         with pytest.raises(ValueError, match='empty'):
-            NodeExecutor._validate_addr('   ', '--self-addr')
+            ServerManager.validate_addr('   ', '--self-addr')
 
     def test_validate_addr_accepts_routable(self):
         """_validate_addr returns stripped address for valid inputs."""
-        assert NodeExecutor._validate_addr('198.51.100.61', 'test') == '198.51.100.61'
-        assert NodeExecutor._validate_addr('  198.51.100.61  ', 'test') == '198.51.100.61'
+        assert ServerManager.validate_addr('198.51.100.61', 'test') == '198.51.100.61'
+        assert ServerManager.validate_addr('  198.51.100.61  ', 'test') == '198.51.100.61'
 
     def test_set_source_env_rejects_loopback_self_addr(self):
         """Passing localhost as --self-addr raises ValueError, not silent fallback."""
@@ -759,4 +760,114 @@ class TestServerSourceEnv:
             self_addr='localhost',
         )
         with pytest.raises(ValueError, match='loopback'):
-            executor._set_source_env('127.0.0.1')
+            executor._server._set_source_env('127.0.0.1')
+
+
+class TestPushConfig:
+    """Tests for push-mode config phase (_push_config)."""
+
+    @patch('manifest_opr.executor.run_ssh')
+    @patch('manifest_opr.executor.run_command')
+    def test_push_config_success(self, mock_run_command, mock_ssh):
+        """Push config resolves spec, runs ansible from controller, writes marker."""
+        manifest = _make_manifest([
+            {'name': 'edge', 'type': 'vm', 'spec': 'base', 'preset': 'vm-small'},
+        ])
+        graph = ManifestGraph(manifest)
+        config = _make_config()
+
+        executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
+        exec_node = graph.get_node('edge')
+
+        # Mock ansible-playbook success
+        mock_run_command.return_value = (0, 'ok', '')
+
+        # Mock SSH marker write success
+        mock_ssh.return_value = (0, '', '')
+
+        with patch('resolver.spec_resolver.SpecResolver') as MockResolver, \
+             patch('config_apply.spec_to_ansible_vars') as mock_s2a, \
+             patch('manifest_opr.executor.get_sibling_dir') as mock_dir, \
+             patch('actions.ssh.WaitForFileAction') as MockWait:
+            mock_resolver = MagicMock()
+            mock_resolver.resolve.return_value = {
+                'schema_version': 1,
+                'identity': {'hostname': 'edge'},
+                'access': {'posture': 'dev'},
+            }
+            MockResolver.return_value = mock_resolver
+            mock_s2a.return_value = {'packages': ['htop'], 'timezone': 'UTC'}
+            mock_ansible_dir = MagicMock()
+            mock_ansible_dir.exists.return_value = True
+            mock_dir.return_value = mock_ansible_dir
+
+            mock_wait_instance = MagicMock()
+            mock_wait_instance.run.return_value = ActionResult(
+                success=True, message='found', duration=0.1
+            )
+            MockWait.return_value = mock_wait_instance
+
+            result = executor._push_config(exec_node, '198.51.100.10', {})
+
+        assert result.success is True
+        assert 'Push config complete' in result.message
+        mock_resolver.resolve.assert_called_once_with('base')
+        mock_run_command.assert_called_once()
+
+    @patch('manifest_opr.executor.run_ssh')
+    @patch('manifest_opr.executor.run_command')
+    def test_push_config_spec_resolve_failure(self, mock_run_command, mock_ssh):
+        """Push config fails gracefully when spec resolution fails."""
+        manifest = _make_manifest([
+            {'name': 'edge', 'type': 'vm', 'spec': 'nonexistent', 'preset': 'vm-small'},
+        ])
+        graph = ManifestGraph(manifest)
+        config = _make_config()
+
+        executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
+        exec_node = graph.get_node('edge')
+
+        with patch('resolver.spec_resolver.SpecResolver') as MockResolver:
+            mock_resolver = MagicMock()
+            mock_resolver.resolve.side_effect = Exception("Spec not found")
+            MockResolver.return_value = mock_resolver
+
+            result = executor._push_config(exec_node, '198.51.100.10', {})
+
+        assert result.success is False
+        assert "resolve spec" in result.message.lower()
+
+    @patch('manifest_opr.executor.run_ssh')
+    @patch('manifest_opr.executor.run_command')
+    def test_push_config_apply_failure(self, mock_run_command, mock_ssh):
+        """Push config reports failure when ansible-playbook fails."""
+        manifest = _make_manifest([
+            {'name': 'edge', 'type': 'vm', 'spec': 'base', 'preset': 'vm-small'},
+        ])
+        graph = ManifestGraph(manifest)
+        config = _make_config()
+
+        executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
+        exec_node = graph.get_node('edge')
+
+        # Mock SSH (apt-get update before ansible)
+        mock_ssh.return_value = (0, '', '')
+
+        # Mock ansible-playbook failure
+        mock_run_command.return_value = (1, '', 'ansible playbook failed')
+
+        with patch('resolver.spec_resolver.SpecResolver') as MockResolver, \
+             patch('config_apply.spec_to_ansible_vars') as mock_s2a, \
+             patch('manifest_opr.executor.get_sibling_dir') as mock_dir:
+            mock_resolver = MagicMock()
+            mock_resolver.resolve.return_value = {'schema_version': 1}
+            MockResolver.return_value = mock_resolver
+            mock_s2a.return_value = {}
+            mock_ansible_dir = MagicMock()
+            mock_ansible_dir.exists.return_value = True
+            mock_dir.return_value = mock_ansible_dir
+
+            result = executor._push_config(exec_node, '198.51.100.10', {})
+
+        assert result.success is False
+        assert "Config apply failed" in result.message
