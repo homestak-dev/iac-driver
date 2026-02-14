@@ -760,3 +760,100 @@ class TestServerSourceEnv:
         )
         with pytest.raises(ValueError, match='loopback'):
             executor._set_source_env('127.0.0.1')
+
+
+class TestPushConfig:
+    """Tests for push-mode config phase (_push_config)."""
+
+    @patch('manifest_opr.executor.run_ssh')
+    @patch('subprocess.run')
+    def test_push_config_success(self, mock_subprocess, mock_ssh):
+        """Push config resolves spec, SCPs, runs config apply, verifies marker."""
+        manifest = _make_manifest([
+            {'name': 'edge', 'type': 'vm', 'spec': 'base', 'preset': 'vm-small'},
+        ])
+        graph = ManifestGraph(manifest)
+        config = _make_config()
+
+        executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
+        exec_node = graph.get_node('edge')
+
+        # Mock SCP success
+        mock_subprocess.return_value = MagicMock(returncode=0, stderr='')
+
+        # Mock SSH config apply success
+        mock_ssh.return_value = (0, 'config applied', '')
+
+        with patch('resolver.spec_resolver.SpecResolver') as MockResolver, \
+             patch('actions.ssh.WaitForFileAction') as MockWait:
+            mock_resolver = MagicMock()
+            mock_resolver.resolve.return_value = {
+                'schema_version': 1,
+                'identity': {'hostname': 'edge'},
+                'access': {'posture': 'dev'},
+            }
+            MockResolver.return_value = mock_resolver
+
+            mock_wait_instance = MagicMock()
+            mock_wait_instance.run.return_value = ActionResult(
+                success=True, message='found', duration=0.1
+            )
+            MockWait.return_value = mock_wait_instance
+
+            result = executor._push_config(exec_node, '198.51.100.10', {})
+
+        assert result.success is True
+        assert 'Push config complete' in result.message
+        mock_resolver.resolve.assert_called_once_with('base')
+
+    @patch('manifest_opr.executor.run_ssh')
+    @patch('subprocess.run')
+    def test_push_config_spec_resolve_failure(self, mock_subprocess, mock_ssh):
+        """Push config fails gracefully when spec resolution fails."""
+        manifest = _make_manifest([
+            {'name': 'edge', 'type': 'vm', 'spec': 'nonexistent', 'preset': 'vm-small'},
+        ])
+        graph = ManifestGraph(manifest)
+        config = _make_config()
+
+        executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
+        exec_node = graph.get_node('edge')
+
+        with patch('resolver.spec_resolver.SpecResolver') as MockResolver:
+            mock_resolver = MagicMock()
+            mock_resolver.resolve.side_effect = Exception("Spec not found")
+            MockResolver.return_value = mock_resolver
+
+            result = executor._push_config(exec_node, '198.51.100.10', {})
+
+        assert result.success is False
+        assert "resolve spec" in result.message.lower()
+
+    @patch('manifest_opr.executor.run_ssh')
+    @patch('subprocess.run')
+    def test_push_config_apply_failure(self, mock_subprocess, mock_ssh):
+        """Push config reports failure when config apply fails on VM."""
+        manifest = _make_manifest([
+            {'name': 'edge', 'type': 'vm', 'spec': 'base', 'preset': 'vm-small'},
+        ])
+        graph = ManifestGraph(manifest)
+        config = _make_config()
+
+        executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
+        exec_node = graph.get_node('edge')
+
+        # Mock SCP success
+        mock_subprocess.return_value = MagicMock(returncode=0, stderr='')
+
+        # Mock SSH config apply failure
+        mock_ssh.return_value = (1, '', 'ansible playbook failed')
+
+        with patch('resolver.spec_resolver.SpecResolver') as MockResolver:
+            mock_resolver = MagicMock()
+            mock_resolver.resolve.return_value = {'schema_version': 1}
+            MockResolver.return_value = mock_resolver
+
+            result = executor._push_config(exec_node, '198.51.100.10', {})
+
+        assert result.success is False
+        assert "Config apply failed" in result.message

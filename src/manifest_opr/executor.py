@@ -583,6 +583,16 @@ class NodeExecutor:
                     duration=time.time() - start,
                     context_updates=context_updates,
                 )
+        elif exec_mode == 'push' and ip and mn.type != 'pve' and mn.spec:
+            # Push mode: driver pushes resolved spec, triggers config apply
+            push_result = self._push_config(exec_node, ip, context)
+            if not push_result.success:
+                return ActionResult(
+                    success=False,
+                    message=f"Push config failed for {mn.name}: {push_result.message}",
+                    duration=time.time() - start,
+                    context_updates=context_updates,
+                )
 
         logger.info(f"[create] Node '{mn.name}' created successfully (ip={ip})")
 
@@ -799,6 +809,143 @@ class NodeExecutor:
         return ActionResult(
             success=True,
             message=f"Pull mode config complete for {mn.name}",
+            duration=time.time() - start,
+        )
+
+    def _push_config(
+        self, exec_node: ExecutionNode, ip: str, context: dict, timeout: int = 300
+    ) -> ActionResult:
+        """Push resolved spec to a VM and trigger config apply.
+
+        True push semantics: the operator resolves the spec locally, pushes it
+        via SCP, then triggers ./run.sh config apply over SSH. No server
+        dependency — the operator has direct access to site-config.
+
+        Steps:
+        1. Resolve spec via SpecResolver
+        2. SCP resolved spec to VM:/tmp/spec.yaml
+        3. SSH: move spec to state dir, run config apply
+        4. Wait for config-complete marker
+
+        Args:
+            exec_node: The ExecutionNode being configured
+            ip: IP address of the VM
+            context: Shared execution context
+            timeout: Max seconds to wait for config completion
+
+        Returns:
+            ActionResult indicating success/failure
+        """
+        import subprocess
+        import tempfile
+        from actions.ssh import WaitForFileAction
+
+        mn = exec_node.manifest_node
+        start = time.time()
+
+        logger.info(f"[push] Pushing config to {mn.name} ({ip})...")
+
+        # 1. Resolve spec locally
+        try:
+            from resolver.spec_resolver import SpecResolver
+            resolver = SpecResolver()
+            resolved_spec = resolver.resolve(mn.spec)
+        except Exception as e:
+            return ActionResult(
+                success=False,
+                message=f"Failed to resolve spec '{mn.spec}': {e}",
+                duration=time.time() - start,
+            )
+
+        # Set identity.hostname to match the node name
+        if 'identity' not in resolved_spec:
+            resolved_spec['identity'] = {}
+        resolved_spec['identity']['hostname'] = mn.name
+
+        # 2. Write resolved spec to temp file and SCP to VM
+        try:
+            import yaml
+        except ImportError:
+            return ActionResult(
+                success=False,
+                message="PyYAML not installed (needed for spec serialization)",
+                duration=time.time() - start,
+            )
+
+        user = self.config.automation_user
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=True) as f:
+            yaml.dump(resolved_spec, f, default_flow_style=False)
+            f.flush()
+
+            scp_cmd = [
+                'scp',
+                '-o', 'StrictHostKeyChecking=no',
+                '-o', 'UserKnownHostsFile=/dev/null',
+                '-o', 'LogLevel=ERROR',
+                f.name,
+                f'{user}@{ip}:/tmp/spec.yaml',
+            ]
+
+            try:
+                result = subprocess.run(
+                    scp_cmd, capture_output=True, text=True, timeout=60,
+                    check=False,
+                )
+                if result.returncode != 0:
+                    return ActionResult(
+                        success=False,
+                        message=f"SCP spec failed: {result.stderr}",
+                        duration=time.time() - start,
+                    )
+            except subprocess.TimeoutExpired:
+                return ActionResult(
+                    success=False,
+                    message="SCP spec timed out",
+                    duration=time.time() - start,
+                )
+
+        logger.debug(f"[push] Spec '{mn.spec}' pushed to {mn.name}")
+
+        # 3. Move spec to state dir and trigger config apply
+        install_and_apply = (
+            'sudo mkdir -p /usr/local/etc/homestak/state'
+            ' && sudo mv /tmp/spec.yaml /usr/local/etc/homestak/state/spec.yaml'
+            ' && sudo /usr/local/lib/homestak/iac-driver/run.sh config apply'
+        )
+
+        rc, out, err = run_ssh(ip, install_and_apply, user=user, timeout=timeout)
+        if rc != 0:
+            error_detail = err.strip() or out.strip() or 'unknown error'
+            # Truncate long output
+            if len(error_detail) > 300:
+                error_detail = error_detail[:300] + '...'
+            return ActionResult(
+                success=False,
+                message=f"Config apply failed on {mn.name}: {error_detail}",
+                duration=time.time() - start,
+            )
+
+        # 4. Verify config-complete marker
+        context[f'{mn.name}_ip'] = ip
+        wait_config = WaitForFileAction(
+            name=f'wait-config-{mn.name}',
+            host_key=f'{mn.name}_ip',
+            file_path='/usr/local/etc/homestak/state/config-complete.json',
+            timeout=60,
+            interval=5,
+        )
+        config_result = wait_config.run(self.config, context)
+        if not config_result.success:
+            return ActionResult(
+                success=False,
+                message=f"Config marker not found on {mn.name}: {config_result.message}",
+                duration=time.time() - start,
+            )
+
+        logger.info(f"[push] Node '{mn.name}' configured successfully")
+        return ActionResult(
+            success=True,
+            message=f"Push config complete for {mn.name}",
             duration=time.time() - start,
         )
 
