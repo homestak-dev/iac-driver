@@ -403,7 +403,7 @@ class TestNodeExecutorDelegation:
         state.add_node('pve')
         state.add_node('test')
 
-        context = {'pve_ip': '10.0.12.153'}
+        context = {'pve_ip': '198.51.100.153'}
 
         with patch('actions.recursive.RecursiveScenarioAction') as MockAction:
             mock_instance = MagicMock()
@@ -415,7 +415,7 @@ class TestNodeExecutorDelegation:
             # Verify RecursiveScenarioAction was called with --self-addr in raw_command
             assert MockAction.called
             raw_cmd = MockAction.call_args.kwargs['raw_command']
-            assert '--self-addr 10.0.12.153' in raw_cmd
+            assert '--self-addr 198.51.100.153' in raw_cmd
 
 
 class TestNodeExecutorTest:
@@ -614,11 +614,11 @@ class TestServerSourceEnv:
 
         executor = NodeExecutor(
             manifest=manifest, graph=graph, config=config,
-            self_addr='10.0.12.153',
+            self_addr='198.51.100.153',
         )
         executor._set_source_env('localhost')
 
-        assert os.environ.get('HOMESTAK_SOURCE') == 'https://10.0.12.153:44443'
+        assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.153:44443'
 
     def test_set_source_env_uses_self_addr_for_127(self):
         """When host is 127.0.0.1 and self_addr is set, use self_addr (#200)."""
@@ -630,11 +630,11 @@ class TestServerSourceEnv:
 
         executor = NodeExecutor(
             manifest=manifest, graph=graph, config=config,
-            self_addr='10.0.12.153',
+            self_addr='198.51.100.153',
         )
         executor._set_source_env('127.0.0.1')
 
-        assert os.environ.get('HOMESTAK_SOURCE') == 'https://10.0.12.153:44443'
+        assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.153:44443'
 
     def test_set_source_env_ignores_self_addr_for_routable_host(self):
         """When host is already routable, self_addr is not used."""
@@ -646,7 +646,7 @@ class TestServerSourceEnv:
 
         executor = NodeExecutor(
             manifest=manifest, graph=graph, config=config,
-            self_addr='10.0.12.153',
+            self_addr='198.51.100.153',
         )
         executor._set_source_env('198.51.100.61')
 
@@ -661,10 +661,10 @@ class TestServerSourceEnv:
         config = _make_config()
 
         executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
-        with patch.object(NodeExecutor, '_detect_external_ip', return_value='10.0.12.61'):
+        with patch.object(NodeExecutor, '_detect_external_ip', return_value='198.51.100.61'):
             executor._set_source_env('localhost')
 
-        assert os.environ.get('HOMESTAK_SOURCE') == 'https://10.0.12.61:44443'
+        assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.61:44443'
 
     def test_set_source_env_localhost_detect_fails_uses_localhost(self):
         """When detection fails and no self_addr, fall back to localhost."""
@@ -704,11 +704,11 @@ class TestServerSourceEnv:
         graph = ManifestGraph(manifest)
         config = _make_config()
 
-        os.environ['HOMESTAK_SELF_ADDR'] = '10.0.12.99'
+        os.environ['HOMESTAK_SELF_ADDR'] = '198.51.100.99'
         executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
         executor._set_source_env('localhost')
 
-        assert os.environ.get('HOMESTAK_SOURCE') == 'https://10.0.12.99:44443'
+        assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.99:44443'
 
     def test_self_addr_takes_precedence_over_env_var(self):
         """--self-addr CLI arg takes priority over HOMESTAK_SELF_ADDR env var."""
@@ -718,14 +718,14 @@ class TestServerSourceEnv:
         graph = ManifestGraph(manifest)
         config = _make_config()
 
-        os.environ['HOMESTAK_SELF_ADDR'] = '10.0.12.99'
+        os.environ['HOMESTAK_SELF_ADDR'] = '198.51.100.99'
         executor = NodeExecutor(
             manifest=manifest, graph=graph, config=config,
-            self_addr='10.0.12.153',
+            self_addr='198.51.100.153',
         )
         executor._set_source_env('localhost')
 
-        assert os.environ.get('HOMESTAK_SOURCE') == 'https://10.0.12.153:44443'
+        assert os.environ.get('HOMESTAK_SOURCE') == 'https://198.51.100.153:44443'
 
     def test_validate_addr_rejects_loopback(self):
         """_validate_addr raises ValueError for loopback addresses."""
@@ -743,8 +743,8 @@ class TestServerSourceEnv:
 
     def test_validate_addr_accepts_routable(self):
         """_validate_addr returns stripped address for valid inputs."""
-        assert NodeExecutor._validate_addr('10.0.12.61', 'test') == '10.0.12.61'
-        assert NodeExecutor._validate_addr('  10.0.12.61  ', 'test') == '10.0.12.61'
+        assert NodeExecutor._validate_addr('198.51.100.61', 'test') == '198.51.100.61'
+        assert NodeExecutor._validate_addr('  198.51.100.61  ', 'test') == '198.51.100.61'
 
     def test_set_source_env_rejects_loopback_self_addr(self):
         """Passing localhost as --self-addr raises ValueError, not silent fallback."""
