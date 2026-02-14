@@ -199,12 +199,22 @@ class RepoManager:
                 check=True,
             ).stdout.strip()
 
+            # Set author/committer identity for commit-tree — freshly bootstrapped
+            # VMs may not have git user.name/user.email configured
+            commit_env = {
+                **os.environ,
+                "GIT_AUTHOR_NAME": "homestak-server",
+                "GIT_AUTHOR_EMAIL": "server@localhost",
+                "GIT_COMMITTER_NAME": "homestak-server",
+                "GIT_COMMITTER_EMAIL": "server@localhost",
+            }
             commit = subprocess.run(
                 ["git", "-C", str(repo_path), "commit-tree", tree, "-p", head, "-m",
                  "Working tree snapshot for server"],
                 capture_output=True,
                 text=True,
                 check=True,
+                env=commit_env,
             ).stdout.strip()
 
             # Restore index

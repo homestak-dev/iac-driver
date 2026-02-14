@@ -142,7 +142,12 @@ def _create_server(args) -> Server:
             fhs_etc = Path('/usr/local/etc/homestak')
             if (fhs_etc / '.git').is_dir():
                 extra_paths['site-config'] = fhs_etc
-                logger.debug("Using FHS site-config at %s", fhs_etc)
+                logger.info("Using FHS site-config at %s", fhs_etc)
+            else:
+                logger.warning(
+                    "site-config not found: checked %s/.git (no) and %s/.git (no)",
+                    repos_dir / 'site-config', fhs_etc,
+                )
         repo_manager = RepoManager(
             repos_dir=repos_dir,
             exclude_repos=args.exclude,
