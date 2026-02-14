@@ -53,8 +53,7 @@ class TestCreateLocalConfig:
         mock_hostname.return_value = 'father'
 
         mock_resolver = MagicMock()
-        mock_resolver.site_config_dir = Path('/tmp')
-        mock_resolver._load_yaml.return_value = {
+        mock_resolver.secrets = {
             'api_tokens': {'father': 'root@pam!homestak=secret123'}
         }
         mock_resolver_class.return_value = mock_resolver
@@ -62,7 +61,7 @@ class TestCreateLocalConfig:
         from src.cli import create_local_config
         config = create_local_config()
 
-        assert config._api_token == 'root@pam!homestak=secret123'
+        assert config.get_api_token() == 'root@pam!homestak=secret123'
 
     @patch('config_resolver.ConfigResolver')
     @patch('socket.gethostname')
@@ -71,8 +70,7 @@ class TestCreateLocalConfig:
         mock_hostname.return_value = 'unknown-host'
 
         mock_resolver = MagicMock()
-        mock_resolver.site_config_dir = Path('/tmp')
-        mock_resolver._load_yaml.return_value = {
+        mock_resolver.secrets = {
             'api_tokens': {'father': 'token1', 'mother': 'token2'}
         }
         mock_resolver_class.return_value = mock_resolver
@@ -80,7 +78,7 @@ class TestCreateLocalConfig:
         from src.cli import create_local_config
         config = create_local_config()
 
-        assert not hasattr(config, '_api_token') or config._api_token is None
+        assert config.get_api_token() == ''
 
     @patch('config_resolver.ConfigResolver')
     @patch('socket.gethostname')
@@ -88,10 +86,7 @@ class TestCreateLocalConfig:
         """Should handle missing secrets.yaml gracefully."""
         mock_hostname.return_value = 'testhost'
 
-        mock_resolver = MagicMock()
-        mock_resolver.site_config_dir = Path('/tmp')
-        mock_resolver._load_yaml.side_effect = FileNotFoundError("secrets.yaml not found")
-        mock_resolver_class.return_value = mock_resolver
+        mock_resolver_class.side_effect = FileNotFoundError("secrets.yaml not found")
 
         from src.cli import create_local_config
         config = create_local_config()

@@ -108,20 +108,24 @@ def dispatch_manifest(argv: list) -> int:
 
     if action == "apply":
         from manifest_opr.cli import apply_main
-        return apply_main(rest)
-    elif action == "destroy":
+        rc: int = apply_main(rest)
+        return rc
+    if action == "destroy":
         from manifest_opr.cli import destroy_main
-        return destroy_main(rest)
-    elif action == "test":
+        rc = destroy_main(rest)
+        return rc
+    if action == "test":
         from manifest_opr.cli import test_main
-        return test_main(rest)
-    elif action == "validate":
+        rc = test_main(rest)
+        return rc
+    if action == "validate":
         from manifest_opr.cli import validate_main
-        return validate_main(rest)
-    else:
-        print(f"Error: Unknown manifest action '{action}'")
-        print("Available actions: apply, destroy, test, validate")
-        return 1
+        rc = validate_main(rest)
+        return rc
+
+    print(f"Error: Unknown manifest action '{action}'")
+    print("Available actions: apply, destroy, test, validate")
+    return 1
 
 
 def dispatch_noun(noun: str, argv: list) -> int:
@@ -139,15 +143,18 @@ def dispatch_noun(noun: str, argv: list) -> int:
 
     if noun == "server":
         from server.cli import main as server_main
-        return server_main(argv)
+        rc: int = server_main(argv)
+        return rc
 
     if noun == "config":
         from config_apply import config_main
-        return config_main(argv)
+        rc = config_main(argv)
+        return rc
 
     if noun == "token":
         from token_cli import main as token_main
-        return token_main(argv)
+        rc = token_main(argv)
+        return rc
 
     # 'scenario' noun is handled in main() before reaching here
     print(f"Error: Noun '{noun}' not yet implemented")
@@ -160,7 +167,8 @@ def get_version():
         result = subprocess.run(
             ['git', 'describe', '--tags', '--abbrev=0'],
             capture_output=True, text=True,
-            cwd=Path(__file__).parent
+            cwd=Path(__file__).parent,
+            check=False,
         )
         return result.stdout.strip() if result.returncode == 0 else 'dev'
     except Exception:
@@ -197,10 +205,9 @@ def create_local_config():
     # Try to load API token for current host
     try:
         resolver = ConfigResolver()
-        secrets = resolver._load_yaml(resolver.site_config_dir / 'secrets.yaml')
-        token = secrets.get('api_tokens', {}).get(hostname)
+        token = resolver.secrets.get('api_tokens', {}).get(hostname)
         if token:
-            config._api_token = token
+            config.set_api_token(token)
             logger.info(f"Loaded API token for {hostname}")
         else:
             logger.debug(f"No API token found for hostname '{hostname}'")
@@ -234,6 +241,7 @@ def print_usage():
 
 
 def main():
+    """CLI entry point — dispatch to noun-action handlers or legacy scenario runner."""
     from_verb = False
 
     if len(sys.argv) > 1:
@@ -287,7 +295,7 @@ def main():
                 hint = RETIRED_SCENARIOS[scenario_name]
                 print(f"Error: Scenario '{scenario_name}' was retired in v0.47.")
                 print(f"  {hint}")
-                print(f"\nSee: ./run.sh manifest apply --help")
+                print("\nSee: ./run.sh manifest apply --help")
                 return 1
 
     # Deprecation notice for legacy --scenario flag (skip if invoked via verb)
@@ -522,9 +530,9 @@ def main():
         else:
             print(f"Error: Could not auto-detect host. Hostname '{hostname}' not in available hosts.")
             print(f"Available hosts: {', '.join(available_hosts) if available_hosts else 'none configured'}")
-            print(f"\nEither:")
+            print("\nEither:")
             print(f"  1. Create nodes/{hostname}.yaml in site-config")
-            print(f"  2. Specify --host explicitly")
+            print("  2. Specify --host explicitly")
             return 1
 
     # Validate --host is provided for scenarios that need it (when not in --local mode)
@@ -549,6 +557,7 @@ def main():
 
     # Load config (use local config with auto-derived values for --local)
     if is_raw_ip:
+        assert host is not None  # guaranteed by _is_ip_address check
         config = _create_ip_config(host, ssh_user=ssh_user_override)
         logger.info(f"Using raw IP: {host} (no site-config lookup)")
     elif host:
@@ -608,7 +617,7 @@ def main():
 
     if args.list_phases:
         print(f"Phases for scenario '{args.scenario}':")
-        for name, action, desc in scenario.get_phases(config):
+        for name, _action, desc in scenario.get_phases(config):
             print(f"  {name}: {desc}")
         return 0
 

@@ -18,7 +18,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 from urllib.parse import urlparse
 
 try:
@@ -62,9 +62,13 @@ class HostConfig:
     # Track config source type
     is_host_only: bool = False  # True when loaded from hosts/*.yaml (no PVE)
 
+    # API token (resolved from secrets.yaml at load time)
+    _api_token: str = field(default='', init=False, repr=False)
+
     # Keep tfvars_file as alias for backward compatibility
     @property
     def tfvars_file(self) -> Path:
+        """Legacy alias for config_file."""
         return self.config_file
 
     def __post_init__(self):
@@ -121,8 +125,8 @@ class HostConfig:
             self._api_token = secrets['api_tokens'].get(api_token_key, '')
 
         # Datastore: node > site > default
-        self.datastore = node_config.get('datastore',
-                                         site_defaults.get('datastore', 'local-zfs'))
+        self.datastore = str(node_config.get('datastore',
+                                             site_defaults.get('datastore', 'local-zfs')))
 
         # SSH user: node > site > default (for PVE host connections)
         if ssh_user := node_config.get('ssh_user', site_defaults.get('ssh_user')):
@@ -199,6 +203,10 @@ class HostConfig:
     def get_api_token(self) -> str:
         """Get resolved API token (from secrets.yaml)."""
         return getattr(self, '_api_token', '')
+
+    def set_api_token(self, token: str) -> None:
+        """Set API token (for local config auto-discovery)."""
+        self._api_token = token
 
 
 def _parse_yaml(path: Path) -> dict:
@@ -290,7 +298,7 @@ def list_hosts() -> list[str]:
     except ConfigError:
         return []
 
-    hosts = set()
+    hosts: set[str] = set()
 
     # nodes/*.yaml - PVE nodes
     nodes_dir = site_config / 'nodes'

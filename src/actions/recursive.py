@@ -6,14 +6,11 @@ Enables running scenarios on remote bootstrapped hosts via SSH with real-time st
 import json
 import logging
 import os
-import re
 import select
 import shlex
 import subprocess
 import time
 from dataclasses import dataclass, field
-from typing import Optional
-
 from common import ActionResult
 from config import HostConfig
 
@@ -53,7 +50,7 @@ class RecursiveScenarioAction:
     ssh_user: str = 'root'
     raw_command: str = ''  # When set, replaces the default homestak scenario command
 
-    def run(self, config: HostConfig, context: dict) -> ActionResult:
+    def run(self, _config: HostConfig, context: dict) -> ActionResult:
         """Execute scenario via SSH with streaming output.
 
         1. SSH to target host with optional PTY allocation
@@ -194,7 +191,7 @@ class RecursiveScenarioAction:
             '-o', 'StrictHostKeyChecking=no',
             '-o', 'UserKnownHostsFile=/dev/null',
             '-o', 'LogLevel=ERROR',
-            '-o', f'ConnectTimeout=30',
+            '-o', 'ConnectTimeout=30',
         ]
 
         if self.use_pty:
@@ -216,60 +213,53 @@ class RecursiveScenarioAction:
         cmd = self._build_ssh_command(host, remote_cmd)
 
         # Use unbuffered output for real-time streaming
-        process = subprocess.Popen(
+        with subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,  # Line buffered
-        )
+        ) as process:
+            output_lines: list[str] = []
+            stderr_lines: list[str] = []
+            deadline = time.time() + self.timeout
 
-        output_lines = []
-        stderr_lines = []
-        deadline = time.time() + self.timeout
+            try:
+                # Read output line by line with timeout checking
+                while True:
+                    # Check timeout
+                    if time.time() > deadline:
+                        process.kill()
+                        raise subprocess.TimeoutExpired(cmd, self.timeout)
 
-        try:
-            # Read output line by line with timeout checking
-            while True:
-                # Check timeout
-                if time.time() > deadline:
-                    process.kill()
-                    raise subprocess.TimeoutExpired(cmd, self.timeout)
+                    # Check if process finished
+                    if process.poll() is not None:
+                        # Read any remaining output
+                        remaining_out, remaining_err = process.communicate(timeout=5)
+                        if remaining_out:
+                            for line in remaining_out.splitlines():
+                                self._log_inner_line(line)
+                                output_lines.append(line)
+                        if remaining_err:
+                            stderr_lines.extend(remaining_err.splitlines())
+                        break
 
-                # Check if process finished
-                if process.poll() is not None:
-                    # Read any remaining output
-                    remaining_out, remaining_err = process.communicate(timeout=5)
-                    if remaining_out:
-                        for line in remaining_out.splitlines():
-                            self._log_inner_line(line)
-                            output_lines.append(line)
-                    if remaining_err:
-                        stderr_lines.extend(remaining_err.splitlines())
-                    break
+                    # Use select for non-blocking read with timeout
+                    readable, _, _ = select.select(
+                        [process.stdout, process.stderr],
+                        [], [],
+                        1.0  # 1 second timeout for select
+                    )
 
-                # Use select for non-blocking read with timeout
-                readable, _, _ = select.select(
-                    [process.stdout, process.stderr],
-                    [], [],
-                    1.0  # 1 second timeout for select
-                )
+                    self._read_streams(
+                        readable, process.stdout, output_lines, stderr_lines
+                    )
 
-                for stream in readable:
-                    line = stream.readline()
-                    if line:
-                        line = line.rstrip('\n')
-                        if stream == process.stdout:
-                            self._log_inner_line(line)
-                            output_lines.append(line)
-                        else:
-                            stderr_lines.append(line)
+                rc = process.returncode
 
-            rc = process.returncode
-
-        except Exception:
-            process.kill()
-            raise
+            except Exception:
+                process.kill()
+                raise
 
         return rc, '\n'.join(output_lines), '\n'.join(stderr_lines)
 
@@ -284,7 +274,8 @@ class RecursiveScenarioAction:
             cmd,
             capture_output=True,
             text=True,
-            timeout=self.timeout
+            timeout=self.timeout,
+            check=False,
         )
 
         # Log output after completion (no streaming)
@@ -292,6 +283,21 @@ class RecursiveScenarioAction:
             self._log_inner_line(line)
 
         return result.returncode, result.stdout, result.stderr
+
+    def _read_streams(self, readable, stdout, output_lines, stderr_lines):
+        """Read available data from streams and route to appropriate buffers."""
+        for stream in readable:
+            if stream is None:
+                continue
+            line = stream.readline()
+            if not line:
+                continue
+            line = line.rstrip('\n')
+            if stream == stdout:
+                self._log_inner_line(line)
+                output_lines.append(line)
+            else:
+                stderr_lines.append(line)
 
     def _log_inner_line(self, line: str):
         """Log a line from the inner scenario with [inner] prefix.
@@ -310,7 +316,7 @@ class RecursiveScenarioAction:
         # Log phase progress and other output at info level
         logger.info(f"[inner] {line}")
 
-    def _parse_json_result(self, output: str) -> Optional[dict]:
+    def _parse_json_result(self, output: str) -> dict | None:
         """Parse JSON result from scenario output.
 
         The JSON is expected to be at the end of the output, possibly after
@@ -321,7 +327,8 @@ class RecursiveScenarioAction:
 
         # First, try the entire output as JSON (if it's just JSON)
         try:
-            return json.loads(output.strip())
+            parsed: dict = json.loads(output.strip())
+            return parsed
         except json.JSONDecodeError:
             pass
 
@@ -334,12 +341,13 @@ class RecursiveScenarioAction:
             stripped = line.strip()
             if stripped.startswith('{') and stripped.endswith('}'):
                 try:
-                    return json.loads(stripped)
+                    parsed = json.loads(stripped)
+                    return parsed
                 except json.JSONDecodeError:
                     continue
 
         # Strategy 2: Look for multi-line JSON block
-        json_lines = []
+        json_lines: list[str] = []
         brace_count = 0
         in_json = False
 
@@ -354,7 +362,8 @@ class RecursiveScenarioAction:
                     # Check if this single line is complete JSON
                     if brace_count == 0 and stripped.startswith('{'):
                         try:
-                            return json.loads(stripped)
+                            parsed = json.loads(stripped)
+                            return parsed
                         except json.JSONDecodeError:
                             pass
             else:
@@ -367,7 +376,8 @@ class RecursiveScenarioAction:
         if json_lines:
             json_str = '\n'.join(json_lines)
             try:
-                return json.loads(json_str)
+                parsed = json.loads(json_str)
+                return parsed
             except json.JSONDecodeError:
                 logger.debug(f"Failed to parse JSON: {json_str[:200]}")
 
@@ -375,14 +385,14 @@ class RecursiveScenarioAction:
 
     def _extract_error_message(
         self,
-        json_result: Optional[dict],
+        json_result: dict | None,
         stderr: str,
         stdout: str
     ) -> str:
         """Extract a meaningful error message from available output."""
         # First priority: error from JSON result
         if json_result and 'error' in json_result:
-            return json_result['error']
+            return str(json_result['error'])
 
         # Second: look for failed phase in JSON
         if json_result and 'phases' in json_result:
@@ -404,7 +414,7 @@ class RecursiveScenarioAction:
 
         return "Unknown error (no details available)"
 
-    def _extract_context(self, json_result: Optional[dict]) -> dict:
+    def _extract_context(self, json_result: dict | None) -> dict:
         """Extract specified context keys from JSON result.
 
         Supports two JSON output formats:
@@ -413,7 +423,7 @@ class RecursiveScenarioAction:
 
         For verb format, builds context keys as {name}_ip and {name}_vm_id.
         """
-        context_updates = {}
+        context_updates: dict[str, object] = {}
 
         if not json_result:
             return context_updates

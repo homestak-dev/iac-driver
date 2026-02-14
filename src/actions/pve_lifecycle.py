@@ -50,7 +50,7 @@ class EnsureImageAction:
     """Ensure packer image exists on PVE host, download if missing."""
     name: str
 
-    def run(self, config: HostConfig, context: dict) -> ActionResult:
+    def run(self, config: HostConfig, _context: dict) -> ActionResult:
         """Check for image, download from release if missing."""
         start = time.time()
 
@@ -319,7 +319,7 @@ class SyncDriverCodeAction:
     host_attr: str = 'vm_ip'
     timeout: int = 120
 
-    def run(self, config: HostConfig, context: dict) -> ActionResult:
+    def run(self, _config: HostConfig, context: dict) -> ActionResult:
         """Rsync iac-driver source to target host."""
         start = time.time()
 
@@ -361,6 +361,7 @@ class SyncDriverCodeAction:
                 capture_output=True,
                 text=True,
                 timeout=self.timeout,
+                check=False,
             )
             if result.returncode != 0:
                 return ActionResult(
@@ -389,6 +390,7 @@ class SyncDriverCodeAction:
                 capture_output=True,
                 text=True,
                 timeout=30,
+                check=False,
             )
             if result.returncode != 0:
                 return ActionResult(
@@ -399,7 +401,7 @@ class SyncDriverCodeAction:
         except subprocess.TimeoutExpired:
             return ActionResult(
                 success=False,
-                message=f"rsync run.sh timed out",
+                message="rsync run.sh timed out",
                 duration=time.time() - start
             )
 
@@ -467,7 +469,8 @@ class CopySecretsAction:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=self.timeout
+                timeout=self.timeout,
+                check=False,
             )
 
             if result.returncode != 0:
@@ -704,7 +707,7 @@ class InjectSelfSSHKeyAction:
         logger.info(f"[{self.name}] Injecting {host}'s own SSH key as {self.key_name}...")
 
         # Inject via Python script encoded in base64 to avoid shell quoting issues
-        python_script = f'''
+        python_script = '''
 import sys
 key_name = sys.argv[1]
 secrets_file = "/usr/local/etc/homestak/secrets.yaml"
@@ -744,7 +747,7 @@ with open(secrets_file, "r") as f:
     if key_name + ":" not in f.read():
         print("Verification failed")
         sys.exit(1)
-print(f"Injected {{key_name}}")
+print(f"Injected {key_name}")
 '''
         encoded = base64.b64encode(python_script.encode()).decode()
         inject_script = f"echo '{encoded}' | base64 -d | sudo python3 - {self.key_name}"
