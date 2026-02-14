@@ -438,9 +438,15 @@ class CopySecretsAction:
         secrets_path = get_site_config_dir() / 'secrets.yaml'
 
         if not secrets_path.exists():
+            enc_path = secrets_path.with_suffix('.yaml.enc')
+            if enc_path.exists():
+                msg = (f"secrets.yaml not decrypted at {secrets_path}\n"
+                       f"  Run: cd {secrets_path.parent} && make decrypt")
+            else:
+                msg = f"secrets.yaml not found at {secrets_path}"
             return ActionResult(
                 success=False,
-                message=f"secrets.yaml not found at {secrets_path}",
+                message=msg,
                 duration=time.time() - start
             )
 
@@ -471,9 +477,14 @@ class CopySecretsAction:
                     duration=time.time() - start
                 )
 
-            # Move from temp location to final location with sudo
-            move_cmd = 'sudo mv /tmp/secrets.yaml /usr/local/etc/homestak/secrets.yaml'
-            rc, out, err = run_ssh(host, move_cmd, user=config.automation_user, timeout=30)
+            # Move from temp location to final location with sudo,
+            # then restrict permissions (secrets contain API tokens, SSH keys, signing key)
+            install_cmd = (
+                'sudo mv /tmp/secrets.yaml /usr/local/etc/homestak/secrets.yaml'
+                ' && sudo chmod 600 /usr/local/etc/homestak/secrets.yaml'
+                ' && sudo chown root:root /usr/local/etc/homestak/secrets.yaml'
+            )
+            rc, out, err = run_ssh(host, install_cmd, user=config.automation_user, timeout=30)
             if rc != 0:
                 return ActionResult(
                     success=False,

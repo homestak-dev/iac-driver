@@ -132,6 +132,77 @@ class TestCopySecretsAction:
         assert result.success is False
         assert 'pve_ip' in result.message
 
+    @patch('actions.pve_lifecycle.subprocess')
+    @patch('actions.pve_lifecycle.run_ssh')
+    @patch('config.get_site_config_dir')
+    def test_sets_restrictive_permissions(self, mock_dir, mock_ssh, mock_sub):
+        """Secrets must be chmod 600 and chown root:root after copy."""
+        from actions.pve_lifecycle import CopySecretsAction
+
+        # Setup: secrets.yaml exists at mocked path, scp succeeds, ssh succeeds
+        mock_dir.return_value = Path('/tmp/test-site-config')
+        mock_sub.run.return_value = MagicMock(returncode=0)
+        mock_ssh.return_value = (0, '', '')
+
+        action = CopySecretsAction(name='test-secrets')
+        config = MagicMock()
+        config.automation_user = 'homestak'
+
+        # Create a temporary secrets.yaml so exists() returns True
+        secrets = Path('/tmp/test-site-config/secrets.yaml')
+        secrets.parent.mkdir(parents=True, exist_ok=True)
+        secrets.write_text('test: true')
+        try:
+            result = action.run(config, {'vm_ip': '198.51.100.10'})
+            assert result.success is True
+
+            # Verify the install command includes chmod and chown
+            install_cmd = mock_ssh.call_args[0][1]
+            assert 'chmod 600' in install_cmd, f"Expected chmod 600 in: {install_cmd}"
+            assert 'chown root:root' in install_cmd, f"Expected chown root:root in: {install_cmd}"
+        finally:
+            secrets.unlink(missing_ok=True)
+            secrets.parent.rmdir()
+
+
+    @patch('actions.pve_lifecycle.run_ssh')
+    @patch('config.get_site_config_dir')
+    def test_not_decrypted_suggests_make_decrypt(self, mock_dir, mock_ssh):
+        """When secrets.yaml.enc exists but secrets.yaml doesn't, suggest decrypt."""
+        from actions.pve_lifecycle import CopySecretsAction
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mock_dir.return_value = Path(tmpdir)
+            # Create .enc but not plaintext
+            (Path(tmpdir) / 'secrets.yaml.enc').write_text('encrypted')
+
+            action = CopySecretsAction(name='test-secrets')
+            config = MagicMock()
+
+            result = action.run(config, {'vm_ip': '198.51.100.10'})
+            assert result.success is False
+            assert 'not decrypted' in result.message
+            assert 'make decrypt' in result.message
+
+    @patch('actions.pve_lifecycle.run_ssh')
+    @patch('config.get_site_config_dir')
+    def test_missing_secrets_no_enc(self, mock_dir, mock_ssh):
+        """When neither secrets.yaml nor .enc exists, use 'not found' message."""
+        from actions.pve_lifecycle import CopySecretsAction
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mock_dir.return_value = Path(tmpdir)
+
+            action = CopySecretsAction(name='test-secrets')
+            config = MagicMock()
+
+            result = action.run(config, {'vm_ip': '198.51.100.10'})
+            assert result.success is False
+            assert 'not found' in result.message
+            assert 'make decrypt' not in result.message
+
 
 class TestCreateApiTokenAction:
     """Tests for CreateApiTokenAction."""

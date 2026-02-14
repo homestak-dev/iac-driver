@@ -1,5 +1,8 @@
 # iac-driver Makefile
 
+VENV := .venv
+VENV_BIN := $(VENV)/bin
+
 .PHONY: help install-deps install-dev test lint
 
 help:
@@ -22,16 +25,21 @@ install-deps:
 	@apt-get install -y -qq python3 python3-yaml > /dev/null
 	@echo "Done."
 
-install-dev:
+install-dev: $(VENV_BIN)/activate
 	@echo "Installing development dependencies..."
-	pip install pre-commit pylint mypy types-PyYAML types-requests pytest
-	pre-commit install
+	$(VENV_BIN)/pip install PyYAML requests pre-commit pylint mypy types-PyYAML types-requests pytest pytest-mock
+	$(VENV_BIN)/pre-commit install
+	@echo ""
 	@echo "Done. Pre-commit hooks installed."
+	@echo "Run 'make test' or 'make lint' — no activation needed."
+
+$(VENV_BIN)/activate:
+	python3 -m venv $(VENV)
 
 test:
 	@echo "Running unit tests..."
-	python3 -m pytest tests/ -v
+	$(VENV_BIN)/python -m pytest tests/ -v
 
 lint:
 	@echo "Running pre-commit hooks..."
-	pre-commit run --all-files
+	$(VENV_BIN)/pre-commit run --all-files

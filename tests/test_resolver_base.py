@@ -156,6 +156,16 @@ class TestResolverBase:
         with pytest.raises(SecretsNotFoundError) as exc_info:
             resolver._load_secrets()
         assert exc_info.value.code == "E500"
+        assert "not found" in str(exc_info.value)
+
+    def test_load_secrets_not_decrypted_message(self, tmp_path):
+        """SecretsNotFoundError suggests decrypt when .enc exists."""
+        (tmp_path / "secrets.yaml.enc").write_text("encrypted")
+        resolver = ResolverBase(etc_path=tmp_path)
+        with pytest.raises(SecretsNotFoundError) as exc_info:
+            resolver._load_secrets()
+        assert "not decrypted" in str(exc_info.value)
+        assert "make decrypt" in str(exc_info.value)
 
     def test_load_site(self, site_config):
         """_load_site loads and caches site.yaml."""

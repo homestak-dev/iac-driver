@@ -9,6 +9,17 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 ### Added
 - Auto-set `HOMESTAK_SOURCE` env var after server start so BootstrapAction and RecursiveScenarioAction use serve-repos instead of GitHub master (#189)
 
+### Fixed
+- Restrict secrets.yaml to 600 permissions after SCP copy to bootstrapped hosts (#199)
+  - CopySecretsAction now runs `chmod 600` + `chown root:root` after `sudo mv`
+- Improve "secrets.yaml not found" error to suggest `make decrypt` when `.enc` exists (#202)
+
+### Changed
+- Rewrite Makefile for venv-based dev tooling (PEP 668 compatibility) (#197)
+  - `make install-dev` creates `.venv/`, installs linters + runtime deps
+  - `make test` and `make lint` run via venv binaries
+  - Pre-commit hooks (pylint, mypy) trigger on git commit
+
 ### Removed
 - Remove fuser apt wait block from BootstrapAction — now handled by install.sh system-wide apt config (bootstrap#52, #198)
 

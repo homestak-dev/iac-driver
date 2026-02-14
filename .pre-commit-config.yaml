@@ -1,13 +1,13 @@
 # Pre-commit hooks for code quality
-# Install: make install-dev && pre-commit install
-# Run manually: pre-commit run --all-files
+# Install: make install-dev
+# Run manually: make lint
 
 repos:
   - repo: local
     hooks:
       - id: pylint
         name: pylint
-        entry: pylint
+        entry: .venv/bin/pylint
         language: system
         types: [python]
         args: ['--rcfile=.pylintrc']
@@ -15,7 +15,7 @@ repos:
 
       - id: mypy
         name: mypy
-        entry: mypy
+        entry: .venv/bin/mypy
         language: system
         types: [python]
         args: ['--config-file=mypy.ini']

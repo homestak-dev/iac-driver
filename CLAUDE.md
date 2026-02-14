@@ -451,6 +451,16 @@ Bash(ansible-playbook:*), Bash(ansible:*), Bash(rsync:*)
 - age key at `~/.config/sops/age/keys.txt`
 - Nested virtualization enabled (`cat /sys/module/kvm_intel/parameters/nested` = Y)
 
+## Development Setup
+
+```bash
+make install-dev   # Creates .venv/, installs linters + runtime deps, hooks
+make test          # Run unit tests (558 tests)
+make lint          # Run pre-commit hooks (pylint, mypy)
+```
+
+Uses a `.venv/` virtual environment for PEP 668 compatibility (Debian 12+). Pre-commit hooks run pylint and mypy on staged Python files automatically on `git commit`.
+
 ## Design Documents
 
 Detailed architecture and design rationale:
