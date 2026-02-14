@@ -850,6 +850,9 @@ class TestPushConfig:
         executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
         exec_node = graph.get_node('edge')
 
+        # Mock SSH (apt-get update before ansible)
+        mock_ssh.return_value = (0, '', '')
+
         # Mock ansible-playbook failure
         mock_run_command.return_value = (1, '', 'ansible playbook failed')
 

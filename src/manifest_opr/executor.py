@@ -241,13 +241,18 @@ class NodeExecutor:
         logger.info(f"[create] Provisioning node '{mn.name}' on {pve_host}")
 
         # 1. Tofu apply
+        # Only pass spec for pull-mode nodes — spec triggers cloud-init
+        # bootstrap (HOMESTAK_SERVER/HOMESTAK_TOKEN injection). Push-mode
+        # nodes get config from the operator, not from cloud-init.
+        exec_mode = mn.execution_mode or self.manifest.execution_mode
+        tofu_spec = mn.spec if exec_mode == 'pull' else None
         apply_action = TofuApplyAction(
             name=f'provision-{mn.name}',
             vm_name=mn.name,
             vmid=mn.vmid,
             vm_preset=mn.preset,
             image=mn.image,
-            spec=mn.spec,
+            spec=tofu_spec,
         )
         result = apply_action.run(self.config, context)
         if not result.success:
@@ -364,28 +369,8 @@ class NodeExecutor:
         )
 
     def _run_pve_lifecycle(self, exec_node: ExecutionNode, ip: str, context: dict) -> ActionResult:
-        """Run PVE lifecycle phases on a freshly provisioned PVE node.
-
-        Phase sequence:
-        1. Bootstrap (curl|bash installer)
-        2. Copy secrets
-        3. Inject outer host SSH key
-        4. Copy SSH private key
-        5. Run pve-setup post-scenario
-        6. Configure vmbr0 bridge
-        7. Generate node config
-        8. Create API token
-        9. Inject self SSH key
-        10. Download packer images for children
-
-        Args:
-            exec_node: The PVE ExecutionNode
-            ip: IP address of the PVE node
-            context: Shared execution context
-
-        Returns:
-            ActionResult indicating overall success/failure
-        """
+        """Run PVE lifecycle phases: bootstrap, secrets, SSH keys, pve-setup,
+        bridge, node config, API token, self SSH key, image download."""
         from actions.pve_lifecycle import (
             BootstrapAction,
             SyncDriverCodeAction,
@@ -643,6 +628,18 @@ class NodeExecutor:
             vars_file = f.name
 
         user = self.config.automation_user
+
+        # Ensure apt cache is fresh — packer cleanup removes apt lists.
+        # Retry handles brief lock contention from cloud-init's apt module.
+        logger.debug(f"[push] Refreshing apt cache on {mn.name}...")
+        rc, _, err = run_ssh(
+            ip,
+            'for i in 1 2 3; do sudo apt-get update -qq 2>/dev/null && break || sleep 5; done',
+            user=user, timeout=120,
+        )
+        if rc != 0:
+            logger.warning(f"[push] apt-get update failed on {mn.name}: {err}")
+
         try:
             cmd = [
                 'ansible-playbook',
