@@ -116,6 +116,12 @@ def _load_manifest_and_config(args):
     Raises:
         SystemExit: On validation errors
     """
+    # Require explicit manifest source
+    if not args.manifest and not args.manifest_file and not args.manifest_json:
+        print("Error: specify a manifest with -M, --manifest-file, or --manifest-json",
+              file=sys.stderr)
+        sys.exit(1)
+
     # Load manifest
     try:
         manifest = load_manifest(

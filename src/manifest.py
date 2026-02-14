@@ -21,9 +21,6 @@ from config import ConfigError, get_site_config_dir
 
 logger = logging.getLogger(__name__)
 
-# Default manifest name when none specified
-DEFAULT_MANIFEST = 'n2-tiered'
-
 # Supported schema versions
 SUPPORTED_SCHEMA_VERSIONS = {2}
 
@@ -381,27 +378,6 @@ class ManifestLoader:
 
         return Manifest.from_dict(data, source_path=path)
 
-    def get_default(self) -> Manifest:
-        """Get the default manifest.
-
-        Checks for site-config/manifests/default.yaml first,
-        then falls back to DEFAULT_MANIFEST.
-
-        Returns:
-            Default Manifest instance
-
-        Raises:
-            ConfigError: If no default manifest available
-        """
-        # Check for explicit default.yaml
-        default_path = self.manifests_dir / 'default.yaml'
-        if default_path.exists():
-            return self.load_file(default_path)
-
-        # Fall back to built-in default
-        return self.load(DEFAULT_MANIFEST)
-
-
 def load_manifest(
     name: Optional[str] = None,
     file_path: Optional[str] = None,
@@ -414,7 +390,6 @@ def load_manifest(
     1. json_str - Inline JSON (for recursion)
     2. file_path - Specific file path
     3. name - Named manifest from site-config/manifests/
-    4. Default manifest
 
     Args:
         name: Manifest name (without .yaml extension)
@@ -427,6 +402,7 @@ def load_manifest(
 
     Raises:
         ConfigError: If manifest not found or invalid
+        ValueError: If no manifest source specified
     """
     if json_str:
         manifest = Manifest.from_json(json_str)
@@ -437,8 +413,7 @@ def load_manifest(
         loader = ManifestLoader()
         manifest = loader.load(name)
     else:
-        loader = ManifestLoader()
-        manifest = loader.get_default()
+        raise ValueError("No manifest specified — use -M, --manifest-file, or --manifest-json")
 
     # Apply depth limit if specified
     if depth is not None and depth > 0:
