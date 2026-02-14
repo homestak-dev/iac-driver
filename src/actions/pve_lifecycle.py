@@ -471,9 +471,14 @@ class CopySecretsAction:
                     duration=time.time() - start
                 )
 
-            # Move from temp location to final location with sudo
-            move_cmd = 'sudo mv /tmp/secrets.yaml /usr/local/etc/homestak/secrets.yaml'
-            rc, out, err = run_ssh(host, move_cmd, user=config.automation_user, timeout=30)
+            # Move from temp location to final location with sudo,
+            # then restrict permissions (secrets contain API tokens, SSH keys, signing key)
+            install_cmd = (
+                'sudo mv /tmp/secrets.yaml /usr/local/etc/homestak/secrets.yaml'
+                ' && sudo chmod 600 /usr/local/etc/homestak/secrets.yaml'
+                ' && sudo chown root:root /usr/local/etc/homestak/secrets.yaml'
+            )
+            rc, out, err = run_ssh(host, install_cmd, user=config.automation_user, timeout=30)
             if rc != 0:
                 return ActionResult(
                     success=False,
