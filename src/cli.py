@@ -98,6 +98,7 @@ def dispatch_manifest(argv: list) -> int:
         print("  apply     Create infrastructure from manifest")
         print("  destroy   Destroy infrastructure from manifest")
         print("  test      Create, verify, and destroy infrastructure")
+        print("  validate  Validate manifest structure and FK references")
         print()
         print("Run './run.sh manifest <action> --help' for action-specific options.")
         return 1 if not argv else 0
@@ -114,9 +115,12 @@ def dispatch_manifest(argv: list) -> int:
     elif action == "test":
         from manifest_opr.cli import test_main
         return test_main(rest)
+    elif action == "validate":
+        from manifest_opr.cli import validate_main
+        return validate_main(rest)
     else:
         print(f"Error: Unknown manifest action '{action}'")
-        print("Available actions: apply, destroy, test")
+        print("Available actions: apply, destroy, test, validate")
         return 1
 
 

@@ -7,6 +7,7 @@
 HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 
 ### Added
+- Add `./run.sh manifest validate` verb for FK validation against site-config (#207)
 - Auto-set `HOMESTAK_SOURCE` env var after server start so BootstrapAction and RecursiveScenarioAction use serve-repos instead of GitHub master (#189)
 
 ### Fixed
