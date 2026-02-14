@@ -12,6 +12,9 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 - Auto-set `HOMESTAK_SOURCE` env var after server start so BootstrapAction and RecursiveScenarioAction use serve-repos instead of GitHub master (#189)
 
 ### Fixed
+- Fix pre-existing pylint/mypy warnings across cli.py, actions, config.py, executor.py (#209)
+- Extract ServerManager from executor to bring module under 1000-line limit (#209)
+- Remove implicit `DEFAULT_MANIFEST` fallback — all verbs now require explicit `-M` flag
 - Restrict secrets.yaml to 600 permissions after SCP copy to bootstrapped hosts (#199)
   - CopySecretsAction now runs `chmod 600` + `chown root:root` after `sudo mv`
 - Improve "secrets.yaml not found" error to suggest `make decrypt` when `.enc` exists (#202)
