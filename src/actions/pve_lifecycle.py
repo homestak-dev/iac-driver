@@ -438,9 +438,15 @@ class CopySecretsAction:
         secrets_path = get_site_config_dir() / 'secrets.yaml'
 
         if not secrets_path.exists():
+            enc_path = secrets_path.with_suffix('.yaml.enc')
+            if enc_path.exists():
+                msg = (f"secrets.yaml not decrypted at {secrets_path}\n"
+                       f"  Run: cd {secrets_path.parent} && make decrypt")
+            else:
+                msg = f"secrets.yaml not found at {secrets_path}"
             return ActionResult(
                 success=False,
-                message=f"secrets.yaml not found at {secrets_path}",
+                message=msg,
                 duration=time.time() - start
             )
 

@@ -12,6 +12,7 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 ### Fixed
 - Restrict secrets.yaml to 600 permissions after SCP copy to bootstrapped hosts (#199)
   - CopySecretsAction now runs `chmod 600` + `chown root:root` after `sudo mv`
+- Improve "secrets.yaml not found" error to suggest `make decrypt` when `.enc` exists (#202)
 
 ### Changed
 - Rewrite Makefile for venv-based dev tooling (PEP 668 compatibility) (#197)

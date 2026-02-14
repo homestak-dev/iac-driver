@@ -165,6 +165,45 @@ class TestCopySecretsAction:
             secrets.parent.rmdir()
 
 
+    @patch('actions.pve_lifecycle.run_ssh')
+    @patch('config.get_site_config_dir')
+    def test_not_decrypted_suggests_make_decrypt(self, mock_dir, mock_ssh):
+        """When secrets.yaml.enc exists but secrets.yaml doesn't, suggest decrypt."""
+        from actions.pve_lifecycle import CopySecretsAction
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mock_dir.return_value = Path(tmpdir)
+            # Create .enc but not plaintext
+            (Path(tmpdir) / 'secrets.yaml.enc').write_text('encrypted')
+
+            action = CopySecretsAction(name='test-secrets')
+            config = MagicMock()
+
+            result = action.run(config, {'vm_ip': '198.51.100.10'})
+            assert result.success is False
+            assert 'not decrypted' in result.message
+            assert 'make decrypt' in result.message
+
+    @patch('actions.pve_lifecycle.run_ssh')
+    @patch('config.get_site_config_dir')
+    def test_missing_secrets_no_enc(self, mock_dir, mock_ssh):
+        """When neither secrets.yaml nor .enc exists, use 'not found' message."""
+        from actions.pve_lifecycle import CopySecretsAction
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mock_dir.return_value = Path(tmpdir)
+
+            action = CopySecretsAction(name='test-secrets')
+            config = MagicMock()
+
+            result = action.run(config, {'vm_ip': '198.51.100.10'})
+            assert result.success is False
+            assert 'not found' in result.message
+            assert 'make decrypt' not in result.message
+
+
 class TestCreateApiTokenAction:
     """Tests for CreateApiTokenAction."""
 

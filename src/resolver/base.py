@@ -49,7 +49,13 @@ class SecretsNotFoundError(ResolverError):
     """Secrets file not found or not decrypted."""
 
     def __init__(self, path: Path):
-        super().__init__("E500", f"Secrets file not found: {path}")
+        enc_path = path.with_suffix('.yaml.enc')
+        if enc_path.exists():
+            msg = (f"Secrets file not decrypted: {path}\n"
+                   f"  Run: cd {path.parent} && make decrypt")
+        else:
+            msg = f"Secrets file not found: {path}"
+        super().__init__("E500", msg)
 
 
 def discover_etc_path() -> Path:
