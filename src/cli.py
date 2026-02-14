@@ -340,7 +340,7 @@ def main():
     )
     parser.add_argument(
         '--inner-ip',
-        help='Inner PVE VM IP (auto-detected if not provided, required when skipping provision phases)'
+        help='PVE node VM IP (auto-detected if not provided, required when skipping provision phases)'
     )
     parser.add_argument(
         '--local',

@@ -1,6 +1,6 @@
 """PVE lifecycle actions for nested/recursive deployments.
 
-These actions handle the bootstrapping and configuration of inner PVE hosts:
+These actions handle the bootstrapping and configuration of PVE nodes:
 - Bootstrap (curl|bash installer)
 - Secrets management (copy, inject SSH keys, API tokens)
 - Network configuration (vmbr0 bridge)
@@ -109,7 +109,7 @@ class EnsureImageAction:
 
 @dataclass
 class CreateApiTokenAction:
-    """Create API token on inner PVE and inject into secrets.yaml.
+    """Create API token on PVE node and inject into secrets.yaml.
 
     This action:
     1. Gets the target hostname (used as token key in secrets.yaml)
@@ -188,7 +188,7 @@ sudo pveum user token add root@pam tofu --privsep 0 --output-format json
                 duration=time.time() - start
             )
 
-        # Step 4: Inject token into secrets.yaml on the inner host
+        # Step 4: Inject token into secrets.yaml on the target host
         # First try to update existing line, if not found add a new one
         # Use the token_name we retrieved from hostname
         secrets_file = '/usr/local/etc/homestak/secrets.yaml'
@@ -307,7 +307,7 @@ class BootstrapAction:
 
 @dataclass
 class SyncDriverCodeAction:
-    """Sync iac-driver code from outer host to inner PVE.
+    """Sync iac-driver code from driver host to PVE node.
 
     After bootstrap clones from GitHub (master), this action overwrites
     the installed iac-driver with the outer host's working copy. This
@@ -320,7 +320,7 @@ class SyncDriverCodeAction:
     timeout: int = 120
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
-        """Rsync iac-driver source to inner host."""
+        """Rsync iac-driver source to target host."""
         start = time.time()
 
         host = context.get(self.host_attr)
@@ -413,9 +413,9 @@ class SyncDriverCodeAction:
 
 @dataclass
 class CopySecretsAction:
-    """Copy secrets.yaml from outer host to inner host.
+    """Copy secrets.yaml from driver host to target PVE node.
 
-    Required for inner hosts to have valid API tokens and SSH keys.
+    Required for child PVE hosts to have valid API tokens and SSH keys.
     """
     name: str
     host_attr: str = 'vm_ip'
@@ -508,7 +508,7 @@ class CopySecretsAction:
 
 @dataclass
 class InjectSSHKeyAction:
-    """Inject outer host's SSH public key into inner host's secrets.yaml.
+    """Inject driver host's SSH public key into target PVE node's secrets.yaml.
 
     This is critical for SSH access to leaf VMs - the outer host's key must
     be in secrets.yaml so ConfigResolver includes it in cloud-init.
@@ -588,9 +588,9 @@ class InjectSSHKeyAction:
 
 @dataclass
 class CopySSHPrivateKeyAction:
-    """Copy outer host's SSH private key to inner host.
+    """Copy driver host's SSH private key to target PVE node.
 
-    This enables inner-pve to SSH to its nested VMs. The private key is
+    This enables the PVE node to SSH to its child VMs. The private key is
     copied to both root and homestak users so that:
     - root: ansible connections work
     - homestak: iac-driver automation_user connections work
@@ -767,7 +767,7 @@ print(f"Injected {{key_name}}")
 
 @dataclass
 class ConfigureNetworkBridgeAction:
-    """Configure vmbr0 network bridge on inner PVE.
+    """Configure vmbr0 network bridge on PVE node.
 
     Creates vmbr0 bridge from eth0 (required for nested VMs to get network).
     Uses a simple shell script rather than ansible for speed.
@@ -864,9 +864,9 @@ exit 0
 
 @dataclass
 class GenerateNodeConfigAction:
-    """Generate node config on inner host.
+    """Generate node config on target PVE node.
 
-    Runs 'make node-config' on the inner host to generate the
+    Runs 'make node-config' on the target PVE node to generate the
     nodes/{hostname}.yaml file needed for tofu operations.
     """
     name: str

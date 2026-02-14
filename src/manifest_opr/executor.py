@@ -4,7 +4,7 @@ Walks the execution graph and executes per-node lifecycle operations
 using existing tofu and proxmox actions.
 
 Root nodes (depth 0) are executed locally. Children of PVE nodes are
-delegated to the inner PVE via SSH, where a new operator instance
+delegated to the PVE node via SSH, where a new operator instance
 handles them as its own root nodes.
 """
 
@@ -35,7 +35,7 @@ class NodeExecutor:
     operations for each node using existing action classes.
 
     Only root nodes (depth 0) are handled locally. Children of PVE nodes
-    are delegated via SSH to the inner PVE host using RecursiveScenarioAction.
+    are delegated via SSH to the PVE host using RecursiveScenarioAction.
 
     Attributes:
         manifest: The v2 manifest defining the deployment
@@ -199,7 +199,7 @@ class NodeExecutor:
 
         Called after the server is confirmed running (started or reused).
         BootstrapAction and RecursiveScenarioAction read these env vars
-        to propagate serve-repos to inner hosts instead of falling back
+        to propagate serve-repos to child hosts instead of falling back
         to GitHub master.
 
         When host is loopback (localhost/127.0.0.1), resolves to a routable
@@ -803,11 +803,11 @@ class NodeExecutor:
         )
 
     def _delegate_subtree(self, exec_node: ExecutionNode, context: dict, state: ExecutionState) -> ActionResult:
-        """Delegate creation of a PVE node's children to the inner PVE host.
+        """Delegate creation of a PVE node's children to the PVE host.
 
         Extracts the subtree as a new manifest, SSHs to the PVE node, and
         runs './run.sh manifest apply --manifest-json <json> -H <hostname> --json-output'
-        on the inner host. Uses RecursiveScenarioAction for PTY streaming
+        on the target host. Uses RecursiveScenarioAction for PTY streaming
         and JSON result parsing.
 
         Args:
@@ -842,8 +842,8 @@ class NodeExecutor:
             context_keys.append(f'{desc.name}_ip')
             context_keys.append(f'{desc.name}_vm_id')
 
-        # Get the hostname of the inner PVE (used as -H argument)
-        # The inner host's node config is named after its hostname
+        # Get the hostname of the PVE node (used as -H argument)
+        # The host's node config is named after its hostname
         inner_hostname = mn.name
 
         # Build raw command for delegation
@@ -872,7 +872,7 @@ class NodeExecutor:
         return action.run(self.config, context)
 
     def _delegate_subtree_destroy(self, exec_node: ExecutionNode, context: dict) -> ActionResult:
-        """Delegate destruction of a PVE node's children to the inner PVE host.
+        """Delegate destruction of a PVE node's children to the PVE host.
 
         Args:
             exec_node: The PVE ExecutionNode whose children to destroy
