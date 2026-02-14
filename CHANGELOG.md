@@ -14,6 +14,7 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 ### Fixed
 - Fix pull-mode spec_server in nested PVE — use `HOMESTAK_SOURCE` env var so VMs reach the local server, not the outer host from site.yaml
 - Fix push-mode config to run ansible from controller instead of inside VM (#206)
+- Fix push-mode cloud-init race — skip spec injection for push-mode nodes so cloud-init doesn't bootstrap in parallel with operator config
 - Fix pre-existing pylint/mypy warnings across cli.py, actions, config.py, executor.py (#209)
 - Extract ServerManager from executor to bring module under 1000-line limit (#209)
 - Remove implicit `DEFAULT_MANIFEST` fallback — all verbs now require explicit `-M` flag

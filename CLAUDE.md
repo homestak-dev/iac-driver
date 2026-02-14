@@ -273,6 +273,7 @@ nodes:
 ./run.sh manifest apply -M n2-tiered -H father [--dry-run] [--json-output] [--verbose]
 ./run.sh manifest destroy -M n2-tiered -H father [--dry-run] [--yes]
 ./run.sh manifest test -M n2-tiered -H father [--dry-run] [--json-output]
+./run.sh manifest validate -M n2-tiered -H father [--json-output]
 ./run.sh config fetch [--insecure]
 ./run.sh config apply [--spec /path.yaml] [--dry-run]
 ```
@@ -299,10 +300,10 @@ Nodes use **push** (default) or **pull** for config phase. See [config-phase.md]
 
 | Mode | How Config Runs | Operator Behavior |
 |------|----------------|-------------------|
-| `push` | Driver SSHes in and runs config | Default, used for PVE lifecycle |
+| `push` | Operator runs ansible from controller over SSH | Default; no spec injection in cloud-init |
 | `pull` | VM self-configures via cloud-init | Operator polls for config-complete.json |
 
-PVE nodes always use push regardless of setting.
+PVE nodes always use push regardless of setting. Push-mode nodes skip spec injection in cloud-init to avoid bootstrap race conditions.
 
 ## Manifest-Driven Orchestration
 
@@ -404,6 +405,7 @@ Run `./run.sh` with no arguments for top-level usage, or `./run.sh scenario --he
 ./run.sh manifest apply -M n2-tiered -H father
 ./run.sh manifest destroy -M n2-tiered -H father --yes
 ./run.sh manifest test -M n2-tiered -H father
+./run.sh manifest validate -M n2-tiered -H father
 
 # Config commands (spec fetch and apply)
 ./run.sh config fetch --insecure
