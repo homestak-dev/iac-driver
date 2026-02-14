@@ -15,7 +15,6 @@ The merge order is: site → node/host, with secrets resolved by key reference.
 """
 
 import os
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -24,7 +23,7 @@ from urllib.parse import urlparse
 try:
     import yaml
 except ImportError:
-    yaml = None  # type: ignore[assignment]  # Fallback to tfvars parsing
+    yaml = None  # type: ignore[assignment]
 
 
 class ConfigError(Exception):
@@ -65,12 +64,6 @@ class HostConfig:
     # API token (resolved from secrets.yaml at load time)
     _api_token: str = field(default='', init=False, repr=False)
 
-    # Keep tfvars_file as alias for backward compatibility
-    @property
-    def tfvars_file(self) -> Path:
-        """Legacy alias for config_file."""
-        return self.config_file
-
     def __post_init__(self):
         if isinstance(self.config_file, str):
             self.config_file = Path(self.config_file)
@@ -79,14 +72,10 @@ class HostConfig:
 
         # Read config from file if it exists
         if self.config_file.exists():
-            if self.config_file.suffix == '.yaml':
-                # Check if this is a hosts/ or nodes/ config
-                if self.config_file.parent.name == 'hosts':
-                    self._load_from_host_yaml()
-                else:
-                    self._load_from_yaml()
+            if self.config_file.parent.name == 'hosts':
+                self._load_from_host_yaml()
             else:
-                self._load_from_tfvars()
+                self._load_from_yaml()
 
         # Derive ssh_host from api_endpoint if not set
         if not self.ssh_host and self.api_endpoint:
@@ -190,16 +179,6 @@ class HostConfig:
         # No api_endpoint or api_token for host-only configs
         # These remain empty strings (defaults)
 
-    def _load_from_tfvars(self):
-        """Load configuration from legacy tfvars file."""
-        tfvars = _parse_tfvars(self.config_file)
-        if not self.api_endpoint:
-            self.api_endpoint = tfvars.get('proxmox_api_endpoint', '')
-        if not self.node_name:
-            self.node_name = tfvars.get('proxmox_node_name', '')
-        if ssh_user := tfvars.get('ssh_user'):
-            self.ssh_user = ssh_user
-
     def get_api_token(self) -> str:
         """Get resolved API token (from secrets.yaml)."""
         return getattr(self, '_api_token', '')
@@ -215,16 +194,6 @@ def _parse_yaml(path: Path) -> dict:
         raise ConfigError("PyYAML not installed. Run: apt install python3-yaml")
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
-
-
-def _parse_tfvars(path: Path) -> dict:
-    """Parse a tfvars file and return key-value pairs (legacy support)."""
-    result = {}
-    content = path.read_text()
-    # Match: key = "value" or key = 'value'
-    for match in re.finditer(r'^(\w+)\s*=\s*["\']([^"\']*)["\']', content, re.MULTILINE):
-        result[match.group(1)] = match.group(2)
-    return result
 
 
 def _load_secrets(site_config_dir: Path) -> Optional[dict]:

@@ -3,7 +3,7 @@
 
 Tests verify:
 1. Site-config directory discovery (env var, sibling, FHS, legacy)
-2. Host listing (YAML nodes, legacy tfvars)
+2. Host listing (YAML nodes)
 3. Host config loading with secrets resolution
 4. HostConfig dataclass behavior
 5. Error handling for missing config
@@ -27,7 +27,6 @@ from config import (
     load_host_config,
     load_secrets,
     _parse_yaml,
-    _parse_tfvars,
 )
 
 
@@ -218,14 +217,6 @@ class TestHostConfig:
         )
         assert config.ssh_host == '198.51.100.10'
 
-    def test_tfvars_file_alias(self, tmp_path):
-        """tfvars_file should be alias for config_file."""
-        config_file = tmp_path / 'test.yaml'
-        config_file.write_text('')
-
-        config = HostConfig(name='test', config_file=config_file)
-        assert config.tfvars_file == config_file
-
     def test_default_values(self, tmp_path):
         """Should have sensible defaults."""
         config_file = tmp_path / 'test.yaml'
@@ -263,28 +254,6 @@ list:
         yaml_file.write_text('')
         result = _parse_yaml(yaml_file)
         assert result == {}
-
-
-class TestParseTfvars:
-    """Test legacy tfvars parsing."""
-
-    def test_parses_double_quoted_values(self, tmp_path):
-        """Should parse key = "value" format."""
-        tfvars_file = tmp_path / 'test.tfvars'
-        tfvars_file.write_text("""
-key1 = "value1"
-key2 = "value2"
-""")
-        result = _parse_tfvars(tfvars_file)
-        assert result['key1'] == 'value1'
-        assert result['key2'] == 'value2'
-
-    def test_parses_single_quoted_values(self, tmp_path):
-        """Should parse key = 'value' format."""
-        tfvars_file = tmp_path / 'test.tfvars'
-        tfvars_file.write_text("key = 'value'")
-        result = _parse_tfvars(tfvars_file)
-        assert result['key'] == 'value'
 
 
 class TestLoadSecrets:

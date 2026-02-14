@@ -26,6 +26,7 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
   - Pre-commit hooks (pylint, mypy) trigger on git commit
 
 ### Removed
+- Remove dead tfvars input path (`_load_from_tfvars`, `_parse_tfvars`) from config.py (#209)
 - Remove fuser apt wait block from BootstrapAction — now handled by install.sh system-wide apt config (bootstrap#52, #198)
 
 ### Fixed
