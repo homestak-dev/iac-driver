@@ -198,3 +198,13 @@ class TestValidateMainCli:
         rc = validate_main(['--manifest-file', str(manifest_file)])
 
         assert rc == 1
+
+    def test_no_manifest_specified_exits_one(self, capsys):
+        """No manifest source specified returns exit code 1."""
+        from manifest_opr.cli import validate_main
+
+        rc = validate_main([])
+
+        assert rc == 1
+        captured = capsys.readouterr()
+        assert "specify a manifest" in captured.err

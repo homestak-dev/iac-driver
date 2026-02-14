@@ -366,6 +366,12 @@ def validate_main(argv: list) -> int:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
+    # Require explicit manifest source (no implicit default)
+    if not args.manifest and not args.manifest_file and not args.manifest_json:
+        print("Error: specify a manifest with -M, --manifest-file, or --manifest-json",
+              file=sys.stderr)
+        return 1
+
     # Load manifest (validates schema + graph)
     try:
         manifest = load_manifest(
