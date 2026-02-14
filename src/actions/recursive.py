@@ -137,7 +137,7 @@ class RecursiveScenarioAction:
         that may be passed via scenario_args.
 
         If serve-repos environment variables are set (HOMESTAK_SOURCE, HOMESTAK_TOKEN,
-        HOMESTAK_REF), they are propagated to the remote command so that inner hosts
+        HOMESTAK_REF), they are propagated to the remote command so that child hosts
         can download from the same serve-repos server instead of GitHub.
         """
         # Build env var prefix if serve-repos is active

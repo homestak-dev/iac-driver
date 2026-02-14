@@ -289,7 +289,7 @@ nodes:
 
 Root nodes (depth 0) are handled locally. PVE nodes with children trigger:
 1. PVE lifecycle setup (bootstrap, secrets, bridge, API token, image download)
-2. Subtree delegation via SSH — `./run.sh manifest apply --manifest-json` on inner PVE
+2. Subtree delegation via SSH — `./run.sh manifest apply --manifest-json` on the PVE node
 
 This recursion handles arbitrary depth without limits.
 
@@ -386,13 +386,13 @@ api_token: father                 # FK -> secrets.api_tokens.father
 ### Architecture
 
 ```
-Outer PVE Host (pve)
+PVE Host (father)
 ├── IP: 10.0.12.x
-└── VM 99913 (nested-pve) - Inner PVE
+└── VM 99011 (root-pve) - PVE node
     ├── Debian 13 + Proxmox VE
-    ├── 2 cores, 8GB RAM, 64GB disk
-    └── VM 99901 (test1) - Test VM
-        └── Debian 12, 1 core, 4GB RAM
+    ├── 4 cores, 8GB RAM, 64GB disk
+    └── VM 99021 (edge) - Leaf VM
+        └── Debian 12, 2 cores, 2GB RAM
 ```
 
 ### Commands

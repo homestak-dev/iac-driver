@@ -4,15 +4,15 @@ Utility scripts for the homestak IaC project.
 
 ## generate-test-summary.sh
 
-Generates a markdown summary of an integration nested PVE test run.
+Generates a markdown summary of an integration test run.
 
 ### Usage
 
 ```bash
-# Auto-detect inner PVE IP from VM 99913
+# Auto-detect PVE node IP from VM 99011
 ./generate-test-summary.sh
 
-# Specify test name and inner PVE IP
+# Specify test name and PVE node IP
 ./generate-test-summary.sh nested-pve-integration 10.0.12.195
 ```
 
@@ -30,5 +30,5 @@ Creates a markdown file in `../test-runs/` with:
 ### Requirements
 
 - `jq` for JSON parsing
-- SSH access to outer and inner PVE hosts
+- SSH access to PVE hosts
 - VMs must be running with qemu-guest-agent
