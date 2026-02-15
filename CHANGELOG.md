@@ -25,6 +25,7 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 - Add unit tests for TofuApplyAction, TofuDestroyAction, AnsiblePlaybookAction, EnsurePVEAction (31 new tests, 579→610 total) (#215)
 
 ### Fixed
+- Fix root SSH failure in PVE lifecycle `post_scenario` phase — use `automation_user` instead of root, add sudo for `pve-setup --local` (#216)
 - Reduce git dumb HTTP 404 noise — downgrade expected `/objects/` 404s to DEBUG log level (#205)
 - Fix pull-mode spec_server in nested PVE — use `HOMESTAK_SOURCE` env var so VMs reach the local server, not the outer host from site.yaml
 - Fix push-mode config to run ansible from controller instead of inside VM (#206)
