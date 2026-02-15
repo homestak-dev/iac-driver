@@ -373,7 +373,6 @@ class NodeExecutor:
         bridge, node config, API token, self SSH key, image download."""
         from actions.pve_lifecycle import (
             BootstrapAction,
-            SyncDriverCodeAction,
             CopySecretsAction,
             InjectSSHKeyAction,
             CopySSHPrivateKeyAction,
@@ -403,13 +402,7 @@ class NodeExecutor:
             timeout=600,
         )))
 
-        # 2. Sync iac-driver code (ensures delegation uses same code)
-        phases.append(('sync_code', SyncDriverCodeAction(
-            name=f'sync-{mn.name}',
-            host_attr=host_key,
-        )))
-
-        # 3. Copy secrets
+        # 2. Copy secrets
         phases.append(('copy_secrets', CopySecretsAction(
             name=f'secrets-{mn.name}',
             host_attr=host_key,

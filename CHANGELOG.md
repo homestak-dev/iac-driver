@@ -15,6 +15,9 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 - Add push-mode config phase for leaf VMs in operator — resolves spec locally, runs ansible from controller targeting VM over SSH (#206)
 - Auto-set `HOMESTAK_SOURCE` env var after server start so BootstrapAction and RecursiveScenarioAction use serve-repos instead of GitHub master (#189)
 
+### Removed
+- Remove dead `SyncDriverCodeAction` — serve-repos (`_working` branch) makes rsync-based code sync redundant (#212)
+
 ### Fixed
 - Fix pull-mode spec_server in nested PVE — use `HOMESTAK_SOURCE` env var so VMs reach the local server, not the outer host from site.yaml
 - Fix push-mode config to run ansible from controller instead of inside VM (#206)
