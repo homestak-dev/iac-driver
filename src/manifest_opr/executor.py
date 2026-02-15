@@ -373,7 +373,6 @@ class NodeExecutor:
         bridge, node config, API token, self SSH key, image download."""
         from actions.pve_lifecycle import (
             BootstrapAction,
-            SyncDriverCodeAction,
             CopySecretsAction,
             InjectSSHKeyAction,
             CopySSHPrivateKeyAction,
@@ -403,13 +402,7 @@ class NodeExecutor:
             timeout=600,
         )))
 
-        # 2. Sync iac-driver code (ensures delegation uses same code)
-        phases.append(('sync_code', SyncDriverCodeAction(
-            name=f'sync-{mn.name}',
-            host_attr=host_key,
-        )))
-
-        # 3. Copy secrets
+        # 2. Copy secrets
         phases.append(('copy_secrets', CopySecretsAction(
             name=f'secrets-{mn.name}',
             host_attr=host_key,
@@ -427,13 +420,13 @@ class NodeExecutor:
             host_attr=host_key,
         )))
 
-        # 5. Run pve-setup post-scenario
+        # 5. Run pve-setup post-scenario (sudo required for --local mode)
         phases.append(('post_scenario', RecursiveScenarioAction(
             name=f'post-{mn.name}',
-            scenario_name='pve-setup',
+            raw_command='sudo homestak scenario pve-setup --json-output --local --skip-preflight',
             host_attr=host_key,
-            scenario_args=['--local', '--skip-preflight'],
             timeout=1200,
+            ssh_user=self.config.automation_user,
         )))
 
         # 6. Configure vmbr0 bridge

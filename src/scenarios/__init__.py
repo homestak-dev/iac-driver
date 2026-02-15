@@ -31,7 +31,7 @@ class Scenario(Protocol):
 
     def get_phases(self, config: HostConfig) -> list[tuple[str, Any, str]]:
         """Return list of (phase_name, action, description) tuples."""
-        ...
+        ...  # pylint: disable=unnecessary-ellipsis
 
 
 class Orchestrator:
@@ -184,6 +184,6 @@ def list_scenarios() -> list[str]:
 
 
 # Import scenarios to trigger registration
-from scenarios import pve_setup  # noqa: E402, F401
-from scenarios import user_setup  # noqa: E402, F401
-from scenarios import vm_roundtrip  # noqa: E402, F401
+from scenarios import pve_setup  # noqa: E402, F401  # pylint: disable=wrong-import-position
+from scenarios import user_setup  # noqa: E402, F401  # pylint: disable=wrong-import-position
+from scenarios import vm_roundtrip  # noqa: E402, F401  # pylint: disable=wrong-import-position

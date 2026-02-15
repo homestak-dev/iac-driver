@@ -33,18 +33,24 @@ class ExecutionNode:
 
     @property
     def name(self) -> str:
-        return self.manifest_node.name
+        """Return node name from manifest definition."""
+        result: str = self.manifest_node.name
+        return result
 
     @property
     def type(self) -> str:
-        return self.manifest_node.type
+        """Return node type from manifest definition."""
+        result: str = self.manifest_node.type
+        return result
 
     @property
     def is_root(self) -> bool:
+        """Return True if this is a root node (no parent)."""
         return self.parent is None
 
     @property
     def is_leaf(self) -> bool:
+        """Return True if this node has no children."""
         return len(self.children) == 0
 
     def __repr__(self) -> str:
@@ -160,6 +166,7 @@ class ManifestGraph:
         """
         if node.is_root:
             return 'ssh_host'
+        assert node.parent is not None  # Non-root nodes always have a parent
         return f'{node.parent.name}_ip'
 
     def extract_subtree(self, node_name: str) -> Manifest:

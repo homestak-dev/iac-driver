@@ -130,7 +130,7 @@ class AnsibleLocalPlaybookAction:
     use_site_config: bool = False
     env: Optional[str] = None  # Environment for posture resolution (e.g., 'dev', 'test')
 
-    def run(self, config: HostConfig, context: dict) -> ActionResult:
+    def run(self, _config: HostConfig, _context: dict) -> ActionResult:
         """Execute ansible playbook locally."""
         start = time.time()
 

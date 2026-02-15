@@ -114,13 +114,21 @@ def get_vm_ip(vm_id: int, pve_host: str, interface: str = 'eth0', user: str = 'r
         interfaces = json_module.loads(out)
         for iface in interfaces:
             if iface.get('name') == interface or interface == '*':
-                for addr in iface.get('ip-addresses', []):
-                    if addr.get('ip-address-type') == 'ipv4':
-                        ip = addr.get('ip-address')
-                        if ip and not ip.startswith('127.'):
-                            return ip
+                ip = _extract_ipv4(iface)
+                if ip:
+                    return ip
     except (json_module.JSONDecodeError, KeyError):
         pass
+    return None
+
+
+def _extract_ipv4(iface: dict) -> Optional[str]:
+    """Extract first non-loopback IPv4 address from interface data."""
+    for addr in iface.get('ip-addresses', []):
+        if addr.get('ip-address-type') == 'ipv4':
+            ip: Optional[str] = addr.get('ip-address')
+            if ip and not ip.startswith('127.'):
+                return ip
     return None
 
 

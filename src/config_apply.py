@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from common import ActionResult, run_command
+from common import run_command
 
 logger = logging.getLogger(__name__)
 
@@ -98,8 +98,8 @@ def _load_spec(spec_path: Path) -> dict:
     """
     try:
         import yaml
-    except ImportError:
-        raise ConfigError("PyYAML not installed. Run: apt install python3-yaml")
+    except ImportError as exc:
+        raise ConfigError("PyYAML not installed. Run: apt install python3-yaml") from exc
 
     if not spec_path.exists():
         raise ConfigError(f"Spec not found: {spec_path}")
@@ -110,7 +110,8 @@ def _load_spec(spec_path: Path) -> dict:
     if not spec or not isinstance(spec, dict):
         raise ConfigError(f"Invalid spec file: {spec_path}")
 
-    return spec
+    result: dict = spec
+    return result
 
 
 def spec_to_ansible_vars(spec: dict) -> dict:
@@ -142,8 +143,8 @@ def spec_to_ansible_vars(spec: dict) -> dict:
 
     # Config section -> base role
     config = spec.get('config', {})
-    if timezone := config.get('timezone'):
-        ansible_vars['timezone'] = timezone
+    if tz_value := config.get('timezone'):
+        ansible_vars['timezone'] = tz_value
 
     # Access section -> users + security roles
     access = spec.get('access', {})
@@ -299,7 +300,7 @@ def apply_config(
             print(f"  Services enable: {ansible_vars.get('services_enable', [])}")
             print(f"  Services disable: {ansible_vars.get('services_disable', [])}")
             print(f"  User: {ansible_vars.get('local_user', '(none)')}")
-            print(f"\nAnsible vars:")
+            print("\nAnsible vars:")
             for k, v in ansible_vars.items():
                 print(f"    {k}: {v}")
         return ConfigResult(
@@ -413,9 +414,10 @@ def _fetch_spec(insecure: bool = False) -> Optional[Path]:
             insecure=insecure,
         )
         logger.info(f"Fetching spec for '{identity}' from {server}...")
-        spec, path = client.fetch_and_save()
-        logger.info(f"Spec saved to {path}")
-        return path
+        _spec, path = client.fetch_and_save()
+        result_path: Optional[Path] = path
+        logger.info(f"Spec saved to {result_path}")
+        return result_path
     except SpecClientError as e:
         logger.error(f"Failed to fetch spec: {e.code} - {e.message}")
         return None
@@ -514,10 +516,10 @@ def apply_main(argv: list) -> int:
         if not args.json_output and not args.dry_run:
             logger.info(f"Config complete in {result.duration:.1f}s")
         return 0
-    else:
-        if not args.json_output:
-            print(f"Error: {result.message}", file=__import__('sys').stderr)
-        return 1 if 'not found' in result.message.lower() else 2
+
+    if not args.json_output:
+        print(f"Error: {result.message}", file=__import__('sys').stderr)
+    return 1 if 'not found' in result.message.lower() else 2
 
 
 def config_main(argv: list) -> int:
@@ -546,9 +548,9 @@ def config_main(argv: list) -> int:
 
     if action == 'fetch':
         return fetch_main(rest)
-    elif action == 'apply':
+    if action == 'apply':
         return apply_main(rest)
-    else:
-        print(f"Error: Unknown config action '{action}'")
-        print("Available actions: fetch, apply")
-        return 1
+
+    print(f"Error: Unknown config action '{action}'")
+    print("Available actions: fetch, apply")
+    return 1

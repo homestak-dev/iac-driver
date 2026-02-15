@@ -38,7 +38,7 @@ class TestReport:
         self.started_at = datetime.now()
         self.report_dir.mkdir(parents=True, exist_ok=True)
 
-    def start_phase(self, name: str, description: str):
+    def start_phase(self, name: str, _description: str):
         """Mark phase start."""
         self._current_phase = name
         self._phase_start = datetime.now()

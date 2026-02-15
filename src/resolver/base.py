@@ -196,7 +196,8 @@ class ResolverBase:
             if not posture_path.exists():
                 raise PostureNotFoundError(name)
             self._posture_cache[name] = self._load_yaml(posture_path)
-        return self._posture_cache[name]
+        result: dict = self._posture_cache[name]
+        return result
 
     def _resolve_ssh_keys(self, key_refs: list) -> list:
         """Resolve SSH key references to actual public keys.
@@ -233,7 +234,8 @@ class ResolverBase:
         Returns:
             Defaults dict from site.yaml, or empty dict
         """
-        return self._load_site().get("defaults", {})
+        result: dict = self._load_site().get("defaults", {})
+        return result
 
     def get_signing_key(self) -> Optional[str]:
         """Get the provisioning token signing key from secrets.
@@ -243,6 +245,7 @@ class ResolverBase:
         """
         try:
             secrets = self._load_secrets()
-            return secrets.get("auth", {}).get("signing_key")
+            result: Optional[str] = secrets.get("auth", {}).get("signing_key")
+            return result
         except SecretsNotFoundError:
             return None

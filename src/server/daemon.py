@@ -205,7 +205,7 @@ def daemonize(
     pid_file.write_text(str(os.getpid()))
 
     # Install SIGTERM handler that cleans up PID file
-    def _handle_sigterm(signum, frame):
+    def _handle_sigterm(_signum, _frame):
         logger.info("Received SIGTERM, shutting down")
         try:
             pid_file.unlink()
@@ -233,6 +233,8 @@ def daemonize(
         except FileNotFoundError:
             pass
         server.shutdown()
+
+    return 1  # Unreachable; daemon exits via os._exit or serve_forever
 
 
 def _parent_wait(read_fd: int, port: int, timeout: float = 10.0) -> int:
@@ -266,7 +268,7 @@ def _parent_wait(read_fd: int, port: int, timeout: float = 10.0) -> int:
 
     # Verify health check
     retries = 10
-    for i in range(retries):
+    for _ in range(retries):
         if _health_check(port):
             status = check_status(port)
             print(f"Server started (PID {status['pid']}, port {port})")

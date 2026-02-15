@@ -151,7 +151,8 @@ class SpecClient:
         try:
             with urlopen(request, context=ssl_context, timeout=30) as response:
                 body = response.read()
-                return json.loads(body.decode("utf-8"))
+                result: dict = json.loads(body.decode("utf-8"))
+                return result
 
         except HTTPError as e:
             # Parse error response from server

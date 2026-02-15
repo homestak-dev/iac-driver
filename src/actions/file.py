@@ -18,7 +18,7 @@ class RemoveImageAction:
     image_dir: str = '/var/lib/vz/template/iso'
     fail_if_missing: bool = False
 
-    def run(self, config: HostConfig, context: dict) -> ActionResult:
+    def run(self, config: HostConfig, _context: dict) -> ActionResult:
         """Remove image from PVE host."""
         start = time.time()
 
@@ -72,7 +72,7 @@ class DownloadFileAction:
     rename_ext: Optional[str] = None  # e.g., '.img' to rename .qcow2 files
     timeout: int = 300
 
-    def run(self, config: HostConfig, context: dict) -> ActionResult:
+    def run(self, _config: HostConfig, context: dict) -> ActionResult:
         """Download file to remote host."""
         start = time.time()
 
@@ -163,9 +163,10 @@ class DownloadGitHubReleaseAction:
         api_url = f'https://api.github.com/repos/{repo}/releases/latest'
         # Use curl with Python to extract tag_name (Python is always available on PVE)
         cmd = f"curl -fsSL '{api_url}' | python3 -c \"import sys,json; print(json.load(sys.stdin).get('tag_name',''))\""
-        rc, out, err = run_ssh(host, cmd, timeout=30)
+        rc, out, _err = run_ssh(host, cmd, timeout=30)
         if rc == 0 and out.strip():
-            return out.strip()
+            tag: Optional[str] = out.strip()
+            return tag
         return None
 
     def _get_split_parts(self, repo: str, tag: str, host: str) -> list[str]:
@@ -185,7 +186,7 @@ parts.sort()
 print('\\n'.join(parts))
 "
 """
-        rc, out, err = run_ssh(host, cmd, timeout=30)
+        rc, out, _err = run_ssh(host, cmd, timeout=30)
         if rc == 0 and out.strip():
             return [p for p in out.strip().split('\n') if p]
         return []

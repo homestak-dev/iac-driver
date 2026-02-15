@@ -19,7 +19,7 @@ class UserSetup:
     requires_host_config = False
     expected_runtime = 30
 
-    def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
+    def get_phases(self, _config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for user setup.
 
         Uses local or remote actions based on context:
@@ -35,6 +35,7 @@ class _CreateUserPhase:
     """Phase that runs user.yml locally or remotely."""
 
     def run(self, config: HostConfig, context: dict):
+        """Run user.yml locally or remotely based on context."""
         if context.get('local_mode'):
             action = AnsibleLocalPlaybookAction(
                 name='user-local',

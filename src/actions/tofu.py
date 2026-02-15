@@ -6,6 +6,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 from common import ActionResult, run_command
 from config import HostConfig, get_sibling_dir, get_base_dir
@@ -36,13 +37,13 @@ class TofuApplyAction:
     name: str
     vm_name: str      # VM hostname (becomes PVE node name)
     vmid: int         # Explicit VM ID
-    vm_preset: str = None     # FK to presets/{vm_preset}.yaml
-    image: str = None      # Image name (required for vm_preset mode)
-    spec: str = None       # FK to specs/{spec}.yaml (for provisioning token)
+    vm_preset: Optional[str] = None     # FK to presets/{vm_preset}.yaml
+    image: Optional[str] = None      # Image name (required for vm_preset mode)
+    spec: Optional[str] = None       # FK to specs/{spec}.yaml (for provisioning token)
     timeout_init: int = 120
     timeout_apply: int = 300
 
-    def run(self, config: HostConfig, context: dict) -> ActionResult:
+    def run(self, config: HostConfig, _context: dict) -> ActionResult:
         """Execute tofu init + apply with inline VM config."""
         start = time.time()
 
@@ -89,7 +90,7 @@ class TofuApplyAction:
 
         # Run tofu init
         logger.info(f"[{self.name}] Running tofu init...")
-        rc, out, err = run_command(['tofu', 'init'], cwd=tofu_dir, timeout=self.timeout_init, env=env)
+        rc, _out, err = run_command(['tofu', 'init'], cwd=tofu_dir, timeout=self.timeout_init, env=env)
         if rc != 0:
             if tfvars_path and tfvars_path.exists():
                 tfvars_path.unlink()
@@ -102,7 +103,7 @@ class TofuApplyAction:
         # Run tofu apply with explicit state file
         logger.info(f"[{self.name}] Running tofu apply (state: {state_file})...")
         cmd = ['tofu', 'apply', '-auto-approve', f'-state={state_file}', f'-var-file={tfvars_path}']
-        rc, out, err = run_command(cmd, cwd=tofu_dir, timeout=self.timeout_apply, env=env)
+        rc, _out, err = run_command(cmd, cwd=tofu_dir, timeout=self.timeout_apply, env=env)
 
         # Clean up temp tfvars file
         if tfvars_path and tfvars_path.exists():
@@ -137,12 +138,12 @@ class TofuDestroyAction:
     name: str
     vm_name: str      # VM hostname
     vmid: int         # VM ID
-    vm_preset: str = None     # FK to presets/{vm_preset}.yaml
-    image: str = None      # Image name (for vm_preset mode)
-    spec: str = None       # FK to specs/{spec}.yaml (for provisioning token)
+    vm_preset: Optional[str] = None     # FK to presets/{vm_preset}.yaml
+    image: Optional[str] = None      # Image name (for vm_preset mode)
+    spec: Optional[str] = None       # FK to specs/{spec}.yaml (for provisioning token)
     timeout: int = 300
 
-    def run(self, config: HostConfig, context: dict) -> ActionResult:
+    def run(self, config: HostConfig, _context: dict) -> ActionResult:
         """Execute tofu destroy with inline VM config."""
         start = time.time()
 
@@ -198,7 +199,7 @@ class TofuDestroyAction:
         # Run tofu destroy
         logger.info(f"[{self.name}] Running tofu destroy (state: {state_file})...")
         cmd = ['tofu', 'destroy', '-auto-approve', f'-state={state_file}', f'-var-file={tfvars_path}']
-        rc, out, err = run_command(cmd, cwd=tofu_dir, timeout=self.timeout, env=env)
+        rc, _out, err = run_command(cmd, cwd=tofu_dir, timeout=self.timeout, env=env)
 
         # Clean up temp tfvars file
         if tfvars_path and tfvars_path.exists():
@@ -216,6 +217,3 @@ class TofuDestroyAction:
             message=f"Tofu destroy completed for {self.vm_name}",
             duration=time.time() - start
         )
-
-
-

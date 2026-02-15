@@ -15,7 +15,18 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 - Add push-mode config phase for leaf VMs in operator — resolves spec locally, runs ansible from controller targeting VM over SSH (#206)
 - Auto-set `HOMESTAK_SOURCE` env var after server start so BootstrapAction and RecursiveScenarioAction use serve-repos instead of GitHub master (#189)
 
+### Removed
+- Remove dead `SyncDriverCodeAction` — serve-repos (`_working` branch) makes rsync-based code sync redundant (#212)
+
+### Refactored
+- Fix all mypy errors (40) and pylint warnings (97) — `make lint` now passes clean (#214)
+- Extract `_handle_scenario_verb()`, `_resolve_host()`, `_setup_context()`, `_handle_results()` from 475-line `main()` in cli.py (#214)
+- Split `test_actions.py` (27 tests) into per-module files: `test_actions_ssh.py`, `test_actions_file.py`, `test_actions_proxmox.py` (#214)
+- Add unit tests for TofuApplyAction, TofuDestroyAction, AnsiblePlaybookAction, EnsurePVEAction (31 new tests, 579→610 total) (#215)
+
 ### Fixed
+- Fix root SSH failure in PVE lifecycle `post_scenario` phase — use `automation_user` instead of root, add sudo for `pve-setup --local` (#216)
+- Reduce git dumb HTTP 404 noise — downgrade expected `/objects/` 404s to DEBUG log level (#205)
 - Fix pull-mode spec_server in nested PVE — use `HOMESTAK_SOURCE` env var so VMs reach the local server, not the outer host from site.yaml
 - Fix push-mode config to run ansible from controller instead of inside VM (#206)
 - Fix push-mode cloud-init race — skip spec injection for push-mode nodes so cloud-init doesn't bootstrap in parallel with operator config
