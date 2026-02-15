@@ -153,22 +153,6 @@ class DownloadGitHubReleaseAction:
     rename_ext: Optional[str] = '.img'  # Proxmox convention
     timeout: int = 300
 
-    def _resolve_latest_tag(self, repo: str, host: str) -> Optional[str]:
-        """Resolve 'latest' to actual tag name via GitHub API.
-
-        GitHub download URLs require the actual tag name, not 'latest'.
-        This queries the API to get the real tag for the latest release.
-        Uses Python for JSON parsing (available on all PVE hosts) instead of jq.
-        """
-        api_url = f'https://api.github.com/repos/{repo}/releases/latest'
-        # Use curl with Python to extract tag_name (Python is always available on PVE)
-        cmd = f"curl -fsSL '{api_url}' | python3 -c \"import sys,json; print(json.load(sys.stdin).get('tag_name',''))\""
-        rc, out, _err = run_ssh(host, cmd, timeout=30)
-        if rc == 0 and out.strip():
-            tag: Optional[str] = out.strip()
-            return tag
-        return None
-
     def _get_split_parts(self, repo: str, tag: str, host: str) -> list[str]:
         """Query GitHub API for split file parts matching asset_name.part*.
 
@@ -246,19 +230,6 @@ print('\\n'.join(parts))
 
         repo = config.packer_release_repo
         tag = config.packer_release
-
-        # Resolve 'latest' to actual tag name (GitHub URLs require real tag)
-        if tag == 'latest':
-            resolved_tag = self._resolve_latest_tag(repo, host)
-            if resolved_tag:
-                logger.info(f"[{self.name}] Resolved 'latest' to tag {resolved_tag}")
-                tag = resolved_tag
-            else:
-                return ActionResult(
-                    success=False,
-                    message=f"Failed to resolve 'latest' release tag for {repo}",
-                    duration=time.time() - start
-                )
 
         url = f'https://github.com/{repo}/releases/download/{tag}/{self.asset_name}'
         dest = f"{self.dest_dir}/{self.asset_name}"
