@@ -28,21 +28,17 @@ logger = logging.getLogger(__name__)
 def _image_to_asset_name(image: str) -> str:
     """Convert manifest image name to packer asset filename.
 
-    Maps image names from manifests/envs to packer release asset names:
-    - debian-12 → debian-12-custom.qcow2
-    - debian-13-pve → debian-13-pve.qcow2
+    Image names map 1:1 to asset filenames:
+    - debian-12 → debian-12.qcow2
+    - pve-9 → pve-9.qcow2
 
     Args:
-        image: Image name from manifest (e.g., 'debian-12', 'debian-13-pve')
+        image: Image name from manifest (e.g., 'debian-12', 'pve-9')
 
     Returns:
-        Packer release asset filename (e.g., 'debian-12-custom.qcow2')
+        Packer release asset filename (e.g., 'debian-12.qcow2')
     """
-    # If image already has -custom or -pve suffix, use as-is
-    if image.endswith('-custom') or image.endswith('-pve'):
-        return f"{image}.qcow2"
-    # Otherwise, append -custom
-    return f"{image}-custom.qcow2"
+    return f"{image}.qcow2"
 
 
 @dataclass

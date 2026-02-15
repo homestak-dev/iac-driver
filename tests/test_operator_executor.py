@@ -128,7 +128,7 @@ class TestNodeExecutorCreate:
     @patch('manifest_opr.executor.NodeExecutor._create_node')
     def test_tiered_create_delegates_children(self, mock_create, mock_delegate):
         manifest = _make_manifest([
-            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve', 'preset': 'vm-large'},
+            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9', 'preset': 'vm-large'},
             {'name': 'test', 'type': 'vm', 'vmid': 99002, 'image': 'debian-12', 'preset': 'vm-small', 'parent': 'pve'},
         ], pattern='tiered')
         graph = ManifestGraph(manifest)
@@ -148,7 +148,7 @@ class TestNodeExecutorCreate:
     def test_create_stop_on_root_failure(self, mock_create):
         """When root node fails, stop immediately (children never attempted)."""
         manifest = _make_manifest([
-            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve', 'preset': 'vm-large'},
+            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9', 'preset': 'vm-large'},
             {'name': 'test', 'type': 'vm', 'vmid': 99002, 'image': 'debian-12', 'preset': 'vm-small', 'parent': 'pve'},
         ], pattern='tiered', on_error='stop')
         graph = ManifestGraph(manifest)
@@ -171,7 +171,7 @@ class TestNodeExecutorCreate:
     def test_create_rollback_on_delegation_failure(self, mock_create, mock_destroy, mock_delegate, mock_delegate_destroy):
         """When subtree delegation fails with on_error=rollback, root node should be rolled back."""
         manifest = _make_manifest([
-            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve', 'preset': 'vm-large'},
+            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9', 'preset': 'vm-large'},
             {'name': 'test', 'type': 'vm', 'vmid': 99002, 'image': 'debian-12', 'preset': 'vm-small', 'parent': 'pve'},
         ], pattern='tiered', on_error='rollback')
         graph = ManifestGraph(manifest)
@@ -279,7 +279,7 @@ class TestNodeExecutorDestroy:
     def test_destroy_tiered_delegates_children(self, mock_destroy, mock_delegate_destroy):
         """Tiered manifest: children delegated, root destroyed locally."""
         manifest = _make_manifest([
-            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve', 'preset': 'vm-large'},
+            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9', 'preset': 'vm-large'},
             {'name': 'test', 'type': 'vm', 'vmid': 99002, 'image': 'debian-12', 'preset': 'vm-small', 'parent': 'pve'},
         ], pattern='tiered')
         graph = ManifestGraph(manifest)
@@ -305,7 +305,7 @@ class TestNodeExecutorDelegation:
     def test_pve_with_children_delegates(self, mock_create, mock_delegate):
         """PVE root node with children should trigger delegation."""
         manifest = _make_manifest([
-            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve', 'preset': 'vm-large'},
+            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9', 'preset': 'vm-large'},
             {'name': 'test', 'type': 'vm', 'vmid': 99002, 'image': 'debian-12', 'preset': 'vm-small', 'parent': 'pve'},
         ], pattern='tiered')
         graph = ManifestGraph(manifest)
@@ -344,7 +344,7 @@ class TestNodeExecutorDelegation:
     def test_delegation_failure_marks_descendants(self, mock_create, mock_delegate):
         """Failed delegation should mark all descendants as failed."""
         manifest = _make_manifest([
-            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve', 'preset': 'vm-large'},
+            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9', 'preset': 'vm-large'},
             {'name': 'test', 'type': 'vm', 'vmid': 99002, 'image': 'debian-12', 'preset': 'vm-small', 'parent': 'pve'},
         ], pattern='tiered')
         graph = ManifestGraph(manifest)
@@ -365,8 +365,8 @@ class TestNodeExecutorDelegation:
     def test_only_root_nodes_created_locally(self, mock_create):
         """Only depth-0 nodes should be passed to _create_node."""
         manifest = _make_manifest([
-            {'name': 'root', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve', 'preset': 'vm-large'},
-            {'name': 'leaf', 'type': 'pve', 'vmid': 99002, 'image': 'debian-13-pve', 'preset': 'vm-medium', 'parent': 'root'},
+            {'name': 'root', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9', 'preset': 'vm-large'},
+            {'name': 'leaf', 'type': 'pve', 'vmid': 99002, 'image': 'pve-9', 'preset': 'vm-medium', 'parent': 'root'},
             {'name': 'test', 'type': 'vm', 'vmid': 99003, 'image': 'debian-12', 'preset': 'vm-small', 'parent': 'leaf'},
         ], pattern='tiered')
         graph = ManifestGraph(manifest)
@@ -392,7 +392,7 @@ class TestNodeExecutorDelegation:
     def test_delegate_subtree_passes_self_addr(self):
         """Delegation command should include --self-addr with PVE node's IP (#200)."""
         manifest = _make_manifest([
-            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve', 'preset': 'vm-large'},
+            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9', 'preset': 'vm-large'},
             {'name': 'test', 'type': 'vm', 'vmid': 99002, 'image': 'debian-12', 'preset': 'vm-small', 'parent': 'pve'},
         ], pattern='tiered')
         graph = ManifestGraph(manifest)

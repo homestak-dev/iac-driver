@@ -106,7 +106,7 @@ class TestValidateManifestFks:
         """Nodes without spec/preset FKs pass validation."""
         site = _make_site_config(tmp_path)
         manifest = _make_manifest([
-            ManifestNode(name='root-pve', type='pve', image='debian-13-pve'),
+            ManifestNode(name='root-pve', type='pve', image='pve-9'),
         ])
 
         errors = validate_manifest_fks(manifest, site)

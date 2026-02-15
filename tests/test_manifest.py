@@ -141,7 +141,7 @@ class TestManifestNode:
             'type': 'pve',
             'spec': 'pve',
             'preset': 'vm-large',
-            'image': 'debian-13-pve',
+            'image': 'pve-9',
             'vmid': 99011,
             'disk': 64,
             'parent': None,
@@ -153,7 +153,7 @@ class TestManifestNode:
         assert node.type == 'pve'
         assert node.spec == 'pve'
         assert node.preset == 'vm-large'
-        assert node.image == 'debian-13-pve'
+        assert node.image == 'pve-9'
         assert node.vmid == 99011
         assert node.disk == 64
         assert node.parent is None
@@ -250,7 +250,7 @@ class TestManifestV2:
             'name': 'n2-tiered',
             'pattern': 'tiered',
             'nodes': [
-                {'name': 'root-pve', 'type': 'pve', 'preset': 'vm-large', 'image': 'debian-13-pve', 'vmid': 99011},
+                {'name': 'root-pve', 'type': 'pve', 'preset': 'vm-large', 'image': 'pve-9', 'vmid': 99011},
                 {'name': 'edge', 'type': 'vm', 'preset': 'vm-medium', 'image': 'debian-12', 'vmid': 99021, 'parent': 'root-pve'}
             ]
         }
@@ -269,8 +269,8 @@ class TestManifestV2:
             'name': 'n3-deep',
             'pattern': 'tiered',
             'nodes': [
-                {'name': 'root-pve', 'type': 'pve', 'preset': 'vm-large', 'image': 'debian-13-pve', 'vmid': 99011},
-                {'name': 'leaf-pve', 'type': 'pve', 'preset': 'vm-medium', 'image': 'debian-13-pve', 'vmid': 99021, 'parent': 'root-pve'},
+                {'name': 'root-pve', 'type': 'pve', 'preset': 'vm-large', 'image': 'pve-9', 'vmid': 99011},
+                {'name': 'leaf-pve', 'type': 'pve', 'preset': 'vm-medium', 'image': 'pve-9', 'vmid': 99021, 'parent': 'root-pve'},
                 {'name': 'edge', 'type': 'vm', 'preset': 'vm-small', 'image': 'debian-12', 'vmid': 99031, 'parent': 'leaf-pve'}
             ]
         }
@@ -486,7 +486,7 @@ class TestManifestV2Serialization:
             'description': 'Test',
             'pattern': 'tiered',
             'nodes': [
-                {'name': 'root-pve', 'type': 'pve', 'preset': 'vm-large', 'image': 'debian-13-pve', 'vmid': 99011},
+                {'name': 'root-pve', 'type': 'pve', 'preset': 'vm-large', 'image': 'pve-9', 'vmid': 99011},
                 {'name': 'edge', 'type': 'vm', 'preset': 'vm-small', 'image': 'debian-12', 'vmid': 99021, 'parent': 'root-pve'}
             ],
             'settings': {'on_error': 'rollback'}
@@ -540,7 +540,7 @@ description: Test description
 nodes:
   - name: inner
     type: pve
-    image: debian-13-pve
+    image: pve-9
 """
             (manifests_dir / 'test-manifest.yaml').write_text(yaml_content)
 
@@ -549,7 +549,7 @@ nodes:
 
             assert manifest.name == 'test-manifest'
             assert manifest.description == 'Test description'
-            assert manifest.nodes[0].image == 'debian-13-pve'
+            assert manifest.nodes[0].image == 'pve-9'
 
     def test_load_nonexistent_raises_error(self):
         """Should raise error for nonexistent manifest."""

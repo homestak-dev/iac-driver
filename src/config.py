@@ -56,7 +56,7 @@ class HostConfig:
     # Packer release settings
     packer_release_repo: str = 'homestak-dev/packer'
     packer_release: str = 'latest'
-    packer_image: str = 'debian-12-custom.qcow2'
+    packer_image: str = 'debian-12.qcow2'
 
     # Track config source type
     is_host_only: bool = False  # True when loaded from hosts/*.yaml (no PVE)
