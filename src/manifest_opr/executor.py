@@ -420,12 +420,11 @@ class NodeExecutor:
             host_attr=host_key,
         )))
 
-        # 5. Run pve-setup post-scenario
+        # 5. Run pve-setup post-scenario (sudo required for --local mode)
         phases.append(('post_scenario', RecursiveScenarioAction(
             name=f'post-{mn.name}',
-            scenario_name='pve-setup',
+            raw_command='sudo homestak scenario pve-setup --json-output --local --skip-preflight',
             host_attr=host_key,
-            scenario_args=['--local', '--skip-preflight'],
             timeout=1200,
             ssh_user=self.config.automation_user,
         )))
