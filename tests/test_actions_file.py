@@ -150,8 +150,8 @@ class TestDownloadGitHubReleaseAction:
         assert result.success is False
         assert 'no split parts found' in result.message
 
-    def test_latest_tag_resolution(self):
-        """Should resolve 'latest' tag via GitHub API."""
+    def test_latest_tag_used_directly(self):
+        """Should use 'latest' tag as-is in download URL (no API resolution)."""
         from actions.file import DownloadGitHubReleaseAction
 
         action = DownloadGitHubReleaseAction(
@@ -167,13 +167,16 @@ class TestDownloadGitHubReleaseAction:
 
         with patch('actions.file.run_ssh') as mock_ssh:
             mock_ssh.side_effect = [
-                (0, 'v0.25\n', ''),  # resolve latest -> v0.25
                 (0, '', ''),      # mkdir
                 (0, '', ''),      # curl download
                 (0, '', ''),      # mv rename (rename_ext='.img' by default)
                 (0, '-rw-r--r-- 1 root root 123456 file', ''),  # ls verify
             ]
             result = action.run(config, context)
+
+            # Verify download URL uses literal 'latest' tag
+            download_call = mock_ssh.call_args_list[1]
+            assert 'releases/download/latest/test.qcow2' in download_call[0][1]
 
         assert result.success is True
 
