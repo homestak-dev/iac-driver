@@ -19,6 +19,7 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 - Remove dead `SyncDriverCodeAction` — serve-repos (`_working` branch) makes rsync-based code sync redundant (#212)
 
 ### Fixed
+- Reduce git dumb HTTP 404 noise — downgrade expected `/objects/` 404s to DEBUG log level (#205)
 - Fix pull-mode spec_server in nested PVE — use `HOMESTAK_SOURCE` env var so VMs reach the local server, not the outer host from site.yaml
 - Fix push-mode config to run ansible from controller instead of inside VM (#206)
 - Fix push-mode cloud-init race — skip spec injection for push-mode nodes so cloud-init doesn't bootstrap in parallel with operator config

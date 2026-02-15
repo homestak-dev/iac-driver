@@ -5,12 +5,10 @@ Unified daemon serving both specs and repos on a single HTTPS port.
 
 import json
 import logging
-import os
 import signal
 import ssl
 import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -37,10 +35,23 @@ class ServerHandler(BaseHTTPRequestHandler):
     repo_manager: Optional[RepoManager] = None
     repo_token: str = ""
     signing_key: str = ""  # Provisioning token signing key (#231)
+    _head_only: bool = False
 
-    def log_message(self, format: str, *args):
+    def log_message(self, format: str, *args):  # pylint: disable=redefined-builtin
         """Override to use Python logging."""
         logger.info("%s - %s", self.address_string(), format % args)
+
+    def log_request(self, code='-', size='-'):
+        """Log HTTP requests, downgrading expected git protocol 404s to DEBUG.
+
+        Git dumb HTTP clients probe for loose objects before falling back
+        to packfiles. These 404s are normal protocol behavior, not errors.
+        """
+        if str(code) == '404' and hasattr(self, 'path') and '/objects/' in self.path:
+            logger.debug('%s - "%s" %s %s',
+                         self.address_string(), self.requestline, code, size)
+            return
+        super().log_request(code, size)
 
     def send_json(self, data: dict, status: int = 200):
         """Send JSON response."""
@@ -61,7 +72,7 @@ class ServerHandler(BaseHTTPRequestHandler):
         if not getattr(self, '_head_only', False):
             self.wfile.write(content)
 
-    def do_GET(self):
+    def do_GET(self):  # pylint: disable=invalid-name
         """Handle GET requests."""
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
@@ -88,7 +99,7 @@ class ServerHandler(BaseHTTPRequestHandler):
         # Unknown endpoint
         self.send_json({"error": {"code": "E100", "message": f"Unknown endpoint: {path}"}}, 400)
 
-    def do_HEAD(self):
+    def do_HEAD(self):  # pylint: disable=invalid-name
         """Handle HEAD requests — return headers only, no body.
 
         Git dumb HTTP protocol uses HEAD to check if objects/refs exist.
@@ -281,7 +292,7 @@ class Server:
     def _setup_signal_handlers(self):
         """Setup signal handlers for cache management and shutdown."""
 
-        def handle_sighup(signum, frame):
+        def handle_sighup(_signum, _frame):
             """Handle SIGHUP by clearing caches."""
             logger.info("Received SIGHUP, clearing caches")
             if self.spec_resolver:
@@ -293,7 +304,7 @@ class Server:
                 self.repo_manager.prepare()
                 ServerHandler.repo_manager = self.repo_manager
 
-        def handle_sigterm(signum, frame):
+        def handle_sigterm(_signum, _frame):
             """Handle SIGTERM for graceful shutdown."""
             logger.info("Received SIGTERM")
             self.shutdown()
