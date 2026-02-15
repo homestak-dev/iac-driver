@@ -4,6 +4,10 @@
 
 ### Theme: Provisioning Token (homestak-dev#231)
 
+### Changed
+- Simplify `_image_to_asset_name()` — image names now map 1:1 to asset filenames (packer#48)
+- Update default `packer_image` from `debian-12-custom.qcow2` to `debian-12.qcow2` (packer#48)
+
 HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 
 ### Added

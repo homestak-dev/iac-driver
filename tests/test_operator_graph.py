@@ -77,7 +77,7 @@ class TestManifestGraph:
 
     def test_tiered_two_level(self):
         manifest = _make_manifest([
-            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'preset': 'vm-large', 'image': 'debian-13-pve'},
+            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'preset': 'vm-large', 'image': 'pve-9'},
             {'name': 'test', 'type': 'vm', 'vmid': 99002, 'preset': 'vm-small', 'image': 'debian-12', 'parent': 'pve'},
         ], pattern='tiered')
         graph = ManifestGraph(manifest)
@@ -90,8 +90,8 @@ class TestManifestGraph:
 
     def test_three_level_chain(self):
         manifest = _make_manifest([
-            {'name': 'root', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve'},
-            {'name': 'leaf', 'type': 'pve', 'vmid': 99002, 'image': 'debian-13-pve', 'parent': 'root'},
+            {'name': 'root', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9'},
+            {'name': 'leaf', 'type': 'pve', 'vmid': 99002, 'image': 'pve-9', 'parent': 'root'},
             {'name': 'test', 'type': 'vm', 'vmid': 99003, 'image': 'debian-12', 'parent': 'leaf'},
         ], pattern='tiered')
         graph = ManifestGraph(manifest)
@@ -102,7 +102,7 @@ class TestManifestGraph:
 
     def test_get_node(self):
         manifest = _make_manifest([
-            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve'},
+            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9'},
             {'name': 'test', 'type': 'vm', 'vmid': 99002, 'image': 'debian-12', 'parent': 'pve'},
         ], pattern='tiered')
         graph = ManifestGraph(manifest)
@@ -134,7 +134,7 @@ class TestManifestGraphOrdering:
 
     def test_create_order_parents_before_children(self):
         manifest = _make_manifest([
-            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve'},
+            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9'},
             {'name': 'test', 'type': 'vm', 'vmid': 99002, 'image': 'debian-12', 'parent': 'pve'},
         ], pattern='tiered')
         graph = ManifestGraph(manifest)
@@ -145,7 +145,7 @@ class TestManifestGraphOrdering:
 
     def test_destroy_order_children_before_parents(self):
         manifest = _make_manifest([
-            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve'},
+            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9'},
             {'name': 'test', 'type': 'vm', 'vmid': 99002, 'image': 'debian-12', 'parent': 'pve'},
         ], pattern='tiered')
         graph = ManifestGraph(manifest)
@@ -156,8 +156,8 @@ class TestManifestGraphOrdering:
 
     def test_three_level_create_order(self):
         manifest = _make_manifest([
-            {'name': 'root', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve'},
-            {'name': 'leaf', 'type': 'pve', 'vmid': 99002, 'image': 'debian-13-pve', 'parent': 'root'},
+            {'name': 'root', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9'},
+            {'name': 'leaf', 'type': 'pve', 'vmid': 99002, 'image': 'pve-9', 'parent': 'root'},
             {'name': 'test', 'type': 'vm', 'vmid': 99003, 'image': 'debian-12', 'parent': 'leaf'},
         ], pattern='tiered')
         graph = ManifestGraph(manifest)
@@ -168,8 +168,8 @@ class TestManifestGraphOrdering:
 
     def test_three_level_destroy_order(self):
         manifest = _make_manifest([
-            {'name': 'root', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve'},
-            {'name': 'leaf', 'type': 'pve', 'vmid': 99002, 'image': 'debian-13-pve', 'parent': 'root'},
+            {'name': 'root', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9'},
+            {'name': 'leaf', 'type': 'pve', 'vmid': 99002, 'image': 'pve-9', 'parent': 'root'},
             {'name': 'test', 'type': 'vm', 'vmid': 99003, 'image': 'debian-12', 'parent': 'leaf'},
         ], pattern='tiered')
         graph = ManifestGraph(manifest)
@@ -193,7 +193,7 @@ class TestManifestGraphOrdering:
     def test_branching_topology(self):
         """Test tree with one parent and two children."""
         manifest = _make_manifest([
-            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve'},
+            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9'},
             {'name': 'vm1', 'type': 'vm', 'vmid': 99002, 'image': 'debian-12', 'parent': 'pve'},
             {'name': 'vm2', 'type': 'vm', 'vmid': 99003, 'image': 'debian-12', 'parent': 'pve'},
         ], pattern='tiered')
@@ -214,7 +214,7 @@ class TestManifestGraphExtractSubtree:
     def test_extract_simple_subtree(self):
         """Extract single child from PVE parent."""
         manifest = _make_manifest([
-            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve'},
+            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9'},
             {'name': 'test', 'type': 'vm', 'vmid': 99002, 'image': 'debian-12', 'parent': 'pve'},
         ], pattern='tiered')
         graph = ManifestGraph(manifest)
@@ -229,7 +229,7 @@ class TestManifestGraphExtractSubtree:
     def test_extract_multi_child_subtree(self):
         """Extract multiple children from PVE parent."""
         manifest = _make_manifest([
-            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve'},
+            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9'},
             {'name': 'vm1', 'type': 'vm', 'vmid': 99002, 'image': 'debian-12', 'parent': 'pve'},
             {'name': 'vm2', 'type': 'vm', 'vmid': 99003, 'image': 'debian-12', 'parent': 'pve'},
         ], pattern='tiered')
@@ -246,8 +246,8 @@ class TestManifestGraphExtractSubtree:
     def test_extract_deep_subtree(self):
         """Extract 3-level chain: direct children become roots, deeper keep parents."""
         manifest = _make_manifest([
-            {'name': 'root', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve'},
-            {'name': 'leaf', 'type': 'pve', 'vmid': 99002, 'image': 'debian-13-pve', 'parent': 'root'},
+            {'name': 'root', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9'},
+            {'name': 'leaf', 'type': 'pve', 'vmid': 99002, 'image': 'pve-9', 'parent': 'root'},
             {'name': 'test', 'type': 'vm', 'vmid': 99003, 'image': 'debian-12', 'parent': 'leaf'},
         ], pattern='tiered')
         graph = ManifestGraph(manifest)
@@ -287,7 +287,7 @@ class TestManifestGraphExtractSubtree:
             'name': 'original',
             'pattern': 'tiered',
             'nodes': [
-                {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve'},
+                {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9'},
                 {'name': 'test', 'type': 'vm', 'vmid': 99002, 'image': 'debian-12', 'parent': 'pve'},
             ],
             'settings': {
@@ -306,8 +306,8 @@ class TestManifestGraphExtractSubtree:
     def test_extract_subtree_builds_valid_graph(self):
         """Extracted subtree should be usable to build a new ManifestGraph."""
         manifest = _make_manifest([
-            {'name': 'root', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve'},
-            {'name': 'leaf', 'type': 'pve', 'vmid': 99002, 'image': 'debian-13-pve', 'parent': 'root'},
+            {'name': 'root', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9'},
+            {'name': 'leaf', 'type': 'pve', 'vmid': 99002, 'image': 'pve-9', 'parent': 'root'},
             {'name': 'test', 'type': 'vm', 'vmid': 99003, 'image': 'debian-12', 'parent': 'leaf'},
         ], pattern='tiered')
         graph = ManifestGraph(manifest)
@@ -335,7 +335,7 @@ class TestManifestGraphParentIPKey:
 
     def test_child_uses_parent_ip(self):
         manifest = _make_manifest([
-            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'debian-13-pve'},
+            {'name': 'pve', 'type': 'pve', 'vmid': 99001, 'image': 'pve-9'},
             {'name': 'test', 'type': 'vm', 'vmid': 99002, 'image': 'debian-12', 'parent': 'pve'},
         ], pattern='tiered')
         graph = ManifestGraph(manifest)

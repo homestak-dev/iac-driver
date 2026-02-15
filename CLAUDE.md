@@ -254,7 +254,7 @@ nodes:
   - name: root-pve
     type: pve
     preset: vm-large
-    image: debian-13-pve
+    image: pve-9
     vmid: 99011
     disk: 64
   - name: edge

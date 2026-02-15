@@ -143,7 +143,7 @@ disk: 20
     # Create template
     (tmp_path / 'vms/debian-12.yaml').write_text("""
 preset: vm-small
-image: debian-12-custom.img
+image: debian-12.img
 packages:
   - qemu-guest-agent
 """)

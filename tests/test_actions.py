@@ -325,7 +325,7 @@ class TestDownloadGitHubReleaseAction:
 
         action = DownloadGitHubReleaseAction(
             name='test',
-            asset_name='debian-12-custom.qcow2',
+            asset_name='debian-12.qcow2',
             host_key='inner_ip'
         )
 
@@ -373,7 +373,7 @@ class TestDownloadGitHubReleaseAction:
 
         action = DownloadGitHubReleaseAction(
             name='test',
-            asset_name='debian-13-pve.qcow2',
+            asset_name='pve-9.qcow2',
             host_key='inner_ip'
         )
 
@@ -387,7 +387,7 @@ class TestDownloadGitHubReleaseAction:
                 (0, '', ''),      # mkdir
                 (1, '', 'curl: (22) 404'),  # direct download fails
                 # _get_split_parts returns parts
-                (0, 'debian-13-pve.qcow2.partaa\ndebian-13-pve.qcow2.partab\n', ''),
+                (0, 'pve-9.qcow2.partaa\npve-9.qcow2.partab\n', ''),
                 (0, '', ''),      # download partaa
                 (0, '', ''),      # download partab
                 (0, '', ''),      # cat reassemble
@@ -406,7 +406,7 @@ class TestDownloadGitHubReleaseAction:
 
         action = DownloadGitHubReleaseAction(
             name='test',
-            asset_name='debian-13-pve.qcow2',
+            asset_name='pve-9.qcow2',
             host_key='inner_ip'
         )
 
@@ -420,7 +420,7 @@ class TestDownloadGitHubReleaseAction:
                 (0, '', ''),      # mkdir
                 (1, '', 'curl: (22) 404'),  # direct download fails
                 # _get_split_parts returns parts
-                (0, 'debian-13-pve.qcow2.partaa\ndebian-13-pve.qcow2.partab\n', ''),
+                (0, 'pve-9.qcow2.partaa\npve-9.qcow2.partab\n', ''),
                 (0, '', ''),      # download partaa succeeds
                 (1, '', 'curl: (22) 404'),  # download partab fails
                 (0, '', ''),      # cleanup (rm parts)
@@ -489,7 +489,7 @@ class TestDownloadGitHubReleaseAction:
 
         action = DownloadGitHubReleaseAction(
             name='test',
-            asset_name='debian-12-custom.qcow2',
+            asset_name='debian-12.qcow2',
             host_key='inner_ip',
             rename_ext='.img'
         )
@@ -509,7 +509,7 @@ class TestDownloadGitHubReleaseAction:
             result = action.run(config, context)
 
         assert result.success is True
-        assert 'debian-12-custom.img' in result.message
+        assert 'debian-12.img' in result.message
 
     def test_get_split_parts_returns_sorted_list(self):
         """_get_split_parts should return sorted list of part filenames."""

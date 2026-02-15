@@ -19,20 +19,17 @@ from actions.pve_lifecycle import _image_to_asset_name
 class TestImageToAssetName:
     """Tests for _image_to_asset_name helper."""
 
-    def test_plain_debian_12(self):
-        assert _image_to_asset_name('debian-12') == 'debian-12-custom.qcow2'
+    def test_debian_12(self):
+        assert _image_to_asset_name('debian-12') == 'debian-12.qcow2'
 
-    def test_plain_debian_13(self):
-        assert _image_to_asset_name('debian-13') == 'debian-13-custom.qcow2'
-
-    def test_already_custom(self):
-        assert _image_to_asset_name('debian-12-custom') == 'debian-12-custom.qcow2'
+    def test_debian_13(self):
+        assert _image_to_asset_name('debian-13') == 'debian-13.qcow2'
 
     def test_pve_image(self):
-        assert _image_to_asset_name('debian-13-pve') == 'debian-13-pve.qcow2'
+        assert _image_to_asset_name('pve-9') == 'pve-9.qcow2'
 
     def test_unknown_image(self):
-        assert _image_to_asset_name('ubuntu-22') == 'ubuntu-22-custom.qcow2'
+        assert _image_to_asset_name('ubuntu-22') == 'ubuntu-22.qcow2'
 
 
 class TestEnsureImageAction:
@@ -42,7 +39,7 @@ class TestEnsureImageAction:
     def test_image_exists(self, mock_ssh):
         from actions.pve_lifecycle import EnsureImageAction
 
-        mock_ssh.return_value = (0, '/var/lib/vz/template/iso/debian-12-custom.img\n', '')
+        mock_ssh.return_value = (0, '/var/lib/vz/template/iso/debian-12.img\n', '')
 
         action = EnsureImageAction(name='test-ensure')
         config = MagicMock()

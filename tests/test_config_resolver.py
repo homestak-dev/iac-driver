@@ -245,7 +245,7 @@ class TestSpecServerResolution:
             vm_name='inline-vm',
             vmid=99900,
             vm_preset='vm-small',
-            image='debian-12-custom.img'
+            image='debian-12.img'
         )
 
         assert 'spec_server' in config
@@ -260,7 +260,7 @@ class TestSpecServerResolution:
             vm_name='inline-vm',
             vmid=99900,
             vm_preset='vm-small',
-            image='debian-12-custom.img'
+            image='debian-12.img'
         )
 
         assert config['spec_server'] == 'https://10.0.12.138:44443'
@@ -274,7 +274,7 @@ class TestSpecServerResolution:
             vm_name='inline-vm',
             vmid=99900,
             vm_preset='vm-small',
-            image='debian-12-custom.img'
+            image='debian-12.img'
         )
 
         assert config['spec_server'] == 'https://controller:44443'
@@ -291,7 +291,7 @@ class TestProvisioningTokenResolution:
             vm_name='inline-vm',
             vmid=99900,
             vm_preset='vm-small',
-            image='debian-12-custom.img',
+            image='debian-12.img',
             spec='base',
         )
 
@@ -311,7 +311,7 @@ class TestProvisioningTokenResolution:
             vm_name='inline-vm',
             vmid=99900,
             vm_preset='vm-small',
-            image='debian-12-custom.img',
+            image='debian-12.img',
             # No spec parameter
         )
 
@@ -330,7 +330,7 @@ class TestProvisioningTokenResolution:
             vm_name='inline-vm',
             vmid=99900,
             vm_preset='vm-small',
-            image='debian-12-custom.img',
+            image='debian-12.img',
             spec='base',
         )
 
