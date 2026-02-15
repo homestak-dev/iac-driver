@@ -18,6 +18,12 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 ### Removed
 - Remove dead `SyncDriverCodeAction` — serve-repos (`_working` branch) makes rsync-based code sync redundant (#212)
 
+### Refactored
+- Fix all mypy errors (40) and pylint warnings (97) — `make lint` now passes clean (#214)
+- Extract `_handle_scenario_verb()`, `_resolve_host()`, `_setup_context()`, `_handle_results()` from 475-line `main()` in cli.py (#214)
+- Split `test_actions.py` (27 tests) into per-module files: `test_actions_ssh.py`, `test_actions_file.py`, `test_actions_proxmox.py` (#214)
+- Add unit tests for TofuApplyAction, TofuDestroyAction, AnsiblePlaybookAction, EnsurePVEAction (31 new tests, 579→610 total) (#215)
+
 ### Fixed
 - Reduce git dumb HTTP 404 noise — downgrade expected `/objects/` 404s to DEBUG log level (#205)
 - Fix pull-mode spec_server in nested PVE — use `HOMESTAK_SOURCE` env var so VMs reach the local server, not the outer host from site.yaml

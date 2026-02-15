@@ -240,47 +240,239 @@ def print_usage():
     print("  ./run.sh scenario run pve-setup -H father")
 
 
+def _handle_scenario_verb() -> tuple[bool, int | None]:
+    """Rewrite 'scenario run <name>' to '--scenario <name>' format.
+
+    Mutates sys.argv in place when the first argument is 'scenario'.
+
+    Returns:
+        (from_verb, exit_code): from_verb is True if scenario verb was processed.
+        If exit_code is not None, main() should return it.
+    """
+    if len(sys.argv) <= 1 or sys.argv[1] != 'scenario':
+        return (False, None)
+
+    # Handle 'scenario run <name>' (new) or 'scenario <name>' (old)
+    if len(sys.argv) >= 3 and sys.argv[2] == 'run':
+        # New syntax: scenario run pve-setup -H father
+        if len(sys.argv) < 4 or sys.argv[3].startswith('-'):
+            print("Usage: ./run.sh scenario run <name> [options]")
+            print("\nRun './run.sh scenario run --help' to list available scenarios.")
+            return (True, 1 if len(sys.argv) < 4 else 0)
+        sys.argv = [sys.argv[0], '--scenario', sys.argv[3]] + sys.argv[4:]
+    elif len(sys.argv) < 3 or sys.argv[2].startswith('-'):
+        # Show scenario list or help
+        if '--help' in sys.argv or '-h' in sys.argv:
+            # Rewrite as --list-scenarios for help
+            sys.argv = [sys.argv[0], '--list-scenarios']
+        else:
+            print("Usage: ./run.sh scenario run <name> [options]")
+            print("\nRun './run.sh scenario --help' to list available scenarios.")
+            return (True, 1 if len(sys.argv) < 3 else 0)
+    else:
+        # Legacy syntax: scenario pve-setup -H father (still supported)
+        sys.argv = [sys.argv[0], '--scenario', sys.argv[2]] + sys.argv[3:]
+
+    return (True, None)
+
+
+def _resolve_host(args, scenario, available_hosts):
+    """Resolve HostConfig from CLI arguments.
+
+    Handles raw IP, named host, local auto-detect, and user@ syntax.
+
+    Returns:
+        (config, exit_code): HostConfig on success (exit_code=None),
+        or (None, exit_code) on error.
+    """
+    requires_root = getattr(scenario, 'requires_root', False)
+    requires_host_config = getattr(scenario, 'requires_host_config', True)
+
+    # Check root requirement for --local mode
+    if args.local and requires_root and os.getuid() != 0:
+        print(f"Error: Scenario '{args.scenario}' requires root privileges in --local mode")
+        print("Run with sudo or as root")
+        return (None, 1)
+
+    # Handle --host resolution (supports user@host syntax)
+    host_arg = args.host
+    ssh_user_override = None
+
+    if host_arg:
+        ssh_user_override, host = _parse_host_arg(host_arg)
+    else:
+        host = None
+
+    # Auto-detect host from hostname when --local and no --host
+    if args.local and not host:
+        hostname = socket.gethostname()
+        if hostname in available_hosts:
+            host = hostname
+            logger.info(f"Auto-detected host from hostname: {host}")
+        elif not requires_host_config:
+            # Scenario doesn't need host config, proceed without
+            host = None
+            logger.debug(f"No host config needed for scenario '{args.scenario}'")
+        else:
+            print(f"Error: Could not auto-detect host. Hostname '{hostname}' not in available hosts.")
+            print(f"Available hosts: {', '.join(available_hosts) if available_hosts else 'none configured'}")
+            print("\nEither:")
+            print(f"  1. Create nodes/{hostname}.yaml in site-config")
+            print("  2. Specify --host explicitly")
+            return (None, 1)
+
+    # Validate --host is provided for scenarios that need it (when not in --local mode)
+    if not args.local and requires_host_config and not host:
+        print(f"Error: --host is required for scenario '{args.scenario}'")
+        print(f"Available hosts: {', '.join(available_hosts) if available_hosts else 'none configured'}")
+        print(f"\nUsage: ./run.sh --scenario {args.scenario} --host <host>")
+        return (None, 1)
+
+    # Validate --host value if provided
+    is_raw_ip = host and _is_ip_address(host)
+    if host and not is_raw_ip and host not in available_hosts:
+        print(f"Error: Unknown host '{host}'")
+        print(f"Available hosts: {', '.join(available_hosts) if available_hosts else 'none configured'}")
+        return (None, 1)
+
+    # Deprecation warnings for --remote and --vm-ip
+    if args.remote:
+        logger.warning("--remote is deprecated. Use: -H %s", args.remote)
+    if args.vm_ip:
+        logger.warning("--vm-ip is deprecated. Use: -H %s", args.vm_ip)
+
+    # Load config (use local config with auto-derived values for --local)
+    if is_raw_ip:
+        assert host is not None  # guaranteed by _is_ip_address check
+        config = _create_ip_config(host, ssh_user=ssh_user_override)
+        logger.info(f"Using raw IP: {host} (no site-config lookup)")
+    elif host:
+        config = load_host_config(host)
+    else:
+        # Create local config with auto-derived API endpoint and token
+        config = create_local_config()
+
+    # Apply user@ override if specified
+    if ssh_user_override and not is_raw_ip:
+        config.ssh_user = ssh_user_override
+
+    # Override packer release if specified (CLI takes precedence)
+    if args.packer_release:
+        config.packer_release = args.packer_release
+        logger.info(f"Using packer release override: {args.packer_release}")
+
+    return (config, None)
+
+
+def _setup_context(args, orchestrator) -> int | None:
+    """Populate orchestrator context from CLI arguments.
+
+    Loads context file, pre-populates from args (inner_ip, local_mode, etc).
+
+    Returns:
+        exit_code on error, None on success.
+    """
+    # Load context from file if specified and exists
+    if args.context_file and args.context_file.exists():
+        try:
+            with open(args.context_file, encoding="utf-8") as f:
+                loaded_context = json.load(f)
+            orchestrator.context.update(loaded_context)
+            logger.info(f"Loaded context from {args.context_file}: {list(loaded_context.keys())}")
+        except json.JSONDecodeError as e:
+            print(f"Error: Invalid JSON in context file {args.context_file}: {e}")
+            return 1
+        except Exception as e:
+            print(f"Error reading context file {args.context_file}: {e}")
+            return 1
+
+    # Pre-populate context if inner-ip provided
+    if args.inner_ip:
+        orchestrator.context['inner_ip'] = args.inner_ip
+
+    # Pre-populate context for pve-setup and user-setup scenarios
+    if args.local:
+        orchestrator.context['local_mode'] = True
+    if args.remote:
+        orchestrator.context['remote_ip'] = args.remote
+
+    # Pre-populate context for bootstrap-install scenario
+    if args.vm_ip:
+        orchestrator.context['vm_ip'] = args.vm_ip
+    if args.homestak_user:
+        orchestrator.context['homestak_user'] = args.homestak_user
+
+    # Pre-populate context with VM ID overrides
+    if args.vm_id:
+        vm_id_overrides = {}
+        for override in args.vm_id:
+            if '=' not in override:
+                print(f"Error: Invalid --vm-id format '{override}'. Expected NAME=VMID (e.g., test=99990)")
+                return 1
+            name, vmid_str = override.split('=', 1)
+            if not name:
+                print(f"Error: Invalid --vm-id format '{override}'. VM name cannot be empty.")
+                return 1
+            try:
+                vmid = int(vmid_str)
+            except ValueError:
+                print(f"Error: Invalid --vm-id format '{override}'. VMID must be an integer.")
+                return 1
+            vm_id_overrides[name] = vmid
+        orchestrator.context['vm_id_overrides'] = vm_id_overrides
+        logger.info(f"VM ID overrides: {vm_id_overrides}")
+
+    return None
+
+
+def _handle_results(args, orchestrator, success: bool) -> int:
+    """Handle JSON output, context saving, and return exit code."""
+    # Output JSON if requested
+    if args.json_output:
+        report_data = orchestrator.report.to_dict(orchestrator.context)
+        print(json.dumps(report_data, indent=2))
+
+    # Save context to file if specified
+    if args.context_file:
+        try:
+            # Convert any non-serializable values to strings
+            serializable_context = {}
+            for key, value in orchestrator.context.items():
+                try:
+                    json.dumps(value)
+                    serializable_context[key] = value
+                except (TypeError, ValueError):
+                    serializable_context[key] = str(value)
+
+            with open(args.context_file, 'w', encoding="utf-8") as f:
+                json.dump(serializable_context, f, indent=2)
+            logger.info(f"Saved context to {args.context_file}: {list(serializable_context.keys())}")
+        except Exception as e:
+            logger.warning(f"Failed to save context to {args.context_file}: {e}")
+
+    return 0 if success else 1
+
+
 def main():
     """CLI entry point — dispatch to noun-action handlers or legacy scenario runner."""
-    from_verb = False
+    # Handle scenario verb syntax (rewrites sys.argv if 'scenario' command)
+    from_verb, exit_code = _handle_scenario_verb()
+    if exit_code is not None:
+        return exit_code
 
     if len(sys.argv) > 1:
         first_arg = sys.argv[1]
 
-        # Handle 'scenario' noun: rewrite to legacy --scenario format
-        if first_arg == 'scenario':
-            from_verb = True
-            # Handle 'scenario run <name>' (new) or 'scenario <name>' (old)
-            if len(sys.argv) >= 3 and sys.argv[2] == 'run':
-                # New syntax: scenario run pve-setup -H father
-                if len(sys.argv) < 4 or sys.argv[3].startswith('-'):
-                    print("Usage: ./run.sh scenario run <name> [options]")
-                    print("\nRun './run.sh scenario run --help' to list available scenarios.")
-                    return 1 if len(sys.argv) < 4 else 0
-                sys.argv = [sys.argv[0], '--scenario', sys.argv[3]] + sys.argv[4:]
-            elif len(sys.argv) < 3 or sys.argv[2].startswith('-'):
-                # Show scenario list or help
-                if '--help' in sys.argv or '-h' in sys.argv:
-                    # Rewrite as --list-scenarios for help
-                    sys.argv = [sys.argv[0], '--list-scenarios']
-                else:
-                    print("Usage: ./run.sh scenario run <name> [options]")
-                    print("\nRun './run.sh scenario --help' to list available scenarios.")
-                    return 1 if len(sys.argv) < 3 else 0
-            else:
-                # Legacy syntax: scenario pve-setup -H father (still supported)
-                sys.argv = [sys.argv[0], '--scenario', sys.argv[2]] + sys.argv[3:]
-            # Fall through to legacy scenario parser below
+        # Handle other nouns (manifest, server, config, token) — not scenario
+        if not from_verb:
+            if first_arg in NOUN_COMMANDS:
+                return dispatch_noun(first_arg, sys.argv[2:])
 
-        # Handle other nouns (manifest, server, config, token)
-        elif first_arg in NOUN_COMMANDS:
-            return dispatch_noun(first_arg, sys.argv[2:])
-
-        # Show usage when no recognized command
-        elif not first_arg.startswith('-'):
-            print(f"Error: Unknown command '{first_arg}'")
-            print_usage()
-            return 1
+            # Show usage when no recognized command
+            if not first_arg.startswith('-'):
+                print(f"Error: Unknown command '{first_arg}'")
+                print_usage()
+                return 1
 
     # Show top-level usage when no arguments
     if len(sys.argv) == 1:
@@ -498,82 +690,10 @@ def main():
     # Get scenario to check its requirements
     scenario = get_scenario(args.scenario)
 
-    # Check scenario attributes (with defaults)
-    requires_root = getattr(scenario, 'requires_root', False)
-    requires_host_config = getattr(scenario, 'requires_host_config', True)
-
-    # Check root requirement for --local mode
-    if args.local and requires_root and os.getuid() != 0:
-        print(f"Error: Scenario '{args.scenario}' requires root privileges in --local mode")
-        print("Run with sudo or as root")
-        return 1
-
-    # Handle --host resolution (supports user@host syntax)
-    host_arg = args.host
-    ssh_user_override = None
-
-    if host_arg:
-        ssh_user_override, host = _parse_host_arg(host_arg)
-    else:
-        host = None
-
-    # Auto-detect host from hostname when --local and no --host
-    if args.local and not host:
-        hostname = socket.gethostname()
-        if hostname in available_hosts:
-            host = hostname
-            logger.info(f"Auto-detected host from hostname: {host}")
-        elif not requires_host_config:
-            # Scenario doesn't need host config, proceed without
-            host = None
-            logger.debug(f"No host config needed for scenario '{args.scenario}'")
-        else:
-            print(f"Error: Could not auto-detect host. Hostname '{hostname}' not in available hosts.")
-            print(f"Available hosts: {', '.join(available_hosts) if available_hosts else 'none configured'}")
-            print("\nEither:")
-            print(f"  1. Create nodes/{hostname}.yaml in site-config")
-            print("  2. Specify --host explicitly")
-            return 1
-
-    # Validate --host is provided for scenarios that need it (when not in --local mode)
-    if not args.local and requires_host_config and not host:
-        print(f"Error: --host is required for scenario '{args.scenario}'")
-        print(f"Available hosts: {', '.join(available_hosts) if available_hosts else 'none configured'}")
-        print(f"\nUsage: ./run.sh --scenario {args.scenario} --host <host>")
-        return 1
-
-    # Validate --host value if provided
-    is_raw_ip = host and _is_ip_address(host)
-    if host and not is_raw_ip and host not in available_hosts:
-        print(f"Error: Unknown host '{host}'")
-        print(f"Available hosts: {', '.join(available_hosts) if available_hosts else 'none configured'}")
-        return 1
-
-    # Deprecation warnings for --remote and --vm-ip
-    if args.remote:
-        logger.warning("--remote is deprecated. Use: -H %s", args.remote)
-    if args.vm_ip:
-        logger.warning("--vm-ip is deprecated. Use: -H %s", args.vm_ip)
-
-    # Load config (use local config with auto-derived values for --local)
-    if is_raw_ip:
-        assert host is not None  # guaranteed by _is_ip_address check
-        config = _create_ip_config(host, ssh_user=ssh_user_override)
-        logger.info(f"Using raw IP: {host} (no site-config lookup)")
-    elif host:
-        config = load_host_config(host)
-    else:
-        # Create local config with auto-derived API endpoint and token
-        config = create_local_config()
-
-    # Apply user@ override if specified
-    if ssh_user_override and not is_raw_ip:
-        config.ssh_user = ssh_user_override
-
-    # Override packer release if specified (CLI takes precedence)
-    if args.packer_release:
-        config.packer_release = args.packer_release
-        logger.info(f"Using packer release override: {args.packer_release}")
+    # Resolve host configuration
+    config, exit_code = _resolve_host(args, scenario, available_hosts)
+    if exit_code is not None:
+        return exit_code
 
     # Load manifest for recursive-pve scenarios
     if args.scenario and 'recursive-pve' in args.scenario:
@@ -631,55 +751,10 @@ def main():
         dry_run=args.dry_run
     )
 
-    # Load context from file if specified and exists
-    if args.context_file and args.context_file.exists():
-        try:
-            with open(args.context_file, encoding="utf-8") as f:
-                loaded_context = json.load(f)
-            orchestrator.context.update(loaded_context)
-            logger.info(f"Loaded context from {args.context_file}: {list(loaded_context.keys())}")
-        except json.JSONDecodeError as e:
-            print(f"Error: Invalid JSON in context file {args.context_file}: {e}")
-            return 1
-        except Exception as e:
-            print(f"Error reading context file {args.context_file}: {e}")
-            return 1
-
-    # Pre-populate context if inner-ip provided
-    if args.inner_ip:
-        orchestrator.context['inner_ip'] = args.inner_ip
-
-    # Pre-populate context for pve-setup and user-setup scenarios
-    if args.local:
-        orchestrator.context['local_mode'] = True
-    if args.remote:
-        orchestrator.context['remote_ip'] = args.remote
-
-    # Pre-populate context for bootstrap-install scenario
-    if args.vm_ip:
-        orchestrator.context['vm_ip'] = args.vm_ip
-    if args.homestak_user:
-        orchestrator.context['homestak_user'] = args.homestak_user
-
-    # Pre-populate context with VM ID overrides
-    if args.vm_id:
-        vm_id_overrides = {}
-        for override in args.vm_id:
-            if '=' not in override:
-                print(f"Error: Invalid --vm-id format '{override}'. Expected NAME=VMID (e.g., test=99990)")
-                return 1
-            name, vmid_str = override.split('=', 1)
-            if not name:
-                print(f"Error: Invalid --vm-id format '{override}'. VM name cannot be empty.")
-                return 1
-            try:
-                vmid = int(vmid_str)
-            except ValueError:
-                print(f"Error: Invalid --vm-id format '{override}'. VMID must be an integer.")
-                return 1
-            vm_id_overrides[name] = vmid
-        orchestrator.context['vm_id_overrides'] = vm_id_overrides
-        logger.info(f"VM ID overrides: {vm_id_overrides}")
+    # Setup context from CLI arguments
+    exit_code = _setup_context(args, orchestrator)
+    if exit_code is not None:
+        return exit_code
 
     # Check for confirmation on destructive scenarios
     if getattr(scenario, 'requires_confirmation', False) and not args.yes:
@@ -692,31 +767,7 @@ def main():
             return 1
 
     success = orchestrator.run()
-
-    # Output JSON if requested
-    if args.json_output:
-        report_data = orchestrator.report.to_dict(orchestrator.context)
-        print(json.dumps(report_data, indent=2))
-
-    # Save context to file if specified
-    if args.context_file:
-        try:
-            # Convert any non-serializable values to strings
-            serializable_context = {}
-            for key, value in orchestrator.context.items():
-                try:
-                    json.dumps(value)
-                    serializable_context[key] = value
-                except (TypeError, ValueError):
-                    serializable_context[key] = str(value)
-
-            with open(args.context_file, 'w', encoding="utf-8") as f:
-                json.dump(serializable_context, f, indent=2)
-            logger.info(f"Saved context to {args.context_file}: {list(serializable_context.keys())}")
-        except Exception as e:
-            logger.warning(f"Failed to save context to {args.context_file}: {e}")
-
-    return 0 if success else 1
+    return _handle_results(args, orchestrator, success)
 
 
 if __name__ == '__main__':
