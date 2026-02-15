@@ -427,6 +427,7 @@ class NodeExecutor:
             host_attr=host_key,
             scenario_args=['--local', '--skip-preflight'],
             timeout=1200,
+            ssh_user=self.config.automation_user,
         )))
 
         # 6. Configure vmbr0 bridge
