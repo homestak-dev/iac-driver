@@ -17,7 +17,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional, List, Dict, Tuple
 
-from server.auth import validate_repo_token, AuthError
+from server.auth import validate_repo_token
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +102,7 @@ class RepoManager:
             subprocess.CalledProcessError: If git commands fail
         """
         repo_path = self.extra_paths.get(repo_name, self.repos_dir / repo_name)
+        assert self.serve_dir is not None  # Set by prepare() before calling this
         bare_path = self.serve_dir / f"{repo_name}.git"
 
         # Check source exists
@@ -120,6 +121,7 @@ class RepoManager:
             ["git", "-C", str(repo_path), "status", "--porcelain"],
             capture_output=True,
             text=True,
+            check=False,
         )
         changes = len(result.stdout.strip().splitlines()) if result.stdout else 0
 
@@ -274,8 +276,7 @@ def handle_repo_request(
     # Check if this is a git protocol path or raw file request
     if _is_git_protocol_path(file_path):
         return _serve_git_file(repo_path, file_path)
-    else:
-        return _serve_raw_file(repo_path, file_path)
+    return _serve_raw_file(repo_path, file_path)
 
 
 def _is_git_protocol_path(path: str) -> bool:
@@ -332,6 +333,7 @@ def _serve_raw_file(repo_path: Path, file_path: str) -> Tuple[bytes, int, str]:
             ["git", "-C", str(repo_path), "show", f"_working:{file_path}"],
             capture_output=True,
             timeout=5,
+            check=False,
         )
         if result.returncode != 0:
             # Try HEAD as fallback
@@ -339,6 +341,7 @@ def _serve_raw_file(repo_path: Path, file_path: str) -> Tuple[bytes, int, str]:
                 ["git", "-C", str(repo_path), "show", f"HEAD:{file_path}"],
                 capture_output=True,
                 timeout=5,
+                check=False,
             )
         if result.returncode != 0:
             return _error_json("E200", f"File not found: {file_path}"), 404, "application/json"

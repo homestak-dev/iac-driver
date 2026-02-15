@@ -78,13 +78,13 @@ def verify_provisioning_token(
             payload_b64.encode(),
             hashlib.sha256,
         ).digest()
-    except ValueError:
-        raise AuthError("E500", "Invalid signing key configuration", 500)
+    except ValueError as exc:
+        raise AuthError("E500", "Invalid signing key configuration", 500) from exc
 
     try:
         actual_sig = _base64url_decode(sig_b64)
-    except Exception:
-        raise AuthError("E300", "Malformed token: invalid signature encoding", 400)
+    except Exception as exc:
+        raise AuthError("E300", "Malformed token: invalid signature encoding", 400) from exc
 
     if not hmac_mod.compare_digest(expected_sig, actual_sig):
         raise AuthError("E301", "Invalid token signature", 401)
@@ -92,8 +92,8 @@ def verify_provisioning_token(
     # 3. Decode payload
     try:
         claims = json.loads(_base64url_decode(payload_b64))
-    except Exception:
-        raise AuthError("E300", "Malformed token: invalid payload encoding", 400)
+    except Exception as exc:
+        raise AuthError("E300", "Malformed token: invalid payload encoding", 400) from exc
 
     # 4. Validate version
     if claims.get("v") != 1:
@@ -111,7 +111,8 @@ def verify_provisioning_token(
             401,
         )
 
-    return claims
+    result: dict = claims
+    return result
 
 
 def validate_repo_token(

@@ -17,7 +17,6 @@ from server.daemon import (
     daemonize,
     stop_daemon,
     check_status,
-    get_pid_file,
     DEFAULT_LOG_FILE,
 )
 from resolver.spec_resolver import SpecResolver

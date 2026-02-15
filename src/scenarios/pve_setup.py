@@ -29,7 +29,7 @@ class PVESetup:
     requires_host_config = False
     expected_runtime = 180  # ~3 min (skip if PVE already installed)
 
-    def get_phases(self, config: HostConfig) -> list[tuple[str, object, str]]:
+    def get_phases(self, _config: HostConfig) -> list[tuple[str, object, str]]:
         """Return phases for PVE setup.
 
         Uses local or remote actions based on context:
@@ -47,6 +47,7 @@ class _EnsurePVEPhase:
     """Phase that ensures PVE is installed locally or remotely."""
 
     def run(self, config: HostConfig, context: dict):
+        """Ensure PVE is installed locally or remotely."""
         start = time.time()
 
         if context.get('local_mode'):
@@ -55,7 +56,8 @@ class _EnsurePVEPhase:
                 ['systemctl', 'is-active', 'pveproxy'],
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
+                check=False
             )
             if result.returncode == 0 and 'active' in result.stdout:
                 return ActionResult(
@@ -93,37 +95,38 @@ class _EnsurePVEPhase:
                 message="PVE installed successfully",
                 duration=time.time() - start
             )
-        else:
-            # Remote mode - use EnsurePVEAction
-            remote_ip = context.get('remote_ip') or config.ssh_host
-            if not remote_ip:
-                return ActionResult(
-                    success=False,
-                    message="No target host: use --local, --remote <IP>, or configure ssh_host",
-                    duration=time.time() - start
-                )
-            context['remote_ip'] = remote_ip
 
-            # Wait for SSH first
-            if not wait_for_ssh(remote_ip, timeout=120):
-                return ActionResult(
-                    success=False,
-                    message=f"SSH not available on {remote_ip}",
-                    duration=time.time() - start
-                )
-
-            action = EnsurePVEAction(
-                name='ensure-pve-remote',
-                host_key='remote_ip',
-                pve_hostname=config.name or 'pve',
+        # Remote mode - use EnsurePVEAction
+        remote_ip = context.get('remote_ip') or config.ssh_host
+        if not remote_ip:
+            return ActionResult(
+                success=False,
+                message="No target host: use --local, --remote <IP>, or configure ssh_host",
+                duration=time.time() - start
             )
-            return action.run(config, context)
+        context['remote_ip'] = remote_ip
+
+        # Wait for SSH first
+        if not wait_for_ssh(remote_ip, timeout=120):
+            return ActionResult(
+                success=False,
+                message=f"SSH not available on {remote_ip}",
+                duration=time.time() - start
+            )
+
+        action = EnsurePVEAction(
+            name='ensure-pve-remote',
+            host_key='remote_ip',
+            pve_hostname=config.name or 'pve',
+        )
+        return action.run(config, context)
 
 
 class _PVESetupPhase:
     """Phase that runs pve-setup.yml locally or remotely."""
 
     def run(self, config: HostConfig, context: dict):
+        """Run pve-setup.yml locally or remotely."""
         if context.get('local_mode'):
             action = AnsibleLocalPlaybookAction(
                 name='pve-setup-local',
@@ -133,7 +136,6 @@ class _PVESetupPhase:
             # Use remote_ip from context, or fall back to config.ssh_host
             remote_ip = context.get('remote_ip') or config.ssh_host
             if not remote_ip:
-                from common import ActionResult
                 return ActionResult(
                     success=False,
                     message="No target host: use --local, --remote <IP>, or configure ssh_host",
@@ -162,14 +164,14 @@ class _GenerateNodeConfigPhase:
     """
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
+        """Generate node config locally or remotely."""
         start = time.time()
 
         if context.get('local_mode'):
             return self._run_local(config, context, start)
-        else:
-            return self._run_remote(config, context, start)
+        return self._run_remote(config, context, start)
 
-    def _run_local(self, config: HostConfig, context: dict, start: float) -> ActionResult:
+    def _run_local(self, _config: HostConfig, _context: dict, start: float) -> ActionResult:
         """Generate node config locally."""
         try:
             site_config_dir = get_site_config_dir()
@@ -279,7 +281,6 @@ fi
         logger.info(f"Copying {remote_node_file} to {local_node_file}...")
 
         # Use scp to copy the file
-        import subprocess
         scp_cmd = [
             'scp',
             '-o', 'StrictHostKeyChecking=no',
@@ -288,7 +289,7 @@ fi
             str(local_node_file)
         ]
 
-        result = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=30, check=False)
         if result.returncode != 0:
             return ActionResult(
                 success=False,

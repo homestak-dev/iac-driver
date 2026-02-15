@@ -4,7 +4,6 @@ Provides self-signed certificate auto-generation with fingerprint output
 for TOFU (trust-on-first-use) verification.
 """
 
-import hashlib
 import logging
 import os
 import socket
@@ -12,7 +11,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +103,7 @@ def get_primary_ip() -> Optional[str]:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(0)
         sock.connect(("8.8.8.8", 80))
-        ip = sock.getsockname()[0]
+        ip: str = sock.getsockname()[0]
         sock.close()
         return ip
     except Exception:

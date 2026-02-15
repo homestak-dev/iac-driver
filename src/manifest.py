@@ -245,7 +245,7 @@ class Manifest:
         try:
             data = json.loads(json_str)
         except json.JSONDecodeError as e:
-            raise ConfigError(f"Invalid manifest JSON: {e}")
+            raise ConfigError(f"Invalid manifest JSON: {e}") from e
         return cls.from_dict(data)
 
 
@@ -371,7 +371,7 @@ class ManifestLoader:
             with open(path, encoding='utf-8') as f:
                 data = yaml.safe_load(f)
         except yaml.YAMLError as e:
-            raise ConfigError(f"Invalid YAML in manifest {path}: {e}")
+            raise ConfigError(f"Invalid YAML in manifest {path}: {e}") from e
 
         if not isinstance(data, dict):
             raise ConfigError(f"Manifest {path} must be a YAML object (dict)")

@@ -4,7 +4,7 @@ import fnmatch
 import json
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 from common import ActionResult, run_ssh, start_vm, wait_for_guest_agent
@@ -107,7 +107,7 @@ class LookupVMIPAction:
     pve_host: str = 'localhost'  # PVE host to query (default: local)
     timeout: int = 30  # Quick timeout since VM should already be running
 
-    def run(self, config: HostConfig, context: dict) -> ActionResult:
+    def run(self, config: HostConfig, _context: dict) -> ActionResult:
         """Query guest agent for VM IP."""
         start = time.time()
         ssh_user = config.ssh_user
@@ -278,7 +278,7 @@ class StartVMRemoteAction:
             )
 
         logger.info(f"[{self.name}] Starting VM {vm_id} on {pve_host}...")
-        rc, out, err = run_ssh(pve_host, f'qm start {vm_id}', timeout=60)
+        rc, _out, err = run_ssh(pve_host, f'qm start {vm_id}', timeout=60)
 
         if rc != 0:
             return ActionResult(
@@ -418,7 +418,7 @@ class DiscoverVMsAction:
 
             # Filter by vmid range (if specified)
             if self.vmid_range:
-                if not (self.vmid_range[0] <= vm_id <= self.vmid_range[1]):
+                if vm_id < self.vmid_range[0] or vm_id > self.vmid_range[1]:
                     continue
 
             discovered.append({

@@ -8,6 +8,7 @@ import logging
 import os
 import socket
 from pathlib import Path
+from typing import Optional
 
 import requests
 import urllib3
@@ -258,7 +259,7 @@ def validate_bootstrap_installed() -> list[str]:
     return errors
 
 
-def validate_site_init_complete(hostname: str = None) -> list[str]:
+def validate_site_init_complete(hostname: Optional[str] = None) -> list[str]:
     """Validate that site-init has been run.
 
     Args:
@@ -362,7 +363,7 @@ def validate_nested_virt() -> list[str]:
 # Provider Lockfile Validation
 # -----------------------------------------------------------------------------
 
-def parse_provider_version(providers_tf: Path) -> str:
+def parse_provider_version(providers_tf: Path) -> Optional[str]:
     """Extract provider version constraint from providers.tf.
 
     Parses HCL to find the bpg/proxmox provider version constraint:
@@ -398,7 +399,7 @@ def parse_provider_version(providers_tf: Path) -> str:
     return None
 
 
-def parse_lockfile_version(lockfile: Path) -> str:
+def parse_lockfile_version(lockfile: Path) -> Optional[str]:
     """Extract provider version from .terraform.lock.hcl.
 
     Parses HCL to find the bpg/proxmox provider version:
@@ -436,8 +437,8 @@ def parse_lockfile_version(lockfile: Path) -> str:
 
 def validate_provider_lockfiles(auto_fix: bool = True,
                                  verbose: bool = False,
-                                 _tofu_dir: Path = None,
-                                 _states_dir: Path = None) -> tuple[list[str], list[str]]:
+                                 _tofu_dir: Optional[Path] = None,
+                                 _states_dir: Optional[Path] = None) -> tuple[list[str], list[str]]:
     """Validate provider lockfiles are in sync with version constraints.
 
     Compares the version in tofu/envs/generic/providers.tf with cached
@@ -460,8 +461,8 @@ def validate_provider_lockfiles(auto_fix: bool = True,
     """
     from config import get_sibling_dir, get_base_dir
 
-    errors = []
-    fixed = []
+    errors: list[str] = []
+    fixed: list[str] = []
 
     # Get required version from providers.tf
     tofu_dir = _tofu_dir if _tofu_dir else get_sibling_dir('tofu')
@@ -506,6 +507,7 @@ def validate_provider_lockfiles(auto_fix: bool = True,
     for item in stale_lockfiles:
         if auto_fix:
             try:
+                assert isinstance(item['path'], Path)
                 item['path'].unlink()
                 msg = f"{item['env']} ({item['locked']} -> {item['required']})"
                 fixed.append(msg)
@@ -555,7 +557,7 @@ def validate_readiness(config, scenario_class, timeout: float = 10.0,
             api_token = api_token()
         errors.extend(validate_api_token(
             api_endpoint=config.api_endpoint,
-            api_token=api_token,
+            api_token=api_token or '',
             node_name=config.name
         ))
 
@@ -563,7 +565,7 @@ def validate_readiness(config, scenario_class, timeout: float = 10.0,
     if requires_host_ssh and not local_mode and not any("Cannot connect" in e for e in errors):
         ssh_host = getattr(config, 'ssh_host', None) or getattr(config, 'ip', None)
         errors.extend(validate_host_availability(
-            ssh_host=ssh_host,
+            ssh_host=ssh_host or '',
             node_name=config.name,
             check_ssh=requires_host_ssh,
             check_api=requires_api,
@@ -581,8 +583,8 @@ def validate_readiness(config, scenario_class, timeout: float = 10.0,
     return errors
 
 
-def run_preflight_checks(local_mode: bool = True,
-                         hostname: str = None,
+def run_preflight_checks(local_mode: bool = True,  # pylint: disable=unused-argument
+                         hostname: Optional[str] = None,
                          check_nested_virt: bool = False,
                          verbose: bool = False) -> tuple[bool, dict]:
     """Run standalone preflight checks.
@@ -602,7 +604,7 @@ def run_preflight_checks(local_mode: bool = True,
     from config import get_site_config_dir
     from config_resolver import ConfigResolver
 
-    results = {
+    results: dict[str, dict[str, list[str]]] = {
         'bootstrap': {'passed': [], 'failed': []},
         'site_config': {'passed': [], 'failed': []},
         'pve': {'passed': [], 'failed': []},
@@ -618,7 +620,7 @@ def run_preflight_checks(local_mode: bool = True,
     if bootstrap_errors:
         results['bootstrap']['failed'].extend(bootstrap_errors)
     else:
-        lib_path, etc_path = get_homestak_paths()
+        _lib_path, etc_path = get_homestak_paths()
         results['bootstrap']['passed'].append(f"{etc_path} exists")
         results['bootstrap']['passed'].append("Core repos present: ansible, iac-driver, tofu")
 
@@ -632,20 +634,20 @@ def run_preflight_checks(local_mode: bool = True,
         results['site_config']['passed'].append(f"nodes/{hostname}.yaml exists")
 
     # PVE connectivity checks (only if site config is valid)
-    if not results['site_config']['failed']:
+    if not results['site_config']['failed']:  # pylint: disable=too-many-nested-blocks
         try:
             site_config_dir = get_site_config_dir()
             resolver = ConfigResolver(str(site_config_dir))
 
             # Load secrets to get API token
-            secrets = resolver._load_yaml(site_config_dir / 'secrets.yaml')
+            secrets = resolver._load_yaml(site_config_dir / 'secrets.yaml')  # pylint: disable=protected-access
             api_token = secrets.get('api_tokens', {}).get(hostname)
 
             # Load node config to get API endpoint
             node_path = site_config_dir / 'nodes' / f'{hostname}.yaml'
             if node_path.exists():
-                node_config = resolver._load_yaml(node_path)
-                api_endpoint = node_config.get('api_endpoint', f'https://localhost:8006')
+                node_config = resolver._load_yaml(node_path)  # pylint: disable=protected-access
+                api_endpoint = node_config.get('api_endpoint', 'https://localhost:8006')
 
                 pve_errors = validate_api_token(api_endpoint, api_token, hostname)
                 if pve_errors:

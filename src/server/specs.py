@@ -3,9 +3,8 @@
 Serves resolved specs from site-config/specs/ with provisioning token auth (#231).
 """
 
-import json
 import logging
-from typing import Optional, Tuple
+from typing import Tuple
 
 from resolver.spec_resolver import (
     SpecResolver,
@@ -74,7 +73,7 @@ def handle_spec_request(
 
         return spec, 200
 
-    except SpecNotFoundError as e:
+    except SpecNotFoundError:
         return _error_response("E200", f"Spec not found: {spec_name}"), 404
     except PostureNotFoundError as e:
         return _error_response(e.code, e.message), 404

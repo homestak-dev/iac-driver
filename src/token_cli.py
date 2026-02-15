@@ -10,7 +10,7 @@ import datetime
 import hashlib
 import hmac as hmac_mod
 import json
-import sys
+from typing import Optional
 
 
 def _base64url_decode(s: str) -> bytes:
@@ -19,7 +19,7 @@ def _base64url_decode(s: str) -> bytes:
     return base64.urlsafe_b64decode(s)
 
 
-def inspect_token(token: str, signing_key: str = None) -> int:
+def inspect_token(token: str, signing_key: Optional[str] = None) -> int:
     """Decode and optionally verify a provisioning token.
 
     Args:
@@ -54,7 +54,7 @@ def inspect_token(token: str, signing_key: str = None) -> int:
         ts = datetime.datetime.fromtimestamp(iat, tz=datetime.timezone.utc)
         print(f"  issued  (iat): {iat} ({ts.isoformat()})")
     else:
-        print(f"  issued  (iat): (not set)")
+        print("  issued  (iat): (not set)")
 
     # Show any extra claims
     known = {'v', 'n', 's', 'iat'}
@@ -126,6 +126,6 @@ def main(argv: list) -> int:
                 print(f"Error: Cannot load signing key: {e}")
                 return 1
 
-        return inspect_token(args.token, signing_key)
+        return inspect_token(args.token, signing_key)  # signing_key validated above
 
     return 1

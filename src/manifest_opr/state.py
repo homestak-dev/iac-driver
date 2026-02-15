@@ -7,7 +7,7 @@ state to disk so that destroy can find IPs/IDs without create context.
 import json
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
@@ -38,10 +38,12 @@ class NodeState:
     error: Optional[str] = None
 
     def start(self) -> None:
+        """Mark node as running."""
         self.status = 'running'
         self.started_at = time.time()
 
     def complete(self, vm_id: Optional[int] = None, ip: Optional[str] = None) -> None:
+        """Mark node as completed with optional VM ID and IP."""
         self.status = 'completed'
         self.completed_at = time.time()
         if vm_id is not None:
@@ -50,21 +52,25 @@ class NodeState:
             self.ip = ip
 
     def fail(self, error: str) -> None:
+        """Mark node as failed with error message."""
         self.status = 'failed'
         self.completed_at = time.time()
         self.error = error
 
     def mark_destroyed(self) -> None:
+        """Mark node as destroyed."""
         self.status = 'destroyed'
         self.completed_at = time.time()
 
     @property
     def duration(self) -> Optional[float]:
+        """Return duration in seconds, or None if not completed."""
         if self.started_at and self.completed_at:
             return self.completed_at - self.started_at
         return None
 
     def to_dict(self) -> dict:
+        """Serialize node state to dict."""
         d: dict[str, Any] = {
             'name': self.name,
             'status': self.status,
@@ -83,6 +89,7 @@ class NodeState:
 
     @classmethod
     def from_dict(cls, data: dict) -> 'NodeState':
+        """Create NodeState from dictionary."""
         return cls(
             name=data['name'],
             status=data.get('status', 'pending'),
@@ -132,12 +139,15 @@ class ExecutionState:
 
     @property
     def nodes(self) -> dict[str, NodeState]:
+        """Return copy of node state dictionary."""
         return dict(self._nodes)
 
     def start(self) -> None:
+        """Mark execution as started."""
         self.started_at = time.time()
 
     def finish(self) -> None:
+        """Mark execution as finished."""
         self.completed_at = time.time()
 
     def to_context(self) -> dict[str, Any]:
@@ -154,7 +164,9 @@ class ExecutionState:
         return ctx
 
     def _state_dir(self) -> Path:
-        return get_base_dir() / '.states' / self.manifest_name
+        """Return state directory path for this manifest."""
+        result: Path = get_base_dir() / '.states' / self.manifest_name
+        return result
 
     def save(self, path: Optional[Path] = None) -> Path:
         """Save state to JSON file.
