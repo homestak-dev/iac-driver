@@ -156,8 +156,8 @@ class HostConfig:
             if ip := host_config.get('ip'):
                 self.ssh_host = ip
             # Fall back to vmbr0 address (strip CIDR notation)
-            elif network := host_config.get('network', {}).get('interfaces', {}).get('vmbr0', {}):
-                if address := network.get('address'):
+            elif network := (host_config.get('network') or {}).get('interfaces') or {}:
+                if address := (network.get('vmbr0') or {}).get('address'):
                     # Strip CIDR suffix (e.g., "10.0.12.61/24" -> "10.0.12.61")
                     self.ssh_host = address.split('/')[0]
 

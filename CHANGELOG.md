@@ -4,6 +4,11 @@
 
 ### Theme: Provisioning Token (homestak-dev#231)
 
+### Fixed
+- Add `python3-requests` to `make install-deps` — required by `validation.py` (homestak-dev#266)
+- Handle YAML null in `host-config.sh` output for empty `network.interfaces` (homestak-dev#266)
+- Skip API preflight check for `pve-setup` scenario — PVE isn't installed yet on fresh hosts (homestak-dev#266)
+
 ### Changed
 - Simplify `_image_to_asset_name()` — image names now map 1:1 to asset filenames (packer#48)
 - Update default `packer_image` from `debian-12-custom.qcow2` to `debian-12.qcow2` (packer#48)
