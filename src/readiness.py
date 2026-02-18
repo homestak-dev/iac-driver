@@ -23,7 +23,7 @@ def validate_api_token(api_endpoint: str, api_token: str) -> tuple[bool, str]:
     Makes a lightweight API call to verify credentials are valid.
 
     Args:
-        api_endpoint: PVE API URL (e.g., https://10.0.12.61:8006)
+        api_endpoint: PVE API URL (e.g., https://198.51.100.61:8006)
         api_token: Full token string (e.g., root@pam!homestak=uuid)
 
     Returns:
