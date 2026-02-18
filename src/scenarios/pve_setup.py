@@ -416,6 +416,14 @@ class _CreateApiTokenPhase:
                 duration=time.time() - start
             )
 
+        # Wait for pvedaemon to be ready (pveum talks to it)
+        if not self._wait_for_pvedaemon_local():
+            return ActionResult(
+                success=False,
+                message="pvedaemon not running — cannot create API token",
+                duration=time.time() - start
+            )
+
         # Create token via pveum (remove old if exists, since we can't
         # retrieve the value of an existing token)
         logger.info("Creating API token locally...")
@@ -507,6 +515,14 @@ class _CreateApiTokenPhase:
                 duration=time.time() - start
             )
 
+        # Wait for pvedaemon to be ready on remote
+        if not self._wait_for_pvedaemon_remote(remote_ip):
+            return ActionResult(
+                success=False,
+                message=f"pvedaemon not running on {remote_ip} — cannot create API token",
+                duration=time.time() - start
+            )
+
         # Create token on remote via SSH
         logger.info(f"Creating API token on {remote_ip}...")
         create_cmd = (
@@ -595,23 +611,60 @@ class _CreateApiTokenPhase:
     def _verify_token(api_url, token, retries=3, delay=5):
         """Verify token works against PVE API with retries.
 
-        Retries handle the case where pveproxy hasn't fully started
-        after PVE installation.
+        Uses stdlib urllib (no curl dependency). Retries handle the case
+        where pveproxy hasn't fully started after PVE installation.
         """
+        import ssl
+        import urllib.request
+
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+
+        req = urllib.request.Request(
+            f'{api_url}/api2/json/version',
+            headers={'Authorization': f'PVEAPIToken={token}'}
+        )
         for attempt in range(retries):
-            result = subprocess.run(
-                ['curl', '-sk', f'{api_url}/api2/json/version',
-                 '-H', f'Authorization: PVEAPIToken={token}',
-                 '-o', '/dev/null', '-w', '%{http_code}'],
-                capture_output=True, text=True, timeout=15, check=False
-            )
-            if result.returncode == 0 and result.stdout.strip() == '200':
-                return True
+            try:
+                with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
+                    if resp.status == 200:
+                        return True
+            except (urllib.error.URLError, OSError):
+                pass
             if attempt < retries - 1:
                 logger.debug("API verification attempt %d/%d failed, "
                              "retrying in %ds...", attempt + 1, retries, delay)
                 time.sleep(delay)
         return False
+
+    @staticmethod
+    def _wait_for_pvedaemon_local():
+        """Wait for pvedaemon to be active (single retry with 10s sleep)."""
+        result = subprocess.run(
+            ['systemctl', 'is-active', 'pvedaemon'],
+            capture_output=True, text=True, timeout=10, check=False
+        )
+        if result.returncode == 0:
+            return True
+        logger.debug("pvedaemon not yet active, waiting 10s...")
+        time.sleep(10)
+        result = subprocess.run(
+            ['systemctl', 'is-active', 'pvedaemon'],
+            capture_output=True, text=True, timeout=10, check=False
+        )
+        return result.returncode == 0
+
+    @staticmethod
+    def _wait_for_pvedaemon_remote(remote_ip):
+        """Wait for pvedaemon to be active on remote host."""
+        rc, _, _ = run_ssh(remote_ip, 'systemctl is-active pvedaemon', timeout=10)
+        if rc == 0:
+            return True
+        logger.debug("pvedaemon not yet active on %s, waiting 10s...", remote_ip)
+        time.sleep(10)
+        rc, _, _ = run_ssh(remote_ip, 'systemctl is-active pvedaemon', timeout=10)
+        return rc == 0
 
     @staticmethod
     def _inject_token_local(site_config_dir, hostname, full_token):
