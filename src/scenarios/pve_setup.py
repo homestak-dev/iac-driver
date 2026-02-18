@@ -45,59 +45,120 @@ class PVESetup:
 
 
 class _EnsurePVEPhase:
-    """Phase that ensures PVE is installed locally or remotely."""
+    """Phase that ensures PVE is installed locally or remotely.
+
+    Local mode uses split playbooks (kernel → reboot → packages) to work
+    around Ansible 2.20 blocking ansible.builtin.reboot with local connection.
+    Remote mode uses the combined pve-install.yml where reboot module works.
+    """
 
     def run(self, config: HostConfig, context: dict):
         """Ensure PVE is installed locally or remotely."""
         start = time.time()
 
         if context.get('local_mode'):
-            # Check locally if PVE is running
-            result = subprocess.run(
-                ['systemctl', 'is-active', 'pveproxy'],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                check=False
+            return self._run_local(config, context, start)
+
+        return self._run_remote(config, context, start)
+
+    def _run_local(self, _config: HostConfig, _context: dict, start: float):
+        """Install PVE locally with scenario-managed reboot."""
+        # Check locally if PVE is running
+        result = subprocess.run(
+            ['systemctl', 'is-active', 'pveproxy'],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False
+        )
+        if result.returncode == 0 and 'active' in result.stdout:
+            return ActionResult(
+                success=True,
+                message="PVE already installed and running - skipped",
+                duration=time.time() - start
             )
-            if result.returncode == 0 and 'active' in result.stdout:
-                return ActionResult(
-                    success=True,
-                    message="PVE already installed and running - skipped",
-                    duration=time.time() - start
-                )
 
-            # PVE not running, install locally
-            ansible_dir = get_sibling_dir('ansible')
-            if not ansible_dir.exists():
-                return ActionResult(
-                    success=False,
-                    message=f"Ansible directory not found: {ansible_dir}",
-                    duration=time.time() - start
-                )
+        ansible_dir = get_sibling_dir('ansible')
+        if not ansible_dir.exists():
+            return ActionResult(
+                success=False,
+                message=f"Ansible directory not found: {ansible_dir}",
+                duration=time.time() - start
+            )
 
+        # Check if Proxmox kernel is already installed (post-reboot re-run)
+        kernel_check = subprocess.run(
+            ['dpkg', '-l', 'proxmox-default-kernel'],
+            capture_output=True, text=True, timeout=30, check=False
+        )
+        kernel_installed = kernel_check.returncode == 0 and 'ii' in kernel_check.stdout
+
+        pve_pkg_check = subprocess.run(
+            ['dpkg', '-l', 'proxmox-ve'],
+            capture_output=True, text=True, timeout=30, check=False
+        )
+        pve_installed = pve_pkg_check.returncode == 0 and 'ii' in pve_pkg_check.stdout
+
+        if kernel_installed and not pve_installed:
+            # Kernel installed but PVE packages not yet — skip to phase 2
+            logger.info("Proxmox kernel installed, running phase 2 (packages)...")
+        elif not kernel_installed:
+            # Phase 1: Install Proxmox kernel
+            logger.info("Phase 1: Installing Proxmox kernel...")
             cmd = [
                 'ansible-playbook',
                 '-i', 'inventory/local.yml',
-                'playbooks/pve-install.yml',
+                'playbooks/pve-install-kernel.yml',
             ]
-
             rc, out, err = run_command(cmd, cwd=ansible_dir, timeout=1200)
             if rc != 0:
                 error_msg = err[-500:] if err else out[-500:]
                 return ActionResult(
                     success=False,
-                    message=f"pve-install.yml failed: {error_msg}",
+                    message=f"pve-install-kernel.yml failed: {error_msg}",
                     duration=time.time() - start
                 )
 
+            # Reboot to load Proxmox kernel
+            logger.info("Rebooting to load Proxmox kernel...")
+            subprocess.run(
+                ['systemctl', 'reboot'],
+                check=False, timeout=30
+            )
+            # This process will be killed by the reboot.
+            # On restart, pve-setup will be re-invoked and resume at phase 2
+            # because kernel_installed=True and pve_installed=False.
+            time.sleep(300)  # Wait for reboot to kill us
             return ActionResult(
-                success=True,
-                message="PVE installed successfully",
+                success=False,
+                message="Reboot did not occur within timeout",
                 duration=time.time() - start
             )
 
-        # Remote mode - use EnsurePVEAction
+        # Phase 2: Install PVE packages (after reboot)
+        logger.info("Phase 2: Installing PVE packages...")
+        cmd = [
+            'ansible-playbook',
+            '-i', 'inventory/local.yml',
+            'playbooks/pve-install-packages.yml',
+        ]
+        rc, out, err = run_command(cmd, cwd=ansible_dir, timeout=1200)
+        if rc != 0:
+            error_msg = err[-500:] if err else out[-500:]
+            return ActionResult(
+                success=False,
+                message=f"pve-install-packages.yml failed: {error_msg}",
+                duration=time.time() - start
+            )
+
+        return ActionResult(
+            success=True,
+            message="PVE installed successfully",
+            duration=time.time() - start
+        )
+
+    def _run_remote(self, config: HostConfig, context: dict, start: float):
+        """Install PVE on remote host (reboot handled by ansible)."""
         remote_ip = context.get('remote_ip') or config.ssh_host
         if not remote_ip:
             return ActionResult(

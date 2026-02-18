@@ -8,6 +8,7 @@
 - Add `python3-requests` to `make install-deps` — required by `validation.py` (homestak-dev#266)
 - Handle YAML null in `host-config.sh` output for empty `network.interfaces` (homestak-dev#266)
 - Skip API preflight check for `pve-setup` scenario — PVE isn't installed yet on fresh hosts (homestak-dev#266)
+- Handle local PVE install reboot — split into kernel/packages phases with idempotent re-entry via dpkg state detection (iac-driver#222)
 
 ### Changed
 - Simplify `_image_to_asset_name()` — image names now map 1:1 to asset filenames (packer#48)
