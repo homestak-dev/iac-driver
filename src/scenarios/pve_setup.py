@@ -453,12 +453,15 @@ class _CreateApiTokenPhase:
 
         # Verify token works against PVE API
         if not self._verify_token(api_url, full_token):
-            logger.warning("Token created but API verification failed "
-                           "— may work after pveproxy restart")
+            return ActionResult(
+                success=False,
+                message="Token created but API verification failed after retries",
+                duration=time.time() - start
+            )
 
         return ActionResult(
             success=True,
-            message=f"API token created for {hostname}",
+            message=f"API token created and verified for {hostname}",
             duration=time.time() - start,
             context_updates={'api_token_created': hostname}
         )
@@ -539,12 +542,15 @@ class _CreateApiTokenPhase:
 
         # Verify token works
         if not self._verify_token(api_url, full_token):
-            logger.warning("Token created but API verification failed "
-                           "— may work after pveproxy restart")
+            return ActionResult(
+                success=False,
+                message="Token created but API verification failed after retries",
+                duration=time.time() - start
+            )
 
         return ActionResult(
             success=True,
-            message=f"API token created for {hostname}",
+            message=f"API token created and verified for {hostname}",
             duration=time.time() - start,
             context_updates={'api_token_created': hostname}
         )
@@ -561,28 +567,51 @@ class _CreateApiTokenPhase:
 
     @staticmethod
     def _get_existing_token(site_config_dir, hostname):
-        """Read existing token for hostname from local secrets.yaml."""
+        """Read existing token for hostname from local secrets.yaml.
+
+        Scopes the search to the api_tokens: section to avoid matching
+        the same hostname under ssh_keys: or other sections.
+        """
         secrets_file = site_config_dir / 'secrets.yaml'
         if not secrets_file.exists():
             return None
         content = secrets_file.read_text()
-        # Match: "  hostname: token_value" or "  hostname: "token_value""
-        match = re.search(
-            rf'^\s*{re.escape(hostname)}:\s*"?([^"\n]+)"?\s*$',
+        # Extract the api_tokens section (indented block after "api_tokens:")
+        section_match = re.search(
+            r'^api_tokens:\s*\n((?:[ \t]+.+\n)*)',
             content, re.MULTILINE
         )
-        return match.group(1).strip() if match else None
+        if not section_match:
+            return None
+        section = section_match.group(1)
+        # Match hostname within the api_tokens section only
+        token_match = re.search(
+            rf'^\s*{re.escape(hostname)}:\s*"?([^"\n]+)"?\s*$',
+            section, re.MULTILINE
+        )
+        return token_match.group(1).strip() if token_match else None
 
     @staticmethod
-    def _verify_token(api_url, token):
-        """Verify token works against PVE API."""
-        result = subprocess.run(
-            ['curl', '-sk', f'{api_url}/api2/json/version',
-             '-H', f'Authorization: PVEAPIToken={token}',
-             '-o', '/dev/null', '-w', '%{http_code}'],
-            capture_output=True, text=True, timeout=15, check=False
-        )
-        return result.returncode == 0 and result.stdout.strip() == '200'
+    def _verify_token(api_url, token, retries=3, delay=5):
+        """Verify token works against PVE API with retries.
+
+        Retries handle the case where pveproxy hasn't fully started
+        after PVE installation.
+        """
+        for attempt in range(retries):
+            result = subprocess.run(
+                ['curl', '-sk', f'{api_url}/api2/json/version',
+                 '-H', f'Authorization: PVEAPIToken={token}',
+                 '-o', '/dev/null', '-w', '%{http_code}'],
+                capture_output=True, text=True, timeout=15, check=False
+            )
+            if result.returncode == 0 and result.stdout.strip() == '200':
+                return True
+            if attempt < retries - 1:
+                logger.debug("API verification attempt %d/%d failed, "
+                             "retrying in %ds...", attempt + 1, retries, delay)
+                time.sleep(delay)
+        return False
 
     @staticmethod
     def _inject_token_local(site_config_dir, hostname, full_token):
@@ -599,23 +628,27 @@ class _CreateApiTokenPhase:
                 return False
 
         content = secrets_file.read_text()
+        new_line = f'{hostname}: "{full_token}"'
 
         # Update existing or add new token entry
+        # Scope replacement to api_tokens section by matching indented lines
         pattern = re.compile(
             rf'^(\s*){re.escape(hostname)}:.*$', re.MULTILINE
         )
         if pattern.search(content):
+            # Use lambda to avoid regex replacement escaping issues
+            # (token value could theoretically contain \, &, etc.)
             content = pattern.sub(
-                rf'\g<1>{hostname}: "{full_token}"', content
+                lambda m: f'{m.group(1)}{new_line}', content
             )
         elif 'api_tokens:' in content:
             content = content.replace(
                 'api_tokens:\n',
-                f'api_tokens:\n  {hostname}: "{full_token}"\n',
+                f'api_tokens:\n  {new_line}\n',
                 1
             )
         else:
-            content += f'\napi_tokens:\n  {hostname}: "{full_token}"\n'
+            content += f'\napi_tokens:\n  {new_line}\n'
 
         secrets_file.write_text(content)
         logger.info(f"Injected API token for {hostname} into {secrets_file}")
@@ -624,13 +657,22 @@ class _CreateApiTokenPhase:
     @staticmethod
     def _inject_token_remote(remote_ip, hostname, full_token):
         """Inject token into remote host's secrets.yaml."""
+        # Validate hostname is safe for shell interpolation (RFC 952)
+        if not re.match(r'^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$', hostname):
+            logger.error(f"Invalid hostname format, skipping remote injection: {hostname}")
+            return
+
+        # Escape token value for sed replacement (| delimiter)
+        # Special chars in sed replacement: \, &, |
+        safe_token = full_token.replace('\\', '\\\\').replace('&', '\\&').replace('|', '\\|')
+
         secrets_file = '/usr/local/etc/homestak/secrets.yaml'
         inject_cmd = f'''
 if [ -f {secrets_file} ]; then
     if grep -q "^\\s*{hostname}:" {secrets_file}; then
-        sed -i 's|^\\(\\s*\\){hostname}:.*$|\\1{hostname}: "{full_token}"|' {secrets_file}
+        sed -i 's|^\\(\\s*\\){hostname}:.*$|\\1{hostname}: "{safe_token}"|' {secrets_file}
     elif grep -q "^api_tokens:" {secrets_file}; then
-        sed -i '/^api_tokens:/a\\  {hostname}: "{full_token}"' {secrets_file}
+        sed -i '/^api_tokens:/a\\  {hostname}: "{safe_token}"' {secrets_file}
     fi
 fi
 '''
