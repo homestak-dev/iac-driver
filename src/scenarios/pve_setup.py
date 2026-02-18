@@ -7,7 +7,9 @@ After PVE is installed and configured, generates nodes/{hostname}.yaml
 to enable the host for use with vm-constructor and other scenarios.
 """
 
+import json
 import logging
+import re
 import subprocess
 import time
 
@@ -41,6 +43,7 @@ class PVESetup:
             ('ensure_pve', _EnsurePVEPhase(), 'Ensure PVE installed'),
             ('setup_pve', _PVESetupPhase(), 'Run pve-setup.yml'),
             ('generate_node_config', _GenerateNodeConfigPhase(), 'Generate node config'),
+            ('create_api_token', _CreateApiTokenPhase(), 'Create API token'),
         ]
 
 
@@ -368,3 +371,269 @@ fi
                 'remote_hostname': remote_hostname
             }
         )
+
+
+class _CreateApiTokenPhase:
+    """Phase that creates PVE API token and injects into secrets.yaml.
+
+    Creates a 'tofu' API token via pveum, injects the token value into
+    secrets.yaml (both local and remote in remote mode), and verifies
+    it works against the PVE API.
+
+    Idempotent: if a working token for this hostname already exists
+    in local secrets.yaml, the phase is skipped.
+    """
+
+    def run(self, config: HostConfig, context: dict) -> ActionResult:
+        """Create API token locally or remotely."""
+        start = time.time()
+
+        if context.get('local_mode'):
+            return self._run_local(config, context, start)
+        return self._run_remote(config, context, start)
+
+    def _run_local(self, _config: HostConfig, _context: dict, start: float) -> ActionResult:
+        """Create API token on local PVE host."""
+        import socket
+        hostname = socket.gethostname()
+        api_url = 'https://127.0.0.1:8006'
+
+        try:
+            site_config_dir = get_site_config_dir()
+        except Exception as e:
+            return ActionResult(
+                success=False,
+                message=f"Cannot find site-config: {e}",
+                duration=time.time() - start
+            )
+
+        # Check for existing working token
+        existing = self._get_existing_token(site_config_dir, hostname)
+        if existing and self._verify_token(api_url, existing):
+            return ActionResult(
+                success=True,
+                message=f"API token for {hostname} already works — skipped",
+                duration=time.time() - start
+            )
+
+        # Create token via pveum (remove old if exists, since we can't
+        # retrieve the value of an existing token)
+        logger.info("Creating API token locally...")
+        subprocess.run(
+            ['pveum', 'user', 'token', 'remove', 'root@pam', 'tofu'],
+            capture_output=True, timeout=30, check=False
+        )
+        result = subprocess.run(
+            ['pveum', 'user', 'token', 'add', 'root@pam', 'tofu',
+             '--privsep', '0', '--output-format', 'json'],
+            capture_output=True, text=True, timeout=30, check=False
+        )
+        if result.returncode != 0:
+            return ActionResult(
+                success=False,
+                message=f"pveum token add failed: {result.stderr or result.stdout}",
+                duration=time.time() - start
+            )
+
+        full_token = self._parse_token(result.stdout)
+        if not full_token:
+            return ActionResult(
+                success=False,
+                message="Failed to parse token from pveum output",
+                duration=time.time() - start
+            )
+
+        # Inject into local secrets.yaml
+        if not self._inject_token_local(site_config_dir, hostname, full_token):
+            return ActionResult(
+                success=False,
+                message="Failed to inject token into secrets.yaml",
+                duration=time.time() - start
+            )
+
+        # Verify token works against PVE API
+        if not self._verify_token(api_url, full_token):
+            logger.warning("Token created but API verification failed "
+                           "— may work after pveproxy restart")
+
+        return ActionResult(
+            success=True,
+            message=f"API token created for {hostname}",
+            duration=time.time() - start,
+            context_updates={'api_token_created': hostname}
+        )
+
+    def _run_remote(self, config: HostConfig, context: dict, start: float) -> ActionResult:
+        """Create API token on remote PVE host and sync to local secrets."""
+        remote_ip = context.get('remote_ip') or config.ssh_host
+        if not remote_ip:
+            return ActionResult(
+                success=False,
+                message="No remote_ip in context",
+                duration=time.time() - start
+            )
+
+        hostname = context.get('remote_hostname')
+        if not hostname:
+            rc, out, _ = run_ssh(remote_ip, 'hostname', timeout=10)
+            if rc != 0 or not out.strip():
+                return ActionResult(
+                    success=False,
+                    message="Could not determine remote hostname",
+                    duration=time.time() - start
+                )
+            hostname = out.strip()
+
+        api_url = f'https://{remote_ip}:8006'
+
+        try:
+            site_config_dir = get_site_config_dir()
+        except Exception as e:
+            return ActionResult(
+                success=False,
+                message=f"Cannot find local site-config: {e}",
+                duration=time.time() - start
+            )
+
+        # Check for existing working token
+        existing = self._get_existing_token(site_config_dir, hostname)
+        if existing and self._verify_token(api_url, existing):
+            return ActionResult(
+                success=True,
+                message=f"API token for {hostname} already works — skipped",
+                duration=time.time() - start
+            )
+
+        # Create token on remote via SSH
+        logger.info(f"Creating API token on {remote_ip}...")
+        create_cmd = (
+            'pveum user token remove root@pam tofu 2>/dev/null || true; '
+            'pveum user token add root@pam tofu --privsep 0 --output-format json'
+        )
+        rc, out, err = run_ssh(remote_ip, create_cmd, timeout=30)
+        if rc != 0:
+            return ActionResult(
+                success=False,
+                message=f"pveum token add failed: {err or out}",
+                duration=time.time() - start
+            )
+
+        full_token = self._parse_token(out)
+        if not full_token:
+            return ActionResult(
+                success=False,
+                message="Failed to parse token from pveum output",
+                duration=time.time() - start
+            )
+
+        # Inject into remote secrets.yaml
+        self._inject_token_remote(remote_ip, hostname, full_token)
+
+        # Inject into local secrets.yaml
+        if not self._inject_token_local(site_config_dir, hostname, full_token):
+            return ActionResult(
+                success=False,
+                message="Failed to inject token into local secrets.yaml",
+                duration=time.time() - start
+            )
+
+        # Verify token works
+        if not self._verify_token(api_url, full_token):
+            logger.warning("Token created but API verification failed "
+                           "— may work after pveproxy restart")
+
+        return ActionResult(
+            success=True,
+            message=f"API token created for {hostname}",
+            duration=time.time() - start,
+            context_updates={'api_token_created': hostname}
+        )
+
+    @staticmethod
+    def _parse_token(pveum_output):
+        """Parse full token string from pveum JSON output."""
+        try:
+            token_data = json.loads(pveum_output.strip())
+            return f"{token_data['full-tokenid']}={token_data['value']}"
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.error(f"Failed to parse pveum token output: {e}")
+            return None
+
+    @staticmethod
+    def _get_existing_token(site_config_dir, hostname):
+        """Read existing token for hostname from local secrets.yaml."""
+        secrets_file = site_config_dir / 'secrets.yaml'
+        if not secrets_file.exists():
+            return None
+        content = secrets_file.read_text()
+        # Match: "  hostname: token_value" or "  hostname: "token_value""
+        match = re.search(
+            rf'^\s*{re.escape(hostname)}:\s*"?([^"\n]+)"?\s*$',
+            content, re.MULTILINE
+        )
+        return match.group(1).strip() if match else None
+
+    @staticmethod
+    def _verify_token(api_url, token):
+        """Verify token works against PVE API."""
+        result = subprocess.run(
+            ['curl', '-sk', f'{api_url}/api2/json/version',
+             '-H', f'Authorization: PVEAPIToken={token}',
+             '-o', '/dev/null', '-w', '%{http_code}'],
+            capture_output=True, text=True, timeout=15, check=False
+        )
+        return result.returncode == 0 and result.stdout.strip() == '200'
+
+    @staticmethod
+    def _inject_token_local(site_config_dir, hostname, full_token):
+        """Inject token into local secrets.yaml."""
+        secrets_file = site_config_dir / 'secrets.yaml'
+
+        # Decrypt if needed
+        if not secrets_file.exists():
+            enc_file = site_config_dir / 'secrets.yaml.enc'
+            if enc_file.exists():
+                run_command(['make', 'decrypt'], cwd=site_config_dir, timeout=30)
+            if not secrets_file.exists():
+                logger.error("secrets.yaml not found and could not decrypt")
+                return False
+
+        content = secrets_file.read_text()
+
+        # Update existing or add new token entry
+        pattern = re.compile(
+            rf'^(\s*){re.escape(hostname)}:.*$', re.MULTILINE
+        )
+        if pattern.search(content):
+            content = pattern.sub(
+                rf'\g<1>{hostname}: "{full_token}"', content
+            )
+        elif 'api_tokens:' in content:
+            content = content.replace(
+                'api_tokens:\n',
+                f'api_tokens:\n  {hostname}: "{full_token}"\n',
+                1
+            )
+        else:
+            content += f'\napi_tokens:\n  {hostname}: "{full_token}"\n'
+
+        secrets_file.write_text(content)
+        logger.info(f"Injected API token for {hostname} into {secrets_file}")
+        return True
+
+    @staticmethod
+    def _inject_token_remote(remote_ip, hostname, full_token):
+        """Inject token into remote host's secrets.yaml."""
+        secrets_file = '/usr/local/etc/homestak/secrets.yaml'
+        inject_cmd = f'''
+if [ -f {secrets_file} ]; then
+    if grep -q "^\\s*{hostname}:" {secrets_file}; then
+        sed -i 's|^\\(\\s*\\){hostname}:.*$|\\1{hostname}: "{full_token}"|' {secrets_file}
+    elif grep -q "^api_tokens:" {secrets_file}; then
+        sed -i '/^api_tokens:/a\\  {hostname}: "{full_token}"' {secrets_file}
+    fi
+fi
+'''
+        rc, _, err = run_ssh(remote_ip, inject_cmd, timeout=30)
+        if rc != 0:
+            logger.warning(f"Failed to inject token on remote: {err}")

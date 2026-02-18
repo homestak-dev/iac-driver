@@ -10,6 +10,9 @@
 - Skip API preflight check for `pve-setup` scenario — PVE isn't installed yet on fresh hosts (homestak-dev#266)
 - Handle local PVE install reboot — split into kernel/packages phases with idempotent re-entry via dpkg state detection (iac-driver#222)
 
+### Added
+- Automate API token creation in `pve-setup` — creates pveum token, injects into secrets.yaml, verifies against PVE API (iac-driver#223)
+
 ### Changed
 - Simplify `_image_to_asset_name()` — image names now map 1:1 to asset filenames (packer#48)
 - Update default `packer_image` from `debian-12-custom.qcow2` to `debian-12.qcow2` (packer#48)
