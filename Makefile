@@ -22,7 +22,7 @@ help:
 install-deps:
 	@echo "Installing iac-driver dependencies..."
 	@apt-get update -qq
-	@apt-get install -y -qq python3 python3-yaml > /dev/null
+	@apt-get install -y -qq python3 python3-yaml python3-requests > /dev/null
 	@echo "Done."
 
 install-dev: $(VENV_BIN)/activate

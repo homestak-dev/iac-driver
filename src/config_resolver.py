@@ -306,7 +306,7 @@ class ConfigResolver:
         if not match:
             raise ConfigError(
                 f"Invalid IP format for VM '{vm_name}': '{ip}'. "
-                f"Static IPs must use CIDR notation (e.g., '10.0.12.124/24'). "
+                f"Static IPs must use CIDR notation (e.g., '198.51.100.124/24'). "
                 f"Use 'dhcp' for dynamic assignment."
             )
 
