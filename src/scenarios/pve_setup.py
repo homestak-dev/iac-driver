@@ -7,7 +7,9 @@ After PVE is installed and configured, generates nodes/{hostname}.yaml
 to enable the host for use with vm-constructor and other scenarios.
 """
 
+import json
 import logging
+import re
 import subprocess
 import time
 
@@ -41,63 +43,125 @@ class PVESetup:
             ('ensure_pve', _EnsurePVEPhase(), 'Ensure PVE installed'),
             ('setup_pve', _PVESetupPhase(), 'Run pve-setup.yml'),
             ('generate_node_config', _GenerateNodeConfigPhase(), 'Generate node config'),
+            ('create_api_token', _CreateApiTokenPhase(), 'Create API token'),
         ]
 
 
 class _EnsurePVEPhase:
-    """Phase that ensures PVE is installed locally or remotely."""
+    """Phase that ensures PVE is installed locally or remotely.
+
+    Local mode uses split playbooks (kernel → reboot → packages) to work
+    around Ansible 2.20 blocking ansible.builtin.reboot with local connection.
+    Remote mode uses the combined pve-install.yml where reboot module works.
+    """
 
     def run(self, config: HostConfig, context: dict):
         """Ensure PVE is installed locally or remotely."""
         start = time.time()
 
         if context.get('local_mode'):
-            # Check locally if PVE is running
-            result = subprocess.run(
-                ['systemctl', 'is-active', 'pveproxy'],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                check=False
+            return self._run_local(config, context, start)
+
+        return self._run_remote(config, context, start)
+
+    def _run_local(self, _config: HostConfig, _context: dict, start: float):
+        """Install PVE locally with scenario-managed reboot."""
+        # Check locally if PVE is running
+        result = subprocess.run(
+            ['systemctl', 'is-active', 'pveproxy'],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False
+        )
+        if result.returncode == 0 and 'active' in result.stdout:
+            return ActionResult(
+                success=True,
+                message="PVE already installed and running - skipped",
+                duration=time.time() - start
             )
-            if result.returncode == 0 and 'active' in result.stdout:
-                return ActionResult(
-                    success=True,
-                    message="PVE already installed and running - skipped",
-                    duration=time.time() - start
-                )
 
-            # PVE not running, install locally
-            ansible_dir = get_sibling_dir('ansible')
-            if not ansible_dir.exists():
-                return ActionResult(
-                    success=False,
-                    message=f"Ansible directory not found: {ansible_dir}",
-                    duration=time.time() - start
-                )
+        ansible_dir = get_sibling_dir('ansible')
+        if not ansible_dir.exists():
+            return ActionResult(
+                success=False,
+                message=f"Ansible directory not found: {ansible_dir}",
+                duration=time.time() - start
+            )
 
+        # Check if Proxmox kernel is already installed (post-reboot re-run)
+        kernel_check = subprocess.run(
+            ['dpkg', '-l', 'proxmox-default-kernel'],
+            capture_output=True, text=True, timeout=30, check=False
+        )
+        kernel_installed = kernel_check.returncode == 0 and 'ii' in kernel_check.stdout
+
+        pve_pkg_check = subprocess.run(
+            ['dpkg', '-l', 'proxmox-ve'],
+            capture_output=True, text=True, timeout=30, check=False
+        )
+        pve_installed = pve_pkg_check.returncode == 0 and 'ii' in pve_pkg_check.stdout
+
+        if kernel_installed and not pve_installed:
+            # Kernel installed but PVE packages not yet — skip to phase 2
+            logger.info("Proxmox kernel installed, running phase 2 (packages)...")
+        elif not kernel_installed:
+            # Phase 1: Install Proxmox kernel
+            logger.info("Phase 1: Installing Proxmox kernel...")
             cmd = [
                 'ansible-playbook',
                 '-i', 'inventory/local.yml',
-                'playbooks/pve-install.yml',
+                'playbooks/pve-install-kernel.yml',
             ]
-
             rc, out, err = run_command(cmd, cwd=ansible_dir, timeout=1200)
             if rc != 0:
                 error_msg = err[-500:] if err else out[-500:]
                 return ActionResult(
                     success=False,
-                    message=f"pve-install.yml failed: {error_msg}",
+                    message=f"pve-install-kernel.yml failed: {error_msg}",
                     duration=time.time() - start
                 )
 
+            # Reboot to load Proxmox kernel
+            logger.info("Rebooting to load Proxmox kernel...")
+            subprocess.run(
+                ['systemctl', 'reboot'],
+                check=False, timeout=30
+            )
+            # This process will be killed by the reboot.
+            # On restart, pve-setup will be re-invoked and resume at phase 2
+            # because kernel_installed=True and pve_installed=False.
+            time.sleep(300)  # Wait for reboot to kill us
             return ActionResult(
-                success=True,
-                message="PVE installed successfully",
+                success=False,
+                message="Reboot did not occur within timeout",
                 duration=time.time() - start
             )
 
-        # Remote mode - use EnsurePVEAction
+        # Phase 2: Install PVE packages (after reboot)
+        logger.info("Phase 2: Installing PVE packages...")
+        cmd = [
+            'ansible-playbook',
+            '-i', 'inventory/local.yml',
+            'playbooks/pve-install-packages.yml',
+        ]
+        rc, out, err = run_command(cmd, cwd=ansible_dir, timeout=1200)
+        if rc != 0:
+            error_msg = err[-500:] if err else out[-500:]
+            return ActionResult(
+                success=False,
+                message=f"pve-install-packages.yml failed: {error_msg}",
+                duration=time.time() - start
+            )
+
+        return ActionResult(
+            success=True,
+            message="PVE installed successfully",
+            duration=time.time() - start
+        )
+
+    def _run_remote(self, config: HostConfig, context: dict, start: float):
+        """Install PVE on remote host (reboot handled by ansible)."""
         remote_ip = context.get('remote_ip') or config.ssh_host
         if not remote_ip:
             return ActionResult(
@@ -307,3 +371,364 @@ fi
                 'remote_hostname': remote_hostname
             }
         )
+
+
+class _CreateApiTokenPhase:
+    """Phase that creates PVE API token and injects into secrets.yaml.
+
+    Creates a 'tofu' API token via pveum, injects the token value into
+    secrets.yaml (both local and remote in remote mode), and verifies
+    it works against the PVE API.
+
+    Idempotent: if a working token for this hostname already exists
+    in local secrets.yaml, the phase is skipped.
+    """
+
+    def run(self, config: HostConfig, context: dict) -> ActionResult:
+        """Create API token locally or remotely."""
+        start = time.time()
+
+        if context.get('local_mode'):
+            return self._run_local(config, context, start)
+        return self._run_remote(config, context, start)
+
+    def _run_local(self, _config: HostConfig, _context: dict, start: float) -> ActionResult:
+        """Create API token on local PVE host."""
+        import socket
+        hostname = socket.gethostname()
+        api_url = 'https://127.0.0.1:8006'
+
+        try:
+            site_config_dir = get_site_config_dir()
+        except Exception as e:
+            return ActionResult(
+                success=False,
+                message=f"Cannot find site-config: {e}",
+                duration=time.time() - start
+            )
+
+        # Check for existing working token
+        existing = self._get_existing_token(site_config_dir, hostname)
+        if existing and self._verify_token(api_url, existing):
+            return ActionResult(
+                success=True,
+                message=f"API token for {hostname} already works — skipped",
+                duration=time.time() - start
+            )
+
+        # Wait for pvedaemon to be ready (pveum talks to it)
+        if not self._wait_for_pvedaemon_local():
+            return ActionResult(
+                success=False,
+                message="pvedaemon not running — cannot create API token",
+                duration=time.time() - start
+            )
+
+        # Create token via pveum (remove old if exists, since we can't
+        # retrieve the value of an existing token)
+        logger.info("Creating API token locally...")
+        subprocess.run(
+            ['pveum', 'user', 'token', 'remove', 'root@pam', 'tofu'],
+            capture_output=True, timeout=30, check=False
+        )
+        result = subprocess.run(
+            ['pveum', 'user', 'token', 'add', 'root@pam', 'tofu',
+             '--privsep', '0', '--output-format', 'json'],
+            capture_output=True, text=True, timeout=30, check=False
+        )
+        if result.returncode != 0:
+            return ActionResult(
+                success=False,
+                message=f"pveum token add failed: {result.stderr or result.stdout}",
+                duration=time.time() - start
+            )
+
+        full_token = self._parse_token(result.stdout)
+        if not full_token:
+            return ActionResult(
+                success=False,
+                message="Failed to parse token from pveum output",
+                duration=time.time() - start
+            )
+
+        # Inject into local secrets.yaml
+        if not self._inject_token_local(site_config_dir, hostname, full_token):
+            return ActionResult(
+                success=False,
+                message="Failed to inject token into secrets.yaml",
+                duration=time.time() - start
+            )
+
+        # Verify token works against PVE API
+        if not self._verify_token(api_url, full_token):
+            return ActionResult(
+                success=False,
+                message="Token created but API verification failed after retries",
+                duration=time.time() - start
+            )
+
+        return ActionResult(
+            success=True,
+            message=f"API token created and verified for {hostname}",
+            duration=time.time() - start,
+            context_updates={'api_token_created': hostname}
+        )
+
+    def _run_remote(self, config: HostConfig, context: dict, start: float) -> ActionResult:
+        """Create API token on remote PVE host and sync to local secrets."""
+        remote_ip = context.get('remote_ip') or config.ssh_host
+        if not remote_ip:
+            return ActionResult(
+                success=False,
+                message="No remote_ip in context",
+                duration=time.time() - start
+            )
+
+        hostname = context.get('remote_hostname')
+        if not hostname:
+            rc, out, _ = run_ssh(remote_ip, 'hostname', timeout=10)
+            if rc != 0 or not out.strip():
+                return ActionResult(
+                    success=False,
+                    message="Could not determine remote hostname",
+                    duration=time.time() - start
+                )
+            hostname = out.strip()
+
+        api_url = f'https://{remote_ip}:8006'
+
+        try:
+            site_config_dir = get_site_config_dir()
+        except Exception as e:
+            return ActionResult(
+                success=False,
+                message=f"Cannot find local site-config: {e}",
+                duration=time.time() - start
+            )
+
+        # Check for existing working token
+        existing = self._get_existing_token(site_config_dir, hostname)
+        if existing and self._verify_token(api_url, existing):
+            return ActionResult(
+                success=True,
+                message=f"API token for {hostname} already works — skipped",
+                duration=time.time() - start
+            )
+
+        # Wait for pvedaemon to be ready on remote
+        if not self._wait_for_pvedaemon_remote(remote_ip):
+            return ActionResult(
+                success=False,
+                message=f"pvedaemon not running on {remote_ip} — cannot create API token",
+                duration=time.time() - start
+            )
+
+        # Create token on remote via SSH
+        logger.info(f"Creating API token on {remote_ip}...")
+        create_cmd = (
+            'pveum user token remove root@pam tofu 2>/dev/null || true; '
+            'pveum user token add root@pam tofu --privsep 0 --output-format json'
+        )
+        rc, out, err = run_ssh(remote_ip, create_cmd, timeout=30)
+        if rc != 0:
+            return ActionResult(
+                success=False,
+                message=f"pveum token add failed: {err or out}",
+                duration=time.time() - start
+            )
+
+        full_token = self._parse_token(out)
+        if not full_token:
+            return ActionResult(
+                success=False,
+                message="Failed to parse token from pveum output",
+                duration=time.time() - start
+            )
+
+        # Inject into remote secrets.yaml
+        self._inject_token_remote(remote_ip, hostname, full_token)
+
+        # Inject into local secrets.yaml
+        if not self._inject_token_local(site_config_dir, hostname, full_token):
+            return ActionResult(
+                success=False,
+                message="Failed to inject token into local secrets.yaml",
+                duration=time.time() - start
+            )
+
+        # Verify token works
+        if not self._verify_token(api_url, full_token):
+            return ActionResult(
+                success=False,
+                message="Token created but API verification failed after retries",
+                duration=time.time() - start
+            )
+
+        return ActionResult(
+            success=True,
+            message=f"API token created and verified for {hostname}",
+            duration=time.time() - start,
+            context_updates={'api_token_created': hostname}
+        )
+
+    @staticmethod
+    def _parse_token(pveum_output):
+        """Parse full token string from pveum JSON output."""
+        try:
+            token_data = json.loads(pveum_output.strip())
+            return f"{token_data['full-tokenid']}={token_data['value']}"
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.error(f"Failed to parse pveum token output: {e}")
+            return None
+
+    @staticmethod
+    def _get_existing_token(site_config_dir, hostname):
+        """Read existing token for hostname from local secrets.yaml.
+
+        Scopes the search to the api_tokens: section to avoid matching
+        the same hostname under ssh_keys: or other sections.
+        """
+        secrets_file = site_config_dir / 'secrets.yaml'
+        if not secrets_file.exists():
+            return None
+        content = secrets_file.read_text()
+        # Extract the api_tokens section (indented block after "api_tokens:")
+        section_match = re.search(
+            r'^api_tokens:\s*\n((?:[ \t]+.+\n)*)',
+            content, re.MULTILINE
+        )
+        if not section_match:
+            return None
+        section = section_match.group(1)
+        # Match hostname within the api_tokens section only
+        token_match = re.search(
+            rf'^\s*{re.escape(hostname)}:\s*"?([^"\n]+)"?\s*$',
+            section, re.MULTILINE
+        )
+        return token_match.group(1).strip() if token_match else None
+
+    @staticmethod
+    def _verify_token(api_url, token, retries=3, delay=5):
+        """Verify token works against PVE API with retries.
+
+        Uses stdlib urllib (no curl dependency). Retries handle the case
+        where pveproxy hasn't fully started after PVE installation.
+        """
+        import ssl
+        import urllib.request
+
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+
+        req = urllib.request.Request(
+            f'{api_url}/api2/json/version',
+            headers={'Authorization': f'PVEAPIToken={token}'}
+        )
+        for attempt in range(retries):
+            try:
+                with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
+                    if resp.status == 200:
+                        return True
+            except (urllib.error.URLError, OSError):
+                pass
+            if attempt < retries - 1:
+                logger.debug("API verification attempt %d/%d failed, "
+                             "retrying in %ds...", attempt + 1, retries, delay)
+                time.sleep(delay)
+        return False
+
+    @staticmethod
+    def _wait_for_pvedaemon_local():
+        """Wait for pvedaemon to be active (single retry with 10s sleep)."""
+        result = subprocess.run(
+            ['systemctl', 'is-active', 'pvedaemon'],
+            capture_output=True, text=True, timeout=10, check=False
+        )
+        if result.returncode == 0:
+            return True
+        logger.debug("pvedaemon not yet active, waiting 10s...")
+        time.sleep(10)
+        result = subprocess.run(
+            ['systemctl', 'is-active', 'pvedaemon'],
+            capture_output=True, text=True, timeout=10, check=False
+        )
+        return result.returncode == 0
+
+    @staticmethod
+    def _wait_for_pvedaemon_remote(remote_ip):
+        """Wait for pvedaemon to be active on remote host."""
+        rc, _, _ = run_ssh(remote_ip, 'systemctl is-active pvedaemon', timeout=10)
+        if rc == 0:
+            return True
+        logger.debug("pvedaemon not yet active on %s, waiting 10s...", remote_ip)
+        time.sleep(10)
+        rc, _, _ = run_ssh(remote_ip, 'systemctl is-active pvedaemon', timeout=10)
+        return rc == 0
+
+    @staticmethod
+    def _inject_token_local(site_config_dir, hostname, full_token):
+        """Inject token into local secrets.yaml."""
+        secrets_file = site_config_dir / 'secrets.yaml'
+
+        # Decrypt if needed
+        if not secrets_file.exists():
+            enc_file = site_config_dir / 'secrets.yaml.enc'
+            if enc_file.exists():
+                run_command(['make', 'decrypt'], cwd=site_config_dir, timeout=30)
+            if not secrets_file.exists():
+                logger.error("secrets.yaml not found and could not decrypt")
+                return False
+
+        content = secrets_file.read_text()
+        new_line = f'{hostname}: "{full_token}"'
+
+        # Update existing or add new token entry
+        # Scope replacement to api_tokens section by matching indented lines
+        pattern = re.compile(
+            rf'^(\s*){re.escape(hostname)}:.*$', re.MULTILINE
+        )
+        if pattern.search(content):
+            # Use lambda to avoid regex replacement escaping issues
+            # (token value could theoretically contain \, &, etc.)
+            content = pattern.sub(
+                lambda m: f'{m.group(1)}{new_line}', content
+            )
+        elif 'api_tokens:' in content:
+            content = content.replace(
+                'api_tokens:\n',
+                f'api_tokens:\n  {new_line}\n',
+                1
+            )
+        else:
+            content += f'\napi_tokens:\n  {new_line}\n'
+
+        secrets_file.write_text(content)
+        logger.info(f"Injected API token for {hostname} into {secrets_file}")
+        return True
+
+    @staticmethod
+    def _inject_token_remote(remote_ip, hostname, full_token):
+        """Inject token into remote host's secrets.yaml."""
+        # Validate hostname is safe for shell interpolation (RFC 952)
+        if not re.match(r'^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$', hostname):
+            logger.error(f"Invalid hostname format, skipping remote injection: {hostname}")
+            return
+
+        # Escape token value for sed replacement (| delimiter)
+        # Special chars in sed replacement: \, &, |
+        safe_token = full_token.replace('\\', '\\\\').replace('&', '\\&').replace('|', '\\|')
+
+        secrets_file = '/usr/local/etc/homestak/secrets.yaml'
+        inject_cmd = f'''
+if [ -f {secrets_file} ]; then
+    if grep -q "^\\s*{hostname}:" {secrets_file}; then
+        sed -i 's|^\\(\\s*\\){hostname}:.*$|\\1{hostname}: "{safe_token}"|' {secrets_file}
+    elif grep -q "^api_tokens:" {secrets_file}; then
+        sed -i '/^api_tokens:/a\\  {hostname}: "{safe_token}"' {secrets_file}
+    fi
+fi
+'''
+        rc, _, err = run_ssh(remote_ip, inject_cmd, timeout=30)
+        if rc != 0:
+            logger.warning(f"Failed to inject token on remote: {err}")
