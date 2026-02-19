@@ -144,6 +144,17 @@ class CreateApiTokenAction:
         token_name = hostname_out.strip()
         logger.debug(f"[{self.name}] Using token key: {token_name}")
 
+        # Check if an existing token already works (e.g., pve-setup already created one)
+        # This avoids redundant SSL cert regen + pveproxy restart which can invalidate tokens
+        existing = self._check_existing_token(host, token_name, config)
+        if existing:
+            logger.info(f"[{self.name}] Existing API token works on {host} — skipped")
+            return ActionResult(
+                success=True,
+                message=f"API token already valid on {host}",
+                duration=time.time() - start
+            )
+
         # Step 1: Regenerate PVE SSL certificates and restart pveproxy
         # This fixes IPv6-related SSL issues on fresh installs
         ssl_cmd = '''
@@ -195,7 +206,7 @@ if grep -q "^\\s*{token_name}:" {secrets_file}; then
     sudo sed -i 's|^\\(\\s*\\){token_name}:.*$|\\1{token_name}: {full_token}|' {secrets_file}
 else
     # Add new line after api_tokens:
-    sudo sed -i '/^api_tokens:/a\\    {token_name}: {full_token}' {secrets_file}
+    sudo sed -i '/^api_tokens:/a\\  {token_name}: {full_token}' {secrets_file}
 fi
 '''
         rc, out, err = run_ssh(host, inject_cmd, user=config.automation_user, timeout=30)
@@ -212,6 +223,43 @@ fi
             message=f"API token created on {host}",
             duration=time.time() - start
         )
+
+    @staticmethod
+    def _check_existing_token(host: str, token_name: str, config: HostConfig) -> bool:
+        """Check if an existing API token works on the remote PVE host.
+
+        Reads the token from secrets.yaml and verifies it against the PVE API.
+        This prevents redundant token recreation (which involves SSL cert regen
+        and pveproxy restart that can break working tokens).
+        """
+        # Read existing token from secrets.yaml on the remote host
+        check_cmd = f'''
+sudo python3 -c "
+import yaml, urllib.request, ssl, json, sys
+try:
+    with open('/usr/local/etc/homestak/secrets.yaml') as f:
+        secrets = yaml.safe_load(f)
+    token = secrets.get('api_tokens', {{}}).get('{token_name}', '')
+    if not token or '!' not in token:
+        sys.exit(1)
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    req = urllib.request.Request(
+        'https://localhost:8006/api2/json/version',
+        headers={{'Authorization': f'PVEAPIToken={{token}}'}},
+    )
+    resp = urllib.request.urlopen(req, context=ctx, timeout=5)
+    if resp.status == 200:
+        print('valid')
+    else:
+        sys.exit(1)
+except Exception:
+    sys.exit(1)
+"
+'''
+        rc, out, _ = run_ssh(host, check_cmd, user=config.automation_user, timeout=15)
+        return rc == 0 and 'valid' in out
 
 
 @dataclass
@@ -449,7 +497,7 @@ class InjectSSHKeyAction:
             inject_cmd = f"sudo sed -i 's|^\\(\\s*\\){self.key_name}:.*$|\\1{self.key_name}: {escaped_key}|' /usr/local/etc/homestak/secrets.yaml"
         else:
             # Key doesn't exist, add it after ssh_keys:
-            inject_cmd = f"sudo sed -i '/^ssh_keys:/a\\    {self.key_name}: {escaped_key}' /usr/local/etc/homestak/secrets.yaml"
+            inject_cmd = f"sudo sed -i '/^ssh_keys:/a\\  {self.key_name}: {escaped_key}' /usr/local/etc/homestak/secrets.yaml"
 
         rc, out, err = run_ssh(host, inject_cmd, user=config.automation_user, timeout=self.timeout)
         if rc != 0:
@@ -627,7 +675,7 @@ with open(secrets_file, "w") as f:
         else:
             f.write(line)
             if not key_exists and line.strip() == "ssh_keys:":
-                f.write("    " + key_name + ": " + pubkey + "\\n")
+                f.write("  " + key_name + ": " + pubkey + "\\n")
                 key_exists = True
 
 # Verify
@@ -751,6 +799,7 @@ exit 0
             message=f"vmbr0 bridge configured on {host}",
             duration=time.time() - start
         )
+
 
 
 @dataclass

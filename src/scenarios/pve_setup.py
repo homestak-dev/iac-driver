@@ -430,6 +430,19 @@ class _CreateApiTokenPhase:
                 duration=time.time() - start
             )
 
+        # Regenerate SSL certs and restart pveproxy before token creation
+        # Fixes IPv6-related SSL issues on fresh PVE installs
+        logger.debug("Regenerating PVE SSL certificates...")
+        subprocess.run(
+            'sysctl -w net.ipv6.conf.all.disable_ipv6=1 && '
+            'sysctl -w net.ipv6.conf.default.disable_ipv6=1 && '
+            'pvecm updatecerts --force 2>/dev/null; '
+            'sysctl -w net.ipv6.conf.all.disable_ipv6=0 && '
+            'sysctl -w net.ipv6.conf.default.disable_ipv6=0 && '
+            'systemctl restart pveproxy && sleep 2',
+            shell=True, capture_output=True, timeout=60, check=False
+        )
+
         # Create token via pveum (remove old if exists, since we can't
         # retrieve the value of an existing token)
         logger.info("Creating API token locally...")
