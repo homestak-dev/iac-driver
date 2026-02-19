@@ -4,6 +4,9 @@
 
 ### Theme: Provisioning Token (homestak-dev#231)
 
+### Added
+- Wire `dns_servers` from site-config through ConfigResolver to tofu tfvars — fixes DNS loss on inner PVE VMs after bridge reconfig (iac-driver#229)
+
 ### Fixed
 - Add `python3-requests` to `make install-deps` — required by `validation.py` (homestak-dev#266)
 - Handle YAML null in `host-config.sh` output for empty `network.interfaces` (homestak-dev#266)

@@ -230,6 +230,8 @@ class ConfigResolver:
             "ssh_keys": ssh_keys_list,
             # Spec server for Create → Specify flow (v0.45+)
             "spec_server": spec_server,
+            # DNS servers for cloud-init (v0.51+, #229)
+            "dns_servers": defaults.get("dns_servers", []),
             "vms": [resolved_vm],
         }
 
