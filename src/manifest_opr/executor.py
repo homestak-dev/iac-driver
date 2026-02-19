@@ -803,6 +803,7 @@ class NodeExecutor:
             f'--manifest-json {shlex.quote(subtree_json)} '
             f'-H {shlex.quote(inner_hostname)} '
             f'--self-addr {shlex.quote(ip)} '
+            f'--skip-preflight '
             f'--json-output'
         )
 
@@ -844,6 +845,7 @@ class NodeExecutor:
             f'--manifest-json {shlex.quote(subtree_json)} '
             f'-H {shlex.quote(inner_hostname)} '
             f'--self-addr {shlex.quote(ip)} '
+            f'--skip-preflight '
             f'--json-output --yes'
         )
 
