@@ -740,10 +740,15 @@ class ConfigureNetworkBridgeAction:
                 duration=time.time() - start
             )
 
+        # Build dns-nameservers line if configured (#229)
+        dns_line = ''
+        if config.dns_servers:
+            dns_line = f'    dns-nameservers {" ".join(config.dns_servers)}'
+
         # Script to create vmbr0 bridge from eth0 with DHCP
         # This preserves the current IP during transition
         # Uses sudo for privileged operations
-        bridge_script = '''
+        bridge_script = f'''
 set -e
 
 # Get current interface info
@@ -765,6 +770,7 @@ iface vmbr0 inet dhcp
     bridge-ports eth0
     bridge-stp off
     bridge-fd 0
+{dns_line}
 IFACE_EOF
 
 # Apply network configuration

@@ -58,6 +58,9 @@ class HostConfig:
     packer_release: str = 'latest'
     packer_image: str = 'debian-12.qcow2'
 
+    # DNS servers from site.yaml (for bridge config, #229)
+    dns_servers: list = field(default_factory=list)
+
     # Track config source type
     is_host_only: bool = False  # True when loaded from hosts/*.yaml (no PVE)
 
@@ -129,6 +132,10 @@ class HostConfig:
         if packer_release := site_defaults.get('packer_release'):
             self.packer_release = packer_release
 
+        # DNS servers: site.yaml (for bridge config, #229)
+        if dns_servers := site_defaults.get('dns_servers'):
+            self.dns_servers = dns_servers
+
     def _load_from_host_yaml(self):
         """Load configuration from hosts/*.yaml (SSH-only, pre-PVE).
 
@@ -175,6 +182,10 @@ class HostConfig:
         # Packer release: site.yaml > default
         if packer_release := site_defaults.get('packer_release'):
             self.packer_release = packer_release
+
+        # DNS servers: site.yaml (for bridge config, #229)
+        if dns_servers := site_defaults.get('dns_servers'):
+            self.dns_servers = dns_servers
 
         # No api_endpoint or api_token for host-only configs
         # These remain empty strings (defaults)
