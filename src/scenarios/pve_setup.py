@@ -102,6 +102,10 @@ class _EnsurePVEPhase:
         )
         pve_installed = pve_pkg_check.returncode == 0 and 'ii' in pve_pkg_check.stdout
 
+        # Determine hostname for ansible extra-vars (inventory uses 'localhost')
+        import socket
+        hostname = socket.gethostname()
+
         if kernel_installed and not pve_installed:
             # Kernel installed but PVE packages not yet — skip to phase 2
             logger.info("Proxmox kernel installed, running phase 2 (packages)...")
@@ -112,6 +116,7 @@ class _EnsurePVEPhase:
                 'ansible-playbook',
                 '-i', 'inventory/local.yml',
                 'playbooks/pve-install-kernel.yml',
+                '-e', f'pve_hostname={hostname}',
             ]
             rc, out, err = run_command(cmd, cwd=ansible_dir, timeout=1200)
             if rc != 0:
@@ -144,6 +149,7 @@ class _EnsurePVEPhase:
             'ansible-playbook',
             '-i', 'inventory/local.yml',
             'playbooks/pve-install-packages.yml',
+            '-e', f'pve_hostname={hostname}',
         ]
         rc, out, err = run_command(cmd, cwd=ansible_dir, timeout=1200)
         if rc != 0:
