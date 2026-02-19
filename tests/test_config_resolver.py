@@ -280,6 +280,47 @@ class TestSpecServerResolution:
         assert config['spec_server'] == 'https://controller:44443'
 
 
+class TestDnsServersResolution:
+    """Test dns_servers resolution for cloud-init DNS (v0.51+, #229)."""
+
+    def test_resolve_inline_vm_includes_dns_servers(self, site_config_dir, monkeypatch):
+        """resolve_inline_vm should include dns_servers from site.yaml defaults."""
+        monkeypatch.delenv('HOMESTAK_SOURCE', raising=False)
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_inline_vm(
+            node='test-node',
+            vm_name='inline-vm',
+            vmid=99900,
+            vm_preset='vm-small',
+            image='debian-12.img'
+        )
+
+        assert 'dns_servers' in config
+        assert config['dns_servers'] == ['198.51.100.1']
+
+    def test_resolve_inline_vm_dns_servers_defaults_empty(self, site_config_dir, monkeypatch):
+        """resolve_inline_vm should default dns_servers to empty list."""
+        monkeypatch.delenv('HOMESTAK_SOURCE', raising=False)
+        resolver = ConfigResolver(str(site_config_dir))
+        # Override site.yaml to remove dns_servers
+        (site_config_dir / 'site.yaml').write_text("""
+defaults:
+  timezone: America/Denver
+  bridge: vmbr0
+  gateway: 198.51.100.1
+""")
+        resolver = ConfigResolver(str(site_config_dir))
+        config = resolver.resolve_inline_vm(
+            node='test-node',
+            vm_name='inline-vm',
+            vmid=99900,
+            vm_preset='vm-small',
+            image='debian-12.img'
+        )
+
+        assert config['dns_servers'] == []
+
+
 class TestProvisioningTokenResolution:
     """Test provisioning token minting in resolve_inline_vm (#231)."""
 

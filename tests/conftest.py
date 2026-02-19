@@ -59,6 +59,8 @@ defaults:
   bridge: vmbr0
   ssh_user: root
   gateway: 198.51.100.1
+  dns_servers:
+    - 198.51.100.1
   packages:
     - htop
     - curl
