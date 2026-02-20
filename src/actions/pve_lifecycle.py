@@ -740,10 +740,12 @@ class ConfigureNetworkBridgeAction:
                 duration=time.time() - start
             )
 
-        # Build dns-nameservers line if configured (#229)
+        # Build DNS config lines (#229)
         dns_line = ''
+        dns_resolvectl = ''
         if config.dns_servers:
             dns_line = f'    dns-nameservers {" ".join(config.dns_servers)}'
+            dns_resolvectl = f'sudo resolvectl dns vmbr0 {" ".join(config.dns_servers)} 2>/dev/null || true'
 
         # Script to create vmbr0 bridge from eth0 with DHCP
         # This preserves the current IP during transition
@@ -782,6 +784,8 @@ for i in $(seq 1 30); do
     if ip addr show vmbr0 | grep -q 'inet '; then
         echo "vmbr0 configured successfully"
         ip addr show vmbr0 | grep 'inet '
+        # Configure DNS on vmbr0 for systemd-resolved (#229)
+        {dns_resolvectl}
         exit 0
     fi
     sleep 1
