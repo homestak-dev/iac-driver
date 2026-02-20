@@ -734,6 +734,11 @@ class ConfigureNetworkBridgeAction:
         rc, out, err = run_ssh(host, check_cmd, user=config.automation_user, timeout=30)
         if rc == 0:
             logger.info(f"[{self.name}] vmbr0 already exists on {host}")
+            # Ensure DNS is configured on vmbr0 even if bridge already exists (#229)
+            if config.dns_servers:
+                dns_cmd = f'sudo resolvectl dns vmbr0 {" ".join(config.dns_servers)} 2>/dev/null || true'
+                run_ssh(host, dns_cmd, user=config.automation_user, timeout=30)
+                logger.info(f"[{self.name}] DNS configured on vmbr0: {config.dns_servers}")
             return ActionResult(
                 success=True,
                 message=f"vmbr0 already configured on {host}",
