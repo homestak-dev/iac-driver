@@ -2,12 +2,11 @@
 
 ## Unreleased
 
-### Theme: Provisioning Token (homestak-dev#231)
-
 ### Added
 - Wire `dns_servers` from site-config through ConfigResolver to tofu tfvars (iac-driver#229)
 - Add `dns_servers` to `HostConfig` from site.yaml defaults (iac-driver#229)
 - Include `dns-nameservers` in bridge config when `dns_servers` configured — fixes DNS loss on PVE nodes after bridge reconfig (iac-driver#229)
+- Automate API token creation in `pve-setup` — creates pveum token, injects into secrets.yaml, verifies against PVE API (iac-driver#223)
 
 ### Fixed
 - Add `python3-requests` to `make install-deps` — required by `validation.py` (homestak-dev#266)
@@ -15,12 +14,11 @@
 - Skip API preflight check for `pve-setup` scenario — PVE isn't installed yet on fresh hosts (homestak-dev#266)
 - Handle local PVE install reboot — split into kernel/packages phases with idempotent re-entry via dpkg state detection (iac-driver#222)
 
-### Added
-- Automate API token creation in `pve-setup` — creates pveum token, injects into secrets.yaml, verifies against PVE API (iac-driver#223)
-
 ### Changed
 - Simplify `_image_to_asset_name()` — image names now map 1:1 to asset filenames (packer#48)
 - Update default `packer_image` from `debian-12-custom.qcow2` to `debian-12.qcow2` (packer#48)
+
+### Theme: Provisioning Token (homestak-dev#231)
 
 HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 

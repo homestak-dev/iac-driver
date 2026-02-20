@@ -289,7 +289,7 @@ nodes:
 ### Delegation Model
 
 Root nodes (depth 0) are handled locally. PVE nodes with children trigger:
-1. PVE lifecycle setup (bootstrap, secrets, bridge, API token, image download)
+1. PVE lifecycle setup (bootstrap, secrets, bridge + DNS, API token, image download)
 2. Subtree delegation via SSH — `./run.sh manifest apply --manifest-json` on the PVE node
 
 This recursion handles arbitrary depth without limits.
@@ -425,7 +425,7 @@ Use `--json-output` for structured JSON to stdout (logs to stderr). Use `--dry-r
 
 | Scenario | Runtime | Description |
 |----------|---------|-------------|
-| `pve-setup` | ~3m | Install PVE (if needed), configure host, generate node config |
+| `pve-setup` | ~3m | Install PVE (if needed), configure host, create API token, generate node config |
 | `user-setup` | ~30s | Create homestak user |
 | `push-vm-roundtrip` | ~3m | Spec discovery integration test (push verification) |
 | `pull-vm-roundtrip` | ~5m | Config phase integration test (pull verification) |
