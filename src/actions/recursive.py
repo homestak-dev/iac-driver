@@ -6,6 +6,7 @@ Enables running scenarios on remote bootstrapped hosts via SSH with real-time st
 import json
 import logging
 import os
+import re
 import select
 import shlex
 import subprocess
@@ -76,7 +77,8 @@ class RecursiveScenarioAction:
         # Build the remote command
         remote_cmd = self._build_remote_command()
 
-        logger.info(f"[{self.name}] Starting {self.scenario_name} on {host}")
+        label = self.scenario_name or self.name
+        logger.info(f"[{self.name}] Starting {label} on {host}")
         logger.debug(f"[{self.name}] Command: {remote_cmd}")
 
         try:
@@ -299,13 +301,13 @@ class RecursiveScenarioAction:
             else:
                 stderr_lines.append(line)
 
-    _in_json_block: bool = False
+    _json_depth: int = 0
 
     def _log_delegate_line(self, line: str):
         """Log a line from the delegated scenario with action name prefix.
 
         JSON output is logged at debug level, phase progress at info level.
-        Tracks JSON block state so indented JSON lines aren't leaked to INFO.
+        Tracks brace depth so nested JSON objects don't leak to INFO.
         """
         # Skip empty lines
         if not line.strip():
@@ -313,15 +315,14 @@ class RecursiveScenarioAction:
 
         stripped = line.strip()
 
-        # Detect JSON block start
-        if stripped.startswith('{') and not self._in_json_block:
-            self._in_json_block = True
+        # Track JSON brace depth
+        if stripped.startswith('{') and self._json_depth == 0:
+            self._json_depth = 1
+        elif self._json_depth > 0:
+            self._json_depth += stripped.count('{') - stripped.count('}')
 
-        if self._in_json_block:
+        if self._json_depth > 0 or (self._json_depth == 0 and stripped == '}'):
             logger.debug(f"[{self.name}] {line}")
-            # Detect JSON block end (closing brace at top level)
-            if stripped == '}':
-                self._in_json_block = False
             return
 
         # Log phase progress and other output at info level
@@ -403,7 +404,8 @@ class RecursiveScenarioAction:
         """Extract a meaningful error message from available output."""
         # First priority: error from JSON result
         if json_result and 'error' in json_result:
-            return str(json_result['error'])
+            # Strip ANSI escape codes from tofu/other tool output
+            return re.sub(r'\x1b\[[0-9;]*m', '', str(json_result['error']))
 
         # Second: look for failed phase in JSON
         if json_result and 'phases' in json_result:

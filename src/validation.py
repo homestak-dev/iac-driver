@@ -291,8 +291,9 @@ def validate_site_config(_config) -> list[str]:
             "  Edit site.yaml: defaults.dns_servers (e.g., [192.168.1.1])"
         )
     if not defaults.get('domain'):
-        logger.warning(
-            "domain not configured in site.yaml — VMs won't have a DNS search domain. "
+        logger.warning("domain not configured in site.yaml")
+        logger.debug(
+            "VMs won't have a DNS search domain. "
             "Edit site.yaml: defaults.domain (e.g., home.arpa)"
         )
 

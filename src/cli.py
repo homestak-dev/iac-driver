@@ -308,7 +308,7 @@ def _resolve_host(args, scenario, available_hosts):
         hostname = socket.gethostname()
         if hostname in available_hosts:
             host = hostname
-            logger.info(f"Auto-detected host from hostname: {host}")
+            logger.debug(f"Auto-detected host from hostname: {host}")
         elif not requires_host_config:
             # Scenario doesn't need host config, proceed without
             host = None
