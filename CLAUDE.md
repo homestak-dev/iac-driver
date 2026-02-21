@@ -289,7 +289,7 @@ nodes:
 ### Delegation Model
 
 Root nodes (depth 0) are handled locally. PVE nodes with children trigger:
-1. PVE lifecycle setup (bootstrap, secrets, bridge + DNS, API token, image download)
+1. PVE lifecycle setup (bootstrap, secrets, site config, bridge + DNS, API token, image download)
 2. Subtree delegation via SSH — `./run.sh manifest apply --manifest-json` on the PVE node
 
 This recursion handles arbitrary depth without limits.
