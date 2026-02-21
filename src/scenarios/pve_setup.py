@@ -690,13 +690,13 @@ class _CreateApiTokenPhase:
         """Inject token into local secrets.yaml."""
         secrets_file = site_config_dir / 'secrets.yaml'
 
-        # Decrypt if needed
+        # Initialize secrets if needed (decrypt .enc or copy .example)
         if not secrets_file.exists():
-            enc_file = site_config_dir / 'secrets.yaml.enc'
-            if enc_file.exists():
-                run_command(['make', 'decrypt'], cwd=site_config_dir, timeout=30)
+            run_command(
+                ['make', 'init-secrets'], cwd=site_config_dir, timeout=30
+            )
             if not secrets_file.exists():
-                logger.error("secrets.yaml not found and could not decrypt")
+                logger.error("secrets.yaml not found — no .enc or .example available")
                 return False
 
         content = secrets_file.read_text()
