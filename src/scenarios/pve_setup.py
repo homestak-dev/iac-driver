@@ -714,10 +714,13 @@ class _CreateApiTokenPhase:
                 lambda m: f'{m.group(1)}{new_line}', content
             )
         elif 'api_tokens:' in content:
-            content = content.replace(
-                'api_tokens:\n',
-                f'api_tokens:\n  {new_line}\n',
-                1
+            # Handle both block style "api_tokens:\n" and inline "api_tokens: {}\n"
+            content = re.sub(
+                r'^(api_tokens:)\s*(\{\})?\s*$',
+                rf'\1\n  {new_line}',
+                content,
+                count=1,
+                flags=re.MULTILINE,
             )
         else:
             content += f'\napi_tokens:\n  {new_line}\n'
