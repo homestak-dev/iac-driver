@@ -22,8 +22,10 @@
 
 ### Changed
 - Replace `[inner]` log prefix with delegate action name (e.g., `[delegate-root-pve]`) (#240)
-- Suppress delegated JSON output from INFO logs — track JSON block state for clean output (#240)
-- Downgrade auto-detected IP log from WARNING to INFO
+- Suppress delegated JSON output from INFO logs — track brace depth for nested JSON (#240)
+- Fix empty action name in delegate "Starting" message
+- Strip ANSI escape codes from delegated error messages
+- Downgrade auto-detected host and IP logs from INFO/WARNING to DEBUG/INFO
 - Default to all SSH keys when spec omits `ssh_keys` — makes specs portable across deployments (#239)
 - Remove obsolete `ssh_keys.` prefix handling in spec resolver (#239)
 - Simplify `_image_to_asset_name()` — image names now map 1:1 to asset filenames (packer#48)

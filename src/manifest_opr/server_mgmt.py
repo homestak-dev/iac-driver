@@ -81,7 +81,8 @@ class ServerManager:
             logger.warning("Server start returned rc=%d: %s",
                            rc, stderr.strip() or stdout.strip())
         else:
-            logger.info("Server started on %s:%d", self.ssh_host, SERVER_PORT)
+            logger.info("Server started on %s:%d (log: /var/log/homestak/server.log)",
+                        self.ssh_host, SERVER_PORT)
 
         self._started = True
         self._set_source_env(self.ssh_host)
