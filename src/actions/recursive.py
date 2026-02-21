@@ -55,7 +55,7 @@ class RecursiveScenarioAction:
 
         1. SSH to target host with optional PTY allocation
         2. Run: homestak scenario <name> --json-output [args...]
-        3. Stream stdout/stderr to logger in real-time with [inner] prefix
+        3. Stream stdout/stderr to logger in real-time with [action-name] prefix
         4. Parse final JSON result from stdout
         5. Extract context_keys from result into context_updates
 
@@ -208,7 +208,7 @@ class RecursiveScenarioAction:
         """Execute SSH command with PTY for real-time streaming.
 
         Uses subprocess with line-by-line reading to stream output as it arrives.
-        Output is logged with [inner] prefix for visibility.
+        Output is logged with [action-name] prefix for visibility.
         """
         cmd = self._build_ssh_command(host, remote_cmd)
 
@@ -238,7 +238,7 @@ class RecursiveScenarioAction:
                         remaining_out, remaining_err = process.communicate(timeout=5)
                         if remaining_out:
                             for line in remaining_out.splitlines():
-                                self._log_inner_line(line)
+                                self._log_delegate_line(line)
                                 output_lines.append(line)
                         if remaining_err:
                             stderr_lines.extend(remaining_err.splitlines())
@@ -280,7 +280,7 @@ class RecursiveScenarioAction:
 
         # Log output after completion (no streaming)
         for line in result.stdout.splitlines():
-            self._log_inner_line(line)
+            self._log_delegate_line(line)
 
         return result.returncode, result.stdout, result.stderr
 
@@ -294,27 +294,38 @@ class RecursiveScenarioAction:
                 continue
             line = line.rstrip('\n')
             if stream == stdout:
-                self._log_inner_line(line)
+                self._log_delegate_line(line)
                 output_lines.append(line)
             else:
                 stderr_lines.append(line)
 
-    def _log_inner_line(self, line: str):
-        """Log a line from the inner scenario with [inner] prefix.
+    _in_json_block: bool = False
+
+    def _log_delegate_line(self, line: str):
+        """Log a line from the delegated scenario with action name prefix.
 
         JSON output is logged at debug level, phase progress at info level.
+        Tracks JSON block state so indented JSON lines aren't leaked to INFO.
         """
         # Skip empty lines
         if not line.strip():
             return
 
-        # Detect JSON (final output)
-        if line.strip().startswith('{') or line.strip().startswith('['):
-            logger.debug(f"[inner] {line}")
+        stripped = line.strip()
+
+        # Detect JSON block start
+        if stripped.startswith('{') and not self._in_json_block:
+            self._in_json_block = True
+
+        if self._in_json_block:
+            logger.debug(f"[{self.name}] {line}")
+            # Detect JSON block end (closing brace at top level)
+            if stripped == '}':
+                self._in_json_block = False
             return
 
         # Log phase progress and other output at info level
-        logger.info(f"[inner] {line}")
+        logger.info(f"[{self.name}] {line}")
 
     def _parse_json_result(self, output: str) -> dict | None:
         """Parse JSON result from scenario output.
