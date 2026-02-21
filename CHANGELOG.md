@@ -11,6 +11,8 @@
 
 ### Fixed
 - Add preflight validation for empty `gateway` and `dns_servers` in site.yaml — fail early instead of cryptic DNS errors; warn (non-blocking) for empty `domain`
+- Add preflight check for empty SSH keys in secrets.yaml — prevents 2-minute timeout with no explanation (#243)
+- Add preflight check for missing packer images in PVE storage — local and remote via SSH (#243)
 - Use `make init-secrets` fallback for missing secrets.yaml — handles both `.enc` decrypt and `.example` copy (#236)
 - Handle inline empty dict (`api_tokens: {}`) in token injection (#237)
 - Add `python3-requests` to `make install-deps` — required by `validation.py` (homestak-dev#266)

@@ -12,6 +12,7 @@ import json
 import logging
 import sys
 import time
+from pathlib import Path
 
 from config import load_host_config, list_hosts
 from manifest import load_manifest
@@ -178,6 +179,24 @@ def _run_preflight(args, config, manifest) -> int | None:
         requires_nested_virt = _manifest_requires_nested_virt(manifest)
 
     errors = validate_readiness(config, _VerbRequirements)
+
+    # Check packer images exist for root-level nodes
+    ssh_host = getattr(config, 'ssh_host', None) or getattr(config, 'ip', None)
+    for node in manifest.nodes:
+        if getattr(node, 'parent', None) is None and getattr(node, 'image', None):
+            img_path = f'/var/lib/vz/template/iso/{node.image}.img'
+            if ssh_host:
+                from common import run_ssh
+                rc, _, _ = run_ssh(ssh_host, f'test -f {img_path}', timeout=10)
+                exists = rc == 0
+            else:
+                exists = Path(img_path).exists()
+            if not exists:
+                errors.append(
+                    f"Packer image not found: {img_path}\n"
+                    f"  Run: sudo homestak images download {node.image} --publish"
+                )
+
     if errors:
         print("\nPre-flight validation failed:")
         for error in errors:
@@ -423,7 +442,6 @@ def validate_manifest_fks(manifest, site_config_dir) -> list[str]:
     Returns:
         List of error messages (empty = valid)
     """
-    from pathlib import Path
     errors = []
     specs_dir = Path(site_config_dir) / 'specs'
     presets_dir = Path(site_config_dir) / 'presets'
