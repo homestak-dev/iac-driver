@@ -295,6 +295,19 @@ def validate_site_config(_config) -> list[str]:
             "domain not configured in site.yaml — VMs won't have a DNS search domain. "
             "Edit site.yaml: defaults.domain (e.g., home.arpa)"
         )
+
+    # Check secrets.yaml for SSH keys
+    secrets_file = site_config_dir / 'secrets.yaml'
+    if secrets_file.exists():
+        with open(secrets_file, encoding='utf-8') as f:
+            secrets = yaml.safe_load(f) or {}
+        ssh_keys = secrets.get('ssh_keys', {})
+        if not ssh_keys or not isinstance(ssh_keys, dict) or not any(ssh_keys.values()):
+            errors.append(
+                "No SSH keys in secrets.yaml — VMs will be unreachable\n"
+                "  Run: sudo homestak site-init"
+            )
+
     return errors
 
 
