@@ -205,10 +205,10 @@ class TestResolverBase:
         assert keys[0].startswith("ssh-rsa")
         assert keys[1].startswith("ssh-ed25519")
 
-    def test_resolve_ssh_keys_with_prefix(self, site_config):
-        """_resolve_ssh_keys handles ssh_keys. prefix."""
+    def test_resolve_ssh_keys_by_id(self, site_config):
+        """_resolve_ssh_keys resolves bare key identifiers."""
         resolver = ResolverBase(etc_path=site_config)
-        keys = resolver._resolve_ssh_keys(["ssh_keys.user1"])
+        keys = resolver._resolve_ssh_keys(["user1"])
         assert len(keys) == 1
         assert keys[0].startswith("ssh-rsa")
 
