@@ -13,6 +13,8 @@ Extracted from scenarios/recursive_pve.py for reuse by the operator engine.
 import base64
 import json
 import logging
+import tempfile as tmpmod
+from pathlib import Path
 import os
 import subprocess
 import time
@@ -390,13 +392,23 @@ class CopySecretsAction:
 
         logger.info(f"[{self.name}] Copying secrets to {host}...")
 
+        # Scope secrets: exclude api_tokens (each PVE node generates its own)
+        import yaml
+        with open(secrets_path, encoding='utf-8') as f:
+            secrets = yaml.safe_load(f) or {}
+        secrets.pop('api_tokens', None)
+
+        scoped_file = Path(tmpmod.mktemp(suffix='.yaml'))
+        with open(scoped_file, 'w', encoding='utf-8') as f:
+            yaml.dump(secrets, f, default_flow_style=False)
+
         # Use automation_user for VM connections
         user = config.automation_user
         cmd = [
             'scp',
             '-o', 'StrictHostKeyChecking=no',
             '-o', 'UserKnownHostsFile=/dev/null',
-            str(secrets_path),
+            str(scoped_file),
             f'{user}@{host}:/tmp/secrets.yaml'
         ]
 
@@ -443,6 +455,95 @@ class CopySecretsAction:
                 message=f"Timeout copying secrets to {host}",
                 duration=time.time() - start
             )
+        finally:
+            scoped_file.unlink(missing_ok=True)
+
+
+@dataclass
+class CopySiteConfigAction:
+    """Copy site.yaml from driver host to target PVE node.
+
+    Required for delegated PVE nodes to have DNS servers, gateway,
+    and other site defaults for bridge configuration and child VM
+    provisioning.
+    """
+    name: str
+    host_attr: str = 'vm_ip'
+    timeout: int = 60
+
+    def run(self, config: HostConfig, context: dict) -> ActionResult:
+        """Copy site.yaml to target host."""
+        start = time.time()
+
+        host = context.get(self.host_attr)
+        if not host:
+            return ActionResult(
+                success=False,
+                message=f"No {self.host_attr} in context",
+                duration=time.time() - start
+            )
+
+        from config import get_site_config_dir
+        site_path = get_site_config_dir() / 'site.yaml'
+
+        if not site_path.exists():
+            return ActionResult(
+                success=False,
+                message=f"site.yaml not found at {site_path}",
+                duration=time.time() - start
+            )
+
+        logger.info(f"[{self.name}] Copying site config to {host}...")
+
+        user = config.automation_user
+        cmd = [
+            'scp',
+            '-o', 'StrictHostKeyChecking=no',
+            '-o', 'UserKnownHostsFile=/dev/null',
+            str(site_path),
+            f'{user}@{host}:/tmp/site.yaml'
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+                check=False,
+            )
+
+            if result.returncode != 0:
+                return ActionResult(
+                    success=False,
+                    message=f"Failed to copy site config: {result.stderr}",
+                    duration=time.time() - start
+                )
+
+            install_cmd = (
+                'sudo mv /tmp/site.yaml /usr/local/etc/homestak/site.yaml'
+                ' && sudo chown root:root /usr/local/etc/homestak/site.yaml'
+            )
+            rc, out, err = run_ssh(host, install_cmd, user=config.automation_user, timeout=30)
+            if rc != 0:
+                return ActionResult(
+                    success=False,
+                    message=f"Failed to install site config: {err or out}",
+                    duration=time.time() - start
+                )
+
+            return ActionResult(
+                success=True,
+                message=f"Site config copied to {host}",
+                duration=time.time() - start
+            )
+
+        except subprocess.TimeoutExpired:
+            return ActionResult(
+                success=False,
+                message=f"Timeout copying site config to {host}",
+                duration=time.time() - start
+            )
 
 
 @dataclass
@@ -470,7 +571,6 @@ class InjectSSHKeyAction:
             )
 
         # Read local SSH public key
-        from pathlib import Path
         pubkey_path = Path.home() / '.ssh' / 'id_rsa.pub'
         if not pubkey_path.exists():
             pubkey_path = Path.home() / '.ssh' / 'id_ed25519.pub'
@@ -551,7 +651,6 @@ class CopySSHPrivateKeyAction:
             )
 
         # Read local SSH private key
-        from pathlib import Path
         privkey_path = Path.home() / '.ssh' / 'id_rsa'
         pubkey_path = Path.home() / '.ssh' / 'id_rsa.pub'
         if not privkey_path.exists():
