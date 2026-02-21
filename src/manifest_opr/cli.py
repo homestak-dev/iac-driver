@@ -181,10 +181,17 @@ def _run_preflight(args, config, manifest) -> int | None:
     errors = validate_readiness(config, _VerbRequirements)
 
     # Check packer images exist for root-level nodes
+    ssh_host = getattr(config, 'ssh_host', None) or getattr(config, 'ip', None)
     for node in manifest.nodes:
         if getattr(node, 'parent', None) is None and getattr(node, 'image', None):
-            img_path = Path(f'/var/lib/vz/template/iso/{node.image}.img')
-            if not img_path.exists():
+            img_path = f'/var/lib/vz/template/iso/{node.image}.img'
+            if ssh_host:
+                from common import run_ssh
+                rc, _, _ = run_ssh(ssh_host, f'test -f {img_path}', timeout=10)
+                exists = rc == 0
+            else:
+                exists = Path(img_path).exists()
+            if not exists:
                 errors.append(
                     f"Packer image not found: {img_path}\n"
                     f"  Run: sudo homestak images download {node.image} --publish"
