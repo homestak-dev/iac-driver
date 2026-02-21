@@ -199,15 +199,26 @@ class ResolverBase:
         result: dict = self._posture_cache[name]
         return result
 
+    def _all_ssh_keys(self) -> list:
+        """Return all SSH public keys from secrets.ssh_keys.
+
+        Returns:
+            List of all public key strings
+        """
+        secrets = self._load_secrets()
+        ssh_keys = secrets.get("ssh_keys", {})
+        if not ssh_keys or not isinstance(ssh_keys, dict):
+            return []
+        return list(ssh_keys.values())
+
     def _resolve_ssh_keys(self, key_refs: list) -> list:
         """Resolve SSH key references to actual public keys.
 
-        Handles both formats:
-        - "ssh_keys.keyname" -> looks up secrets.ssh_keys.keyname
-        - "keyname" -> looks up secrets.ssh_keys.keyname
+        Key refs are identifiers matching secrets.ssh_keys keys
+        (e.g., "root@mother", "jderose@father").
 
         Args:
-            key_refs: List of SSH key reference strings
+            key_refs: List of SSH key identifier strings
 
         Returns:
             List of resolved public key strings
@@ -219,9 +230,7 @@ class ResolverBase:
         ssh_keys = secrets.get("ssh_keys", {})
         resolved = []
 
-        for ref in key_refs:
-            # Handle both "ssh_keys.keyname" and "keyname" formats
-            key_id = ref.replace("ssh_keys.", "") if ref.startswith("ssh_keys.") else ref
+        for key_id in key_refs:
             if key_id not in ssh_keys:
                 raise SSHKeyNotFoundError(key_id)
             resolved.append(ssh_keys[key_id])
