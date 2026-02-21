@@ -199,6 +199,18 @@ class ResolverBase:
         result: dict = self._posture_cache[name]
         return result
 
+    def _all_ssh_keys(self) -> list:
+        """Return all SSH public keys from secrets.ssh_keys.
+
+        Returns:
+            List of all public key strings
+        """
+        secrets = self._load_secrets()
+        ssh_keys = secrets.get("ssh_keys", {})
+        if not ssh_keys or not isinstance(ssh_keys, dict):
+            return []
+        return list(ssh_keys.values())
+
     def _resolve_ssh_keys(self, key_refs: list) -> list:
         """Resolve SSH key references to actual public keys.
 

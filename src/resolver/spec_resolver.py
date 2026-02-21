@@ -152,11 +152,15 @@ class SpecResolver(ResolverBase):
             spec["access"] = {}
         spec["access"]["_posture"] = posture  # Include full posture for auth checks
 
-        # Resolve SSH key FKs in users
+        # Resolve SSH keys for users
+        # If ssh_keys is omitted, inject all keys from secrets.ssh_keys
+        # If ssh_keys is explicitly listed, resolve only those FKs
         users = spec.get("access", {}).get("users", [])
         for user in users:
             if "ssh_keys" in user:
                 user["ssh_keys"] = self._resolve_ssh_keys(user["ssh_keys"])
+            else:
+                user["ssh_keys"] = self._all_ssh_keys()
 
         # Cache and return
         self._spec_cache[identity] = spec
