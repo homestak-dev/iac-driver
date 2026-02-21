@@ -715,8 +715,8 @@ def main():
             print(f"Error loading manifest: {e}")
             return 1
 
-    # Pre-flight validation (skip for --skip-preflight, --dry-run)
-    if not args.skip_preflight and not args.dry_run:
+    # Pre-flight validation (skip for --skip-preflight, --dry-run, --list-phases)
+    if not args.skip_preflight and not args.dry_run and not args.list_phases:
         scenario_class = type(scenario)
         errors = validate_readiness(
             config,

@@ -202,7 +202,7 @@ class ServerManager:
                 detected = self.detect_external_ip()
                 if detected:
                     addr = detected
-                    logger.warning(
+                    logger.info(
                         "Auto-detected external IP %s for HOMESTAK_SOURCE "
                         "(override with --self-addr or HOMESTAK_SELF_ADDR "
                         "if incorrect)", addr,

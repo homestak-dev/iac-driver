@@ -259,6 +259,45 @@ def validate_bootstrap_installed() -> list[str]:
     return errors
 
 
+def validate_site_config(_config) -> list[str]:
+    """Validate site.yaml has required network settings.
+
+    Returns:
+        List of error strings (empty if valid)
+    """
+    from config import get_site_config_dir
+    errors: list[str] = []
+
+    try:
+        site_config_dir = get_site_config_dir()
+        site_file = site_config_dir / 'site.yaml'
+        if not site_file.exists():
+            return errors
+        import yaml
+        with open(site_file, encoding='utf-8') as f:
+            site = yaml.safe_load(f) or {}
+        defaults = site.get('defaults', {})
+    except Exception:
+        return errors
+
+    if not defaults.get('gateway'):
+        errors.append(
+            "gateway not configured in site.yaml\n"
+            "  Edit site.yaml: defaults.gateway (e.g., 192.168.1.1)"
+        )
+    if not defaults.get('dns_servers'):
+        errors.append(
+            "dns_servers not configured in site.yaml\n"
+            "  Edit site.yaml: defaults.dns_servers (e.g., [192.168.1.1])"
+        )
+    if not defaults.get('domain'):
+        logger.warning(
+            "domain not configured in site.yaml — VMs won't have a DNS search domain. "
+            "Edit site.yaml: defaults.domain (e.g., home.arpa)"
+        )
+    return errors
+
+
 def validate_site_init_complete(hostname: Optional[str] = None) -> list[str]:
     """Validate that site-init has been run.
 
@@ -571,6 +610,9 @@ def validate_readiness(config, scenario_class, timeout: float = 10.0,
             check_api=requires_api,
             timeout=timeout
         ))
+
+    # Site config validation (gateway, dns_servers must be set for VM provisioning)
+    errors.extend(validate_site_config(config))
 
     # Nested virtualization check (for nested-pve-* scenarios)
     if requires_nested_virt:

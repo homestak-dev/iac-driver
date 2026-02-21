@@ -7,14 +7,23 @@
 - Add `dns_servers` to `HostConfig` from site.yaml defaults (iac-driver#229)
 - Include `dns-nameservers` in bridge config when `dns_servers` configured — fixes DNS loss on PVE nodes after bridge reconfig (iac-driver#229)
 - Automate API token creation in `pve-setup` — creates pveum token, injects into secrets.yaml, verifies against PVE API (iac-driver#223)
+- Auto-generate `auth.signing_key` during `pve-setup` when empty (#238)
 
 ### Fixed
+- Add preflight validation for empty `gateway` and `dns_servers` in site.yaml — fail early instead of cryptic DNS errors; warn (non-blocking) for empty `domain`
+- Use `make init-secrets` fallback for missing secrets.yaml — handles both `.enc` decrypt and `.example` copy (#236)
+- Handle inline empty dict (`api_tokens: {}`) in token injection (#237)
 - Add `python3-requests` to `make install-deps` — required by `validation.py` (homestak-dev#266)
 - Handle YAML null in `host-config.sh` output for empty `network.interfaces` (homestak-dev#266)
 - Skip API preflight check for `pve-setup` scenario — PVE isn't installed yet on fresh hosts (homestak-dev#266)
 - Handle local PVE install reboot — split into kernel/packages phases with idempotent re-entry via dpkg state detection (iac-driver#222)
 
 ### Changed
+- Replace `[inner]` log prefix with delegate action name (e.g., `[delegate-root-pve]`) (#240)
+- Suppress delegated JSON output from INFO logs — track JSON block state for clean output (#240)
+- Downgrade auto-detected IP log from WARNING to INFO
+- Default to all SSH keys when spec omits `ssh_keys` — makes specs portable across deployments (#239)
+- Remove obsolete `ssh_keys.` prefix handling in spec resolver (#239)
 - Simplify `_image_to_asset_name()` — image names now map 1:1 to asset filenames (packer#48)
 - Update default `packer_image` from `debian-12-custom.qcow2` to `debian-12.qcow2` (packer#48)
 
