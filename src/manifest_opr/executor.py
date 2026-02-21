@@ -374,6 +374,7 @@ class NodeExecutor:
         from actions.pve_lifecycle import (
             BootstrapAction,
             CopySecretsAction,
+            CopySiteConfigAction,
             InjectSSHKeyAction,
             CopySSHPrivateKeyAction,
             ConfigureNetworkBridgeAction,
@@ -402,25 +403,31 @@ class NodeExecutor:
             timeout=600,
         )))
 
-        # 2. Copy secrets
+        # 2. Copy secrets (scoped — excludes api_tokens)
         phases.append(('copy_secrets', CopySecretsAction(
             name=f'secrets-{mn.name}',
             host_attr=host_key,
         )))
 
-        # 3. Inject outer host SSH key
+        # 3. Copy site config (DNS, gateway, timezone, etc.)
+        phases.append(('copy_site_config', CopySiteConfigAction(
+            name=f'siteconfig-{mn.name}',
+            host_attr=host_key,
+        )))
+
+        # 4. Inject driver SSH key
         phases.append(('inject_ssh_key', InjectSSHKeyAction(
             name=f'sshkey-{mn.name}',
             host_attr=host_key,
         )))
 
-        # 4. Copy SSH private key
+        # 5. Copy SSH private key
         phases.append(('copy_private_key', CopySSHPrivateKeyAction(
             name=f'privkey-{mn.name}',
             host_attr=host_key,
         )))
 
-        # 5. Run pve-setup post-scenario (sudo required for --local mode)
+        # 6. Run pve-setup post-scenario (sudo required for --local mode)
         phases.append(('post_scenario', RecursiveScenarioAction(
             name=f'post-{mn.name}',
             raw_command='sudo homestak scenario pve-setup --json-output --local --skip-preflight',
@@ -429,31 +436,31 @@ class NodeExecutor:
             ssh_user=self.config.automation_user,
         )))
 
-        # 6. Configure vmbr0 bridge
+        # 7. Configure vmbr0 bridge
         phases.append(('configure_bridge', ConfigureNetworkBridgeAction(
             name=f'network-{mn.name}',
             host_attr=host_key,
         )))
 
-        # 7. Generate node config
+        # 8. Generate node config
         phases.append(('generate_node_config', GenerateNodeConfigAction(
             name=f'nodeconfig-{mn.name}',
             host_attr=host_key,
         )))
 
-        # 8. Create API token
+        # 9. Create API token
         phases.append(('create_api_token', CreateApiTokenAction(
             name=f'apitoken-{mn.name}',
             host_attr=host_key,
         )))
 
-        # 9. Inject self SSH key
+        # 10. Inject self SSH key
         phases.append(('inject_self_ssh_key', InjectSelfSSHKeyAction(
             name=f'selfsshkey-{mn.name}',
             host_attr=host_key,
         )))
 
-        # 10. Download packer images for children
+        # 11. Download packer images for children
         for child in exec_node.children:
             child_image = child.manifest_node.image or 'debian-12'
             child_asset = _image_to_asset_name(child_image)

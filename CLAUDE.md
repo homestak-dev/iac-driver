@@ -303,7 +303,7 @@ Nodes use **push** (default) or **pull** for config phase. See [config-phase.md]
 | `push` | Operator runs ansible from controller over SSH | Default; no spec injection in cloud-init |
 | `pull` | VM self-configures via cloud-init | Operator polls for config-complete.json |
 
-PVE nodes always use push regardless of setting. Push-mode nodes skip spec injection in cloud-init to avoid bootstrap race conditions.
+PVE nodes use a hybrid model: bootstrap and config distribution pull from the parent's server, while lifecycle orchestration (pve-setup, bridge config, API token, etc.) uses push via SSH. Push-mode nodes skip spec injection in cloud-init to avoid bootstrap race conditions.
 
 ## Manifest-Driven Orchestration
 
