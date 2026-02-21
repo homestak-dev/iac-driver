@@ -725,6 +725,18 @@ class _CreateApiTokenPhase:
         else:
             content += f'\napi_tokens:\n  {new_line}\n'
 
+        # Auto-generate signing key if empty
+        if re.search(r'signing_key:\s*["\']?\s*["\']?\s*$', content, re.MULTILINE):
+            import secrets as secrets_mod
+            key = secrets_mod.token_hex(32)
+            content = re.sub(
+                r'(signing_key:)\s*["\']?\s*["\']?',
+                rf'\1 "{key}"',
+                content,
+                count=1,
+            )
+            logger.info("Auto-generated auth.signing_key")
+
         secrets_file.write_text(content)
         logger.info(f"Injected API token for {hostname} into {secrets_file}")
         return True
