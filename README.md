@@ -30,7 +30,7 @@ cd ../iac-driver
 ./scripts/setup-tools.sh
 
 # Deploy a VM and verify SSH
-./run.sh manifest test -M n1-push -H father
+./run.sh manifest test -M n1-push -H srv1
 ```
 
 ## CLI Usage
@@ -51,7 +51,7 @@ cd ../iac-driver
 ./run.sh scenario run user-setup --local    # Create homestak user
 
 # Preflight checks
-./run.sh --preflight --host father
+./run.sh --preflight --host srv1
 
 # Options
   --dry-run        Preview without executing

@@ -2,8 +2,8 @@
 """CLI entry point for iac-driver.
 
 Supports noun-action subcommands and legacy scenario workflows:
-- Noun-action: ./run.sh manifest apply -M n2 -H father
-- Scenarios: ./run.sh scenario run pve-setup -H father
+- Noun-action: ./run.sh manifest apply -M n2 -H srv1
+- Scenarios: ./run.sh scenario run pve-setup -H srv1
 
 Nouns:
 - manifest: Infrastructure lifecycle (apply/destroy/test)
@@ -86,7 +86,7 @@ def dispatch_manifest(argv: list) -> int:
     """Dispatch 'manifest' noun to action-specific handler.
 
     Args:
-        argv: Arguments after 'manifest' (e.g., ['apply', '-M', 'n1', '-H', 'father'])
+        argv: Arguments after 'manifest' (e.g., ['apply', '-M', 'n1', '-H', 'srv1'])
 
     Returns:
         Exit code
@@ -232,12 +232,12 @@ def print_usage():
     print("Run './run.sh <noun> --help' for command-specific options.")
     print()
     print("Examples:")
-    print("  ./run.sh manifest apply -M n1-push -H father")
-    print("  ./run.sh manifest test -M n2-tiered -H father")
+    print("  ./run.sh manifest apply -M n1-push -H srv1")
+    print("  ./run.sh manifest test -M n2-tiered -H srv1")
     print("  ./run.sh config fetch --insecure")
     print("  ./run.sh config apply")
     print("  ./run.sh server start --port 44443")
-    print("  ./run.sh scenario run pve-setup -H father")
+    print("  ./run.sh scenario run pve-setup -H srv1")
 
 
 def _handle_scenario_verb() -> tuple[bool, int | None]:
@@ -254,7 +254,7 @@ def _handle_scenario_verb() -> tuple[bool, int | None]:
 
     # Handle 'scenario run <name>' (new) or 'scenario <name>' (old)
     if len(sys.argv) >= 3 and sys.argv[2] == 'run':
-        # New syntax: scenario run pve-setup -H father
+        # New syntax: scenario run pve-setup -H srv1
         if len(sys.argv) < 4 or sys.argv[3].startswith('-'):
             print("Usage: ./run.sh scenario run <name> [options]")
             print("\nRun './run.sh scenario run --help' to list available scenarios.")
@@ -270,7 +270,7 @@ def _handle_scenario_verb() -> tuple[bool, int | None]:
             print("\nRun './run.sh scenario --help' to list available scenarios.")
             return (True, 1 if len(sys.argv) < 3 else 0)
     else:
-        # Legacy syntax: scenario pve-setup -H father (still supported)
+        # Legacy syntax: scenario pve-setup -H srv1 (still supported)
         sys.argv = [sys.argv[0], '--scenario', sys.argv[2]] + sys.argv[3:]
 
     return (True, None)

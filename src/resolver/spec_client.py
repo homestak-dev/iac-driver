@@ -75,7 +75,7 @@ class SpecClient:
         """Initialize spec client.
 
         Args:
-            server: Server URL (e.g., https://father:44443)
+            server: Server URL (e.g., https://srv1:44443)
             identity: Node identity (e.g., dev1)
             token: Bearer token for authentication (if required by posture)
             insecure: Skip SSL certificate verification
@@ -286,7 +286,7 @@ def main():
     parser.add_argument(
         "--server",
         "-s",
-        help="Server URL (e.g., https://father:44443). "
+        help="Server URL (e.g., https://srv1:44443). "
         "Env: HOMESTAK_SERVER",
     )
     parser.add_argument(
