@@ -63,7 +63,7 @@ cd ../iac-driver
 
 | Scenario | Runtime | Description |
 |----------|---------|-------------|
-| `pve-setup` | ~3m | Install PVE (if needed), configure host |
+| `pve-setup` | ~3m | Install PVE (if needed), configure host, create API token |
 | `user-setup` | ~30s | Create homestak user with sudo |
 | `push-vm-roundtrip` | ~3m | Push-mode integration test |
 | `pull-vm-roundtrip` | ~5m | Pull-mode integration test |
