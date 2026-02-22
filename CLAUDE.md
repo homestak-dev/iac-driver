@@ -320,7 +320,7 @@ PVE nodes use a hybrid model: bootstrap and config distribution pull from the pa
 
 ## Manifest-Driven Orchestration
 
-Manifests define N-level nested PVE deployments using graph-based schema v2. Manifests are YAML files in `site-config/manifests/`.
+Manifests define N-level tiered PVE deployments using graph-based schema v2. Manifests are YAML files in `site-config/manifests/`.
 
 ```bash
 ./run.sh manifest apply -M n2-tiered -H father
