@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.50 - 2026-02-22
+
+### Changed
+- Default `run_ssh()` to current user via `getpass.getuser()` instead of hardcoded `root` (#251)
+- Pass `config.ssh_user` explicitly in preflight packer image check (#251)
+
 ### Added
 - Wire `dns_servers` from site-config through ConfigResolver to tofu tfvars (iac-driver#229)
 - Add `dns_servers` to `HostConfig` from site.yaml defaults (iac-driver#229)
