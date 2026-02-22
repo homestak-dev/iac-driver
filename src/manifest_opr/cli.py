@@ -187,7 +187,7 @@ def _run_preflight(args, config, manifest) -> int | None:
             img_path = f'/var/lib/vz/template/iso/{node.image}.img'
             if ssh_host:
                 from common import run_ssh
-                rc, _, _ = run_ssh(ssh_host, f'test -f {img_path}', timeout=10)
+                rc, _, _ = run_ssh(ssh_host, f'test -f {img_path}', user=config.ssh_user, timeout=10)
                 exists = rc == 0
             else:
                 exists = Path(img_path).exists()

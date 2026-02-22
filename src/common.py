@@ -49,11 +49,14 @@ def run_command(
 def run_ssh(
     host: str,
     command: str,
-    user: str = 'root',
+    user: str = '',
     timeout: int = 60,
     jump_host: Optional[str] = None
 ) -> tuple[int, str, str]:
     """Run command over SSH."""
+    if not user:
+        import getpass
+        user = getpass.getuser()
     # Use relaxed host key checking for tests where VMs are recreated
     ssh_opts = '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR'
 
