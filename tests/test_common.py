@@ -77,7 +77,8 @@ class TestRunSSH:
     """Test run_ssh utility."""
 
     def test_builds_ssh_command(self):
-        """Should build correct SSH command."""
+        """Should build correct SSH command with current user as default."""
+        import getpass
         with patch('common.run_command') as mock_run:
             mock_run.return_value = (0, 'output', '')
             rc, stdout, stderr = run_ssh('198.51.100.10', 'echo hello')
@@ -86,7 +87,7 @@ class TestRunSSH:
             mock_run.assert_called_once()
             cmd = mock_run.call_args[0][0]
             assert 'ssh' in cmd
-            assert 'root@198.51.100.10' in cmd
+            assert f'{getpass.getuser()}@198.51.100.10' in cmd
             assert 'echo hello' in cmd
 
     def test_uses_custom_user(self):
@@ -110,16 +111,18 @@ class TestRunSSH:
 
     def test_jump_host_builds_nested_ssh(self):
         """Should build nested SSH command for jump host."""
+        import getpass
         with patch('common.run_command') as mock_run:
             mock_run.return_value = (0, 'output', '')
             run_ssh('198.51.100.20', 'cmd', jump_host='198.51.100.10')
 
             cmd = mock_run.call_args[0][0]
             cmd_str = ' '.join(cmd)
+            current_user = getpass.getuser()
             # Should connect to jump host first
-            assert 'root@198.51.100.10' in cmd_str
+            assert f'{current_user}@198.51.100.10' in cmd_str
             # Then to target
-            assert 'root@198.51.100.20' in cmd_str
+            assert f'{current_user}@198.51.100.20' in cmd_str
 
 
 class TestWaitForPing:
