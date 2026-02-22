@@ -38,6 +38,8 @@ Credentials are managed in the [site-config](https://github.com/homestak-dev/sit
 3. `/usr/local/etc/homestak/` (FHS-compliant bootstrap)
 4. `/opt/homestak/site-config/` (legacy bootstrap)
 
+**Fallback:** If `secrets.yaml` is missing (no `.enc` file to decrypt), iac-driver automatically runs `make init-secrets` in site-config, which copies from the `.example` template. This enables first-run bootstrap on fresh installations without manual secrets setup.
+
 **Setup:**
 ```bash
 cd ../site-config
@@ -57,6 +59,7 @@ make decrypt  # Decrypt secrets (requires age key)
 │   │   ├── config.py          # Host configuration (auto-discovery from site-config)
 │   │   ├── config_apply.py    # Config phase: spec-to-ansible-vars + apply
 │   │   ├── config_resolver.py # ConfigResolver - resolves site-config for tofu
+│   │   ├── validation.py      # Preflight checks (API, SSH, site-config, images)
 │   │   ├── manifest.py        # Manifest schema v2 (nodes graph)
 │   │   ├── manifest_opr/ # Operator engine for manifest-based orchestration
 │   │   │   ├── graph.py       # ExecutionNode, ManifestGraph, topo sort
@@ -159,6 +162,12 @@ resolver.write_ansible_vars(ansible_vars, '/tmp/ansible-vars.json')
 ```
 
 Per-VM `auth_token` is an HMAC-SHA256 provisioning token minted by `ConfigResolver._mint_provisioning_token()` when both `spec_server` and `spec` are set. See [provisioning-token.md](../docs/designs/provisioning-token.md) for token format, signing, and verification.
+
+**Auto-generated signing key:** During `pve-setup`, if `secrets.auth.signing_key` is empty or missing, it is auto-generated (256-bit hex via `secrets.token_hex(32)`) and written to `secrets.yaml`. This eliminates a manual setup step for the create -> config flow.
+
+### SSH Key Default Behavior
+
+When a spec's user entry omits the `ssh_keys` field, ALL keys from `secrets.ssh_keys` are injected automatically. This makes specs portable across deployments without listing specific key identifiers. If `ssh_keys` is explicitly listed, only those named keys are resolved via FK.
 
 ### Output Structure (Ansible)
 
@@ -294,6 +303,10 @@ Root nodes (depth 0) are handled locally. PVE nodes with children trigger:
 
 This recursion handles arbitrary depth without limits.
 
+**Config distribution phases:** The PVE lifecycle includes `copy_secrets` (scoped secrets excluding `api_tokens`) and `copy_site_config` (site.yaml with DNS, gateway, timezone). These push configuration to delegated PVE nodes so they can resolve config for their own children.
+
+**Delegate logging:** Delegated action logs use the node name as prefix (e.g., `[delegate-root-pve]`) instead of `[inner]`. JSON output from delegated commands is suppressed from INFO logs to reduce noise.
+
 ### Execution Modes
 
 Nodes use **push** (default) or **pull** for config phase. See [config-phase.md](../docs/designs/config-phase.md) for spec-to-ansible mapping and implementation details.
@@ -364,7 +377,7 @@ The `--host` flag resolves configuration from site-config with fallback:
 1. Create `hosts/{hostname}.yaml` (or run `make host-config` on the target)
 2. Run `./run.sh --scenario pve-setup --host {hostname}`
 3. After PVE install, `nodes/{hostname}.yaml` is auto-generated
-4. Host is now usable for `./run.sh create` and other PVE scenarios
+4. Host is now usable for `./run.sh manifest apply` and other PVE operations
 
 `HostConfig.is_host_only` is `True` when loaded from `hosts/*.yaml` (PVE-specific fields are empty).
 
@@ -430,9 +443,33 @@ Use `--json-output` for structured JSON to stdout (logs to stderr). Use `--dry-r
 | `push-vm-roundtrip` | ~3m | Spec discovery integration test (push verification) |
 | `pull-vm-roundtrip` | ~5m | Config phase integration test (pull verification) |
 
+**pve-setup details:**
+- Splits PVE installation into kernel and packages phases with idempotent re-entry. If a reboot is needed after kernel installation, the operator re-enters and continues from the packages phase (detected via `dpkg -l` state).
+- Auto-creates the PVE API token (`pveum user token add`), injects it into `secrets.yaml`, and verifies it against the PVE API.
+- Auto-generates `auth.signing_key` if missing from `secrets.yaml`.
+- Generates `nodes/{hostname}.yaml` after successful installation.
+- API preflight is skipped (`requires_api = False`) since PVE is not installed yet on fresh hosts.
+
 ### Test Reports
 
 Reports are generated in `reports/` with format: `YYYYMMDD-HHMMSS.{passed|failed}.{md|json}`
+
+### Preflight Validation
+
+Preflight checks run automatically before manifest verbs (`apply`, `destroy`, `test`) and can be run standalone. Use `--skip-preflight` to bypass.
+
+```bash
+./run.sh --preflight --host father    # Standalone preflight
+```
+
+**Checks performed:**
+- API token validity (format and PVE API response)
+- SSH connectivity to target host
+- `gateway` and `dns_servers` configured in `site.yaml` (fail-fast; `domain` is a non-blocking warning)
+- SSH keys present in `secrets.yaml` (prevents silent 2-minute SSH timeout)
+- Packer images available in PVE storage (`/var/lib/vz/template/iso/`) for root-level manifest nodes (checks local or remote via SSH)
+- Nested virtualization enabled (when manifest contains PVE nodes with children)
+- Provider lockfile versions match `providers.tf` (auto-fixes stale lockfiles)
 
 ### Timeouts
 
@@ -448,6 +485,7 @@ Bash(ansible-playbook:*), Bash(ansible:*), Bash(rsync:*)
 ## Prerequisites
 
 - Ansible 2.15+ (via pipx), OpenTofu, Packer with QEMU/KVM
+- Python 3 with `python3-yaml` and `python3-requests` (`make install-deps`)
 - SSH key at `~/.ssh/id_rsa`
 - age + sops for secrets decryption (see `make setup`)
 - age key at `~/.config/sops/age/keys.txt`
@@ -457,7 +495,7 @@ Bash(ansible-playbook:*), Bash(ansible:*), Bash(rsync:*)
 
 ```bash
 make install-dev   # Creates .venv/, installs linters + runtime deps, hooks
-make test          # Run unit tests (558 tests)
+make test          # Run unit tests (612 tests)
 make lint          # Run pre-commit hooks (pylint, mypy)
 ```
 
