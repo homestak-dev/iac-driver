@@ -112,7 +112,7 @@ resolver = ConfigResolver()  # Auto-discover site-config
 
 # Resolve inline VM for tofu
 config = resolver.resolve_inline_vm(
-    node='father', vm_name='test', vmid=99900,
+    node='srv1', vm_name='test', vmid=99900,
     vm_preset='vm-small', image='debian-12'
 )
 resolver.write_tfvars(config, '/tmp/tfvars.json')
@@ -145,7 +145,7 @@ resolver.write_ansible_vars(ansible_vars, '/tmp/ansible-vars.json')
     "datastore": "local-zfs",
     "root_password": "$6$...",
     "ssh_keys": ["ssh-rsa ...", ...],
-    "spec_server": "https://father:44443",
+    "spec_server": "https://srv1:44443",
     "vms": [
         {
             "name": "test",
@@ -279,10 +279,10 @@ nodes:
 ### Noun-Action Commands
 
 ```bash
-./run.sh manifest apply -M n2-tiered -H father [--dry-run] [--json-output] [--verbose]
-./run.sh manifest destroy -M n2-tiered -H father [--dry-run] [--yes]
-./run.sh manifest test -M n2-tiered -H father [--dry-run] [--json-output]
-./run.sh manifest validate -M n2-tiered -H father [--json-output]
+./run.sh manifest apply -M n2-tiered -H srv1 [--dry-run] [--json-output] [--verbose]
+./run.sh manifest destroy -M n2-tiered -H srv1 [--dry-run] [--yes]
+./run.sh manifest test -M n2-tiered -H srv1 [--dry-run] [--json-output]
+./run.sh manifest validate -M n2-tiered -H srv1 [--json-output]
 ./run.sh config fetch [--insecure]
 ./run.sh config apply [--spec /path.yaml] [--dry-run]
 ```
@@ -323,11 +323,11 @@ PVE nodes use a hybrid model: bootstrap and config distribution pull from the pa
 Manifests define N-level tiered PVE deployments using graph-based schema v2. Manifests are YAML files in `site-config/manifests/`.
 
 ```bash
-./run.sh manifest apply -M n2-tiered -H father
-./run.sh manifest destroy -M n2-tiered -H father --yes
-./run.sh manifest test -M n2-tiered -H father
-./run.sh manifest apply -M n2-tiered -H father --dry-run
-./run.sh manifest test -M n1-push -H father --json-output
+./run.sh manifest apply -M n2-tiered -H srv1
+./run.sh manifest destroy -M n2-tiered -H srv1 --yes
+./run.sh manifest test -M n2-tiered -H srv1
+./run.sh manifest apply -M n2-tiered -H srv1 --dry-run
+./run.sh manifest test -M n1-push -H srv1 --json-output
 ```
 
 `RecursiveScenarioAction` executes commands on remote hosts via SSH with PTY streaming. Used by the operator for subtree delegation. Supports `raw_command` for verb delegation and `scenario_name` for legacy scenarios. Extracts context keys from `--json-output` results.
@@ -387,10 +387,10 @@ PVE node configuration is stored in `site-config/nodes/*.yaml`. Filename must ma
 
 API tokens are stored separately in `site-config/secrets.yaml` and resolved by key reference:
 ```yaml
-# nodes/father.yaml
-host: father                      # FK -> hosts/father.yaml
+# nodes/srv1.yaml
+host: srv1                      # FK -> hosts/srv1.yaml
 api_endpoint: https://198.51.100.61:8006
-api_token: father                 # FK -> secrets.api_tokens.father
+api_token: srv1                 # FK -> secrets.api_tokens.srv1
 ```
 
 **Configuration Merge Order:** `site.yaml` → `nodes/{node}.yaml` → `secrets.yaml`
@@ -400,7 +400,7 @@ api_token: father                 # FK -> secrets.api_tokens.father
 ### Architecture
 
 ```
-PVE Host (father)
+PVE Host (srv1)
 ├── IP: 198.51.100.x
 └── VM 99011 (root-pve) - PVE node
     ├── Debian 13 + Proxmox VE
@@ -415,10 +415,10 @@ Run `./run.sh` with no arguments for top-level usage, or `./run.sh scenario --he
 
 ```bash
 # Manifest commands (infrastructure lifecycle)
-./run.sh manifest apply -M n2-tiered -H father
-./run.sh manifest destroy -M n2-tiered -H father --yes
-./run.sh manifest test -M n2-tiered -H father
-./run.sh manifest validate -M n2-tiered -H father
+./run.sh manifest apply -M n2-tiered -H srv1
+./run.sh manifest destroy -M n2-tiered -H srv1 --yes
+./run.sh manifest test -M n2-tiered -H srv1
+./run.sh manifest validate -M n2-tiered -H srv1
 
 # Config commands (spec fetch and apply)
 ./run.sh config fetch --insecure
@@ -429,7 +429,7 @@ Run `./run.sh` with no arguments for top-level usage, or `./run.sh scenario --he
 ./run.sh scenario run user-setup --local
 
 # Preflight checks
-./run.sh --preflight --host father
+./run.sh --preflight --host srv1
 ```
 
 Use `--json-output` for structured JSON to stdout (logs to stderr). Use `--dry-run` to preview without executing. Use `--verbose` for detailed logging.
@@ -459,7 +459,7 @@ Reports are generated in `reports/` with format: `YYYYMMDD-HHMMSS.{passed|failed
 Preflight checks run automatically before manifest verbs (`apply`, `destroy`, `test`) and can be run standalone. Use `--skip-preflight` to bypass.
 
 ```bash
-./run.sh --preflight --host father    # Standalone preflight
+./run.sh --preflight --host srv1    # Standalone preflight
 ```
 
 **Checks performed:**

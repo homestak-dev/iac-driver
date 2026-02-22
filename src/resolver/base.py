@@ -215,7 +215,7 @@ class ResolverBase:
         """Resolve SSH key references to actual public keys.
 
         Key refs are identifiers matching secrets.ssh_keys keys
-        (e.g., "root@mother", "jderose@father").
+        (e.g., "root@srv2", "user@host").
 
         Args:
             key_refs: List of SSH key identifier strings
