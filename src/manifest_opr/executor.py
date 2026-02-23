@@ -1,11 +1,8 @@
 """Node executor for manifest-based orchestration.
 
-Walks the execution graph and executes per-node lifecycle operations
-using existing tofu and proxmox actions.
-
-Root nodes (depth 0) are executed locally. Children of PVE nodes are
-delegated to the PVE node via SSH, where a new operator instance
-handles them as its own root nodes.
+Walks the execution graph and runs per-node lifecycle operations.
+Root nodes (depth 0) execute locally; children of PVE nodes are
+delegated via SSH to the PVE host.
 """
 
 import logging
@@ -59,10 +56,12 @@ class NodeExecutor:
 
     def __post_init__(self) -> None:
         """Initialize the server manager after dataclass init."""
+        spec_server = getattr(self.config, 'spec_server', '') or ''
         self._server = ServerManager(
             ssh_host=self.config.ssh_host,
             ssh_user=self.config.ssh_user,
             self_addr=self.self_addr,
+            port=ServerManager.resolve_port(spec_server),
         )
 
     def create(self, context: dict) -> tuple[bool, ExecutionState]:

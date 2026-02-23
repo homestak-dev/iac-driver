@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+- Add report generation to `manifest test` — writes JSON + Markdown reports to `reports/` with create/verify/destroy phase tracking (#226)
+- Add `scripts/parallel-test.sh` — runs multiple manifest tests concurrently with a shared server (#203)
+- `ServerManager` reads port from `config.spec_server` URL instead of hardcoded default (#203)
+
 ### Changed
 - Rename `inner_ip` context key to `node_ip` across all actions, CLI (`--node-ip`), and tests — aligns with manifest vocabulary
 - Rename `nested-pve` references to `child-pve` across defaults, comments, and test fixtures (ansible#49)

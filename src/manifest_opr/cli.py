@@ -257,6 +257,7 @@ def apply_main(argv: list) -> int:
         dry_run=args.dry_run,
         json_output=args.json_output,
         self_addr=getattr(args, 'self_addr', None),
+
     )
 
     start = time.time()
@@ -308,6 +309,7 @@ def destroy_main(argv: list) -> int:
         dry_run=args.dry_run,
         json_output=args.json_output,
         self_addr=getattr(args, 'self_addr', None),
+
     )
 
     start = time.time()
@@ -323,6 +325,8 @@ def destroy_main(argv: list) -> int:
 
 def test_main(argv: list) -> int:
     """Handle 'manifest test' verb."""
+    from reporting import TestReport
+
     parser = _common_parser('test')
     args = parser.parse_args(argv)
     _setup_logging(args.verbose, args.json_output)
@@ -344,16 +348,84 @@ def test_main(argv: list) -> int:
         dry_run=args.dry_run,
         json_output=args.json_output,
         self_addr=getattr(args, 'self_addr', None),
+
     )
 
+    # Dry-run: delegate to executor.test() without report generation
+    if args.dry_run:
+        start = time.time()
+        context: dict = {}
+        success, state = executor.test(context)
+        duration = time.time() - start
+        if args.json_output:
+            _emit_json('test', success, state, duration)
+        return 0 if success else 1
+
+    # Real execution: track phases in a report
+    report_dir = Path(__file__).resolve().parent.parent.parent / 'reports'
+    report = TestReport(
+        host=config.name,
+        report_dir=report_dir,
+        scenario=f'manifest-test-{manifest.name}',
+    )
+    report.start()
+
     start = time.time()
-    context: dict = {}
-    success, state = executor.test(context)
+    context = {}
+
+    # Manage server lifecycle at test level (ref counting ensures
+    # create/destroy's internal ensure/stop are no-ops)
+    executor._server.ensure()  # pylint: disable=protected-access
+
+    try:
+        # Phase 1: Create
+        report.start_phase('create', 'Provision infrastructure')
+        create_ok, state = executor.create(context)
+        if create_ok:
+            report.pass_phase('create', f'{len(state.nodes)} node(s) created')
+        else:
+            failed = [n for n, s in state.nodes.items() if s.status == 'failed']
+            report.fail_phase('create', f'Failed node(s): {", ".join(failed)}')
+
+        if not create_ok:
+            if manifest.settings.cleanup_on_failure:
+                logger.info("Create failed, cleaning up...")
+                executor.destroy(context)
+            success = False
+            report.finish(success)
+            duration = time.time() - start
+            if args.json_output:
+                _emit_json('test', success, state, duration)
+            logger.info("Report written to %s", report_dir)
+            return 1
+
+        # Phase 2: Verify
+        report.start_phase('verify', 'Verify SSH connectivity')
+        verify_ok = executor._verify_nodes(context, state)  # pylint: disable=protected-access
+        if verify_ok:
+            report.pass_phase('verify', 'All nodes reachable')
+        else:
+            report.fail_phase('verify', 'SSH verification failed')
+
+        # Phase 3: Destroy
+        report.start_phase('destroy', 'Destroy infrastructure')
+        destroy_ok, _ = executor.destroy(context)
+        if destroy_ok:
+            report.pass_phase('destroy', 'All nodes destroyed')
+        else:
+            report.fail_phase('destroy', 'Destroy failed')
+
+        success = create_ok and verify_ok and destroy_ok
+    finally:
+        executor._server.stop()  # pylint: disable=protected-access
+
     duration = time.time() - start
+    report.finish(success)
 
     if args.json_output:
         _emit_json('test', success, state, duration)
 
+    logger.info("Report written to %s", report_dir)
     return 0 if success else 1
 
 

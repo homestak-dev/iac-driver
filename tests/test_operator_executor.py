@@ -468,6 +468,47 @@ class TestNodeExecutorTest:
         assert mock_destroy.call_count == 1  # Cleanup called
 
 
+class TestServerPortResolution:
+    """Tests for server port resolution from config.spec_server URL."""
+
+    def test_port_from_spec_server_url(self):
+        """Port extracted from spec_server URL."""
+        manifest = _make_manifest([
+            {'name': 'test', 'type': 'vm', 'vmid': 99001, 'image': 'debian-12', 'preset': 'vm-small'},
+        ])
+        graph = ManifestGraph(manifest)
+        config = _make_config()
+        config.spec_server = 'https://controller:55555'
+
+        executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
+        assert executor._server.port == 55555
+
+    def test_default_port_when_no_spec_server(self):
+        """Default port used when spec_server is empty."""
+        manifest = _make_manifest([
+            {'name': 'test', 'type': 'vm', 'vmid': 99001, 'image': 'debian-12', 'preset': 'vm-small'},
+        ])
+        graph = ManifestGraph(manifest)
+        config = _make_config()
+        config.spec_server = ''
+
+        executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
+        assert executor._server.port == 44443
+
+    def test_default_port_when_url_has_no_port(self):
+        """Default port used when spec_server URL omits port."""
+        manifest = _make_manifest([
+            {'name': 'test', 'type': 'vm', 'vmid': 99001, 'image': 'debian-12', 'preset': 'vm-small'},
+        ])
+        graph = ManifestGraph(manifest)
+        config = _make_config()
+        config.spec_server = 'https://controller'
+
+        executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
+        assert executor._server.port == 44443
+
+
+
 class TestServerSourceEnv:
     """Tests for HOMESTAK_SOURCE env var lifecycle in _ensure_server/_stop_server.
 

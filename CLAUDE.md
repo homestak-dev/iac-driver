@@ -432,7 +432,7 @@ Run `./run.sh` with no arguments for top-level usage, or `./run.sh scenario --he
 ./run.sh --preflight --host srv1
 ```
 
-Use `--json-output` for structured JSON to stdout (logs to stderr). Use `--dry-run` to preview without executing. Use `--verbose` for detailed logging.
+Use `--json-output` for structured JSON to stdout (logs to stderr). Use `--dry-run` to preview without executing. Use `--verbose` for detailed logging. Use `scripts/parallel-test.sh` to run multiple manifest tests concurrently with a shared server.
 
 ### Available Scenarios
 
@@ -452,7 +452,7 @@ Use `--json-output` for structured JSON to stdout (logs to stderr). Use `--dry-r
 
 ### Test Reports
 
-Reports are generated in `reports/` with format: `YYYYMMDD-HHMMSS.{passed|failed}.{md|json}`
+Both `manifest test` and scenario roundtrip tests generate reports in `reports/` with format: `YYYYMMDD-HHMMSS.{passed|failed}.{md|json}`. Manifest test reports track create/verify/destroy phases individually.
 
 ### Preflight Validation
 

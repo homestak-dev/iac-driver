@@ -61,6 +61,9 @@ class HostConfig:
     # DNS servers from site.yaml (for bridge config, #229)
     dns_servers: list = field(default_factory=list)
 
+    # Spec server URL from site.yaml defaults (e.g., "https://controller:44443")
+    spec_server: str = ''
+
     # Track config source type
     is_host_only: bool = False  # True when loaded from hosts/*.yaml (no PVE)
 
@@ -136,6 +139,10 @@ class HostConfig:
         if dns_servers := site_defaults.get('dns_servers'):
             self.dns_servers = dns_servers
 
+        # Spec server URL: site.yaml (for server daemon management, #203)
+        if spec_server := site_defaults.get('spec_server'):
+            self.spec_server = spec_server
+
     def _load_from_host_yaml(self):
         """Load configuration from hosts/*.yaml (SSH-only, pre-PVE).
 
@@ -186,6 +193,10 @@ class HostConfig:
         # DNS servers: site.yaml (for bridge config, #229)
         if dns_servers := site_defaults.get('dns_servers'):
             self.dns_servers = dns_servers
+
+        # Spec server URL: site.yaml (for server daemon management, #203)
+        if spec_server := site_defaults.get('spec_server'):
+            self.spec_server = spec_server
 
         # No api_endpoint or api_token for host-only configs
         # These remain empty strings (defaults)
