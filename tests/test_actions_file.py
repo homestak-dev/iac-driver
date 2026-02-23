@@ -20,13 +20,13 @@ class TestDownloadGitHubReleaseAction:
         action = DownloadGitHubReleaseAction(
             name='test',
             asset_name='debian-12.qcow2',
-            host_key='inner_ip'
+            host_key='node_ip'
         )
 
         config = MagicMock()
         config.packer_release_repo = 'homestak-dev/packer'
         config.packer_release = 'v0.20'
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         with patch('actions.file.run_ssh') as mock_ssh:
             # mkdir success, download success, mv rename, verify success
@@ -68,13 +68,13 @@ class TestDownloadGitHubReleaseAction:
         action = DownloadGitHubReleaseAction(
             name='test',
             asset_name='pve-9.qcow2',
-            host_key='inner_ip'
+            host_key='node_ip'
         )
 
         config = MagicMock()
         config.packer_release_repo = 'homestak-dev/packer'
         config.packer_release = 'v0.20'
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         with patch('actions.file.run_ssh') as mock_ssh:
             mock_ssh.side_effect = [
@@ -101,13 +101,13 @@ class TestDownloadGitHubReleaseAction:
         action = DownloadGitHubReleaseAction(
             name='test',
             asset_name='pve-9.qcow2',
-            host_key='inner_ip'
+            host_key='node_ip'
         )
 
         config = MagicMock()
         config.packer_release_repo = 'homestak-dev/packer'
         config.packer_release = 'v0.20'
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         with patch('actions.file.run_ssh') as mock_ssh:
             mock_ssh.side_effect = [
@@ -131,13 +131,13 @@ class TestDownloadGitHubReleaseAction:
         action = DownloadGitHubReleaseAction(
             name='test',
             asset_name='nonexistent.qcow2',
-            host_key='inner_ip'
+            host_key='node_ip'
         )
 
         config = MagicMock()
         config.packer_release_repo = 'homestak-dev/packer'
         config.packer_release = 'v0.20'
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         with patch('actions.file.run_ssh') as mock_ssh:
             mock_ssh.side_effect = [
@@ -157,13 +157,13 @@ class TestDownloadGitHubReleaseAction:
         action = DownloadGitHubReleaseAction(
             name='test',
             asset_name='test.qcow2',
-            host_key='inner_ip'
+            host_key='node_ip'
         )
 
         config = MagicMock()
         config.packer_release_repo = 'homestak-dev/packer'
         config.packer_release = 'latest'
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         with patch('actions.file.run_ssh') as mock_ssh:
             mock_ssh.side_effect = [
@@ -187,14 +187,14 @@ class TestDownloadGitHubReleaseAction:
         action = DownloadGitHubReleaseAction(
             name='test',
             asset_name='debian-12.qcow2',
-            host_key='inner_ip',
+            host_key='node_ip',
             rename_ext='.img'
         )
 
         config = MagicMock()
         config.packer_release_repo = 'homestak-dev/packer'
         config.packer_release = 'v0.20'
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         with patch('actions.file.run_ssh') as mock_ssh:
             mock_ssh.side_effect = [
@@ -215,7 +215,7 @@ class TestDownloadGitHubReleaseAction:
         action = DownloadGitHubReleaseAction(
             name='test',
             asset_name='large-file.qcow2',
-            host_key='inner_ip'
+            host_key='node_ip'
         )
 
         with patch('actions.file.run_ssh') as mock_ssh:

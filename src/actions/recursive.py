@@ -34,7 +34,7 @@ class RecursiveScenarioAction:
     Attributes:
         name: Action identifier for logging/reporting
         scenario_name: Scenario to execute (e.g., 'vm-roundtrip')
-        host_attr: Context key containing target host IP (default: 'inner_ip')
+        host_attr: Context key containing target host IP (default: 'node_ip')
         timeout: Overall timeout in seconds (default: 600)
         scenario_args: Additional CLI arguments to pass (e.g., ['--host', 'child-pve'])
         context_keys: Keys to extract from JSON result into context_updates
@@ -43,7 +43,7 @@ class RecursiveScenarioAction:
     """
     name: str
     scenario_name: str = ''
-    host_attr: str = 'inner_ip'
+    host_attr: str = 'node_ip'
     timeout: int = 600
     scenario_args: list[str] = field(default_factory=list)
     context_keys: list[str] = field(default_factory=list)

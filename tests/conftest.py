@@ -247,7 +247,7 @@ vms: []
 def mock_context():
     """Common context dict for action tests."""
     return {
-        'inner_ip': '198.51.100.10',
+        'node_ip': '198.51.100.10',
         'provisioned_vms': [
             {'name': 'test1', 'vmid': 99900},
         ],

@@ -16,7 +16,7 @@ class SSHCommandAction:
     """Run a command over SSH."""
     name: str
     command: str
-    host_key: str = 'inner_ip'  # context key for target host
+    host_key: str = 'node_ip'  # context key for target host
     jump_host_key: Optional[str] = None  # context key for jump host
     timeout: int = 60
     output_context_key: Optional[str] = None  # store output in context
@@ -62,7 +62,7 @@ class SSHCommandAction:
 class WaitForSSHAction:
     """Wait for SSH to become available."""
     name: str
-    host_key: str = 'inner_ip'
+    host_key: str = 'node_ip'
     jump_host_key: Optional[str] = None
     timeout: int = 60
     interval: int = 5
@@ -162,7 +162,7 @@ class VerifySSHChainAction:
     """Verify SSH connectivity through a jump host chain."""
     name: str
     target_host_key: str = 'leaf_ip'
-    jump_host_key: str = 'inner_ip'
+    jump_host_key: str = 'node_ip'
     timeout: int = 60
     interval: int = 5
 

@@ -57,7 +57,7 @@ class WaitForGuestAgentAction:
     name: str
     vm_id_attr: str = 'inner_vm_id'
     pve_host_attr: str = 'ssh_host'
-    ip_context_key: str = 'inner_ip'  # store IP in context
+    ip_context_key: str = 'node_ip'  # store IP in context
     timeout: int = 300
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
@@ -253,7 +253,7 @@ class StartVMRemoteAction:
     """Start a VM on a remote PVE host via SSH."""
     name: str
     vm_id_attr: str = 'test_vm_id'
-    pve_host_key: str = 'inner_ip'  # context key for remote PVE host
+    pve_host_key: str = 'node_ip'  # context key for remote PVE host
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:
         """Start VM on remote PVE."""
@@ -299,7 +299,7 @@ class WaitForGuestAgentRemoteAction:
     """Wait for guest agent on a remote PVE and get VM IP."""
     name: str
     vm_id_attr: str = 'test_vm_id'
-    pve_host_key: str = 'inner_ip'
+    pve_host_key: str = 'node_ip'
     ip_context_key: str = 'leaf_ip'
     timeout: int = 300
     interval: int = 5

@@ -71,7 +71,7 @@ class DownloadFileAction:
     url: str
     dest_dir: str
     dest_filename: Optional[str] = None  # if None, use filename from URL
-    host_key: str = 'inner_ip'
+    host_key: str = 'node_ip'
     rename_ext: Optional[str] = None  # e.g., '.img' to rename .qcow2 files
     timeout: int = 300
 
@@ -156,7 +156,7 @@ class DownloadGitHubReleaseAction:
     name: str
     asset_name: str  # e.g., "debian-12-custom.qcow2"
     dest_dir: str = '/var/lib/vz/template/iso'
-    host_key: str = 'inner_ip'
+    host_key: str = 'node_ip'
     rename_ext: Optional[str] = '.img'  # Proxmox convention
     timeout: int = 300
 

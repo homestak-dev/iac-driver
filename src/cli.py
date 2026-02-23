@@ -345,7 +345,7 @@ def _resolve_host(args, scenario, available_hosts):
 def _setup_context(args, orchestrator) -> int | None:
     """Populate orchestrator context from CLI arguments.
 
-    Loads context file, pre-populates from args (inner_ip, local_mode, etc).
+    Loads context file, pre-populates from args (node_ip, local_mode, etc).
 
     Returns:
         exit_code on error, None on success.
@@ -364,9 +364,9 @@ def _setup_context(args, orchestrator) -> int | None:
             print(f"Error reading context file {args.context_file}: {e}")
             return 1
 
-    # Pre-populate context if inner-ip provided
-    if args.inner_ip:
-        orchestrator.context['inner_ip'] = args.inner_ip
+    # Pre-populate context if node-ip provided
+    if args.node_ip:
+        orchestrator.context['node_ip'] = args.node_ip
 
     # Pre-populate context for pve-setup and user-setup scenarios
     if args.local:
@@ -500,7 +500,7 @@ def main():
         help='Enable verbose logging'
     )
     parser.add_argument(
-        '--inner-ip',
+        '--node-ip',
         help='PVE node VM IP (auto-detected if not provided, required when skipping provision phases)'
     )
     parser.add_argument(
