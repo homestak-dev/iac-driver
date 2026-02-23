@@ -19,7 +19,7 @@ class AnsiblePlaybookAction:
     playbook: str  # e.g., "playbooks/pve-install.yml"
     inventory: str = "inventory/remote-dev.yml"
     extra_vars: dict = field(default_factory=dict)
-    host_key: str = 'inner_ip'  # context key for ansible_host
+    host_key: str = 'node_ip'  # context key for ansible_host
     wait_for_ssh_before: bool = True
     wait_for_ssh_after: bool = False
     ssh_timeout: int = 60
@@ -199,7 +199,7 @@ class EnsurePVEAction:
     Otherwise, runs pve-install.yml playbook.
     """
     name: str
-    host_key: str = 'inner_ip'  # context key for target host
+    host_key: str = 'node_ip'  # context key for target host
     pve_hostname: str = 'child-pve'  # hostname for PVE installation
     ssh_timeout: int = 120
     timeout: int = 1200  # 20 min for PVE install + reboot

@@ -42,7 +42,7 @@ class TestRecursiveScenarioActionInit:
 
         assert action.name == 'test'
         assert action.scenario_name == 'vm-roundtrip'
-        assert action.host_attr == 'inner_ip'
+        assert action.host_attr == 'node_ip'
         assert action.timeout == 600
         assert action.scenario_args == []
         assert action.context_keys == []
@@ -99,11 +99,11 @@ class TestRecursiveScenarioActionRun:
         action = RecursiveScenarioAction(
             name='test',
             scenario_name='vm-roundtrip',
-            host_attr='inner_ip',
+            host_attr='node_ip',
             context_keys=['vm_ip']
         )
         config = MockHostConfig()
-        context = {'inner_ip': '198.51.100.52'}
+        context = {'node_ip': '198.51.100.52'}
 
         # Mock JSON result from inner scenario
         json_result = {
@@ -134,10 +134,10 @@ class TestRecursiveScenarioActionRun:
         action = RecursiveScenarioAction(
             name='test',
             scenario_name='vm-roundtrip',
-            host_attr='inner_ip'
+            host_attr='node_ip'
         )
         config = MockHostConfig()
-        context = {'inner_ip': '198.51.100.52'}
+        context = {'node_ip': '198.51.100.52'}
 
         json_result = {
             'scenario': 'vm-roundtrip',
@@ -468,11 +468,11 @@ class TestTimeoutHandling:
         action = RecursiveScenarioAction(
             name='test',
             scenario_name='vm-roundtrip',
-            host_attr='inner_ip',
+            host_attr='node_ip',
             timeout=5
         )
         config = MockHostConfig()
-        context = {'inner_ip': '198.51.100.52'}
+        context = {'node_ip': '198.51.100.52'}
 
         with patch.object(action, '_run_with_pty', side_effect=subprocess.TimeoutExpired('cmd', 5)):
             result = action.run(config, context)
@@ -492,11 +492,11 @@ class TestNonPTYMode:
         action = RecursiveScenarioAction(
             name='test',
             scenario_name='vm-roundtrip',
-            host_attr='inner_ip',
+            host_attr='node_ip',
             use_pty=False
         )
         config = MockHostConfig()
-        context = {'inner_ip': '198.51.100.52'}
+        context = {'node_ip': '198.51.100.52'}
 
         json_result = {
             'scenario': 'vm-roundtrip',

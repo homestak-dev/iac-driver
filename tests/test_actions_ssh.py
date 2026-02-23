@@ -31,9 +31,9 @@ class TestSSHCommandAction:
         """Successful SSH command should return success=True."""
         from actions.ssh import SSHCommandAction
 
-        action = SSHCommandAction(name='test', command='echo hello', host_key='inner_ip')
+        action = SSHCommandAction(name='test', command='echo hello', host_key='node_ip')
         config = MockHostConfig()
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         with patch('actions.ssh.run_ssh', return_value=(0, 'hello\n', '')):
             result = action.run(config, context)
@@ -45,9 +45,9 @@ class TestSSHCommandAction:
         """Failed SSH command should return success=False."""
         from actions.ssh import SSHCommandAction
 
-        action = SSHCommandAction(name='test', command='false', host_key='inner_ip')
+        action = SSHCommandAction(name='test', command='false', host_key='node_ip')
         config = MockHostConfig()
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         with patch('actions.ssh.run_ssh', return_value=(1, '', 'command failed')):
             result = action.run(config, context)
@@ -76,9 +76,9 @@ class TestWaitForSSHAction:
         """SSH available immediately should return success."""
         from actions.ssh import WaitForSSHAction
 
-        action = WaitForSSHAction(name='test', host_key='inner_ip', timeout=5)
+        action = WaitForSSHAction(name='test', host_key='node_ip', timeout=5)
         config = MockHostConfig()
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         with patch('actions.ssh.wait_for_ping', return_value=True), \
              patch('actions.ssh.run_ssh', return_value=(0, 'ready', '')):

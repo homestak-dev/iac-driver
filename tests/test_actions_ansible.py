@@ -30,10 +30,10 @@ class TestAnsiblePlaybookAction:
 
         action = AnsiblePlaybookAction(
             name='test', playbook='playbooks/pve-setup.yml',
-            host_key='inner_ip', wait_for_ssh_before=False,
+            host_key='node_ip', wait_for_ssh_before=False,
         )
         config = MockHostConfig()
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         with patch('actions.ansible.get_sibling_dir', return_value=tmp_path), \
              patch('actions.ansible.run_command', return_value=(0, 'ok', '')):
@@ -63,10 +63,10 @@ class TestAnsiblePlaybookAction:
 
         action = AnsiblePlaybookAction(
             name='test', playbook='playbooks/test.yml',
-            host_key='inner_ip', wait_for_ssh_before=False,
+            host_key='node_ip', wait_for_ssh_before=False,
         )
         config = MockHostConfig()
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         with patch('actions.ansible.get_sibling_dir',
                    return_value=tmp_path / 'nonexistent'):
@@ -81,10 +81,10 @@ class TestAnsiblePlaybookAction:
 
         action = AnsiblePlaybookAction(
             name='test', playbook='playbooks/test.yml',
-            host_key='inner_ip', wait_for_ssh_before=True, ssh_timeout=1,
+            host_key='node_ip', wait_for_ssh_before=True, ssh_timeout=1,
         )
         config = MockHostConfig()
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         with patch('actions.ansible.get_sibling_dir', return_value=Path('/tmp')), \
              patch('actions.ansible.wait_for_ssh', return_value=False):
@@ -99,10 +99,10 @@ class TestAnsiblePlaybookAction:
 
         action = AnsiblePlaybookAction(
             name='test', playbook='playbooks/test.yml',
-            host_key='inner_ip', wait_for_ssh_before=False,
+            host_key='node_ip', wait_for_ssh_before=False,
         )
         config = MockHostConfig()
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         with patch('actions.ansible.get_sibling_dir', return_value=tmp_path), \
              patch('actions.ansible.run_command',
@@ -118,11 +118,11 @@ class TestAnsiblePlaybookAction:
 
         action = AnsiblePlaybookAction(
             name='test', playbook='playbooks/test.yml',
-            host_key='inner_ip', wait_for_ssh_before=False,
+            host_key='node_ip', wait_for_ssh_before=False,
             extra_vars={'pve_hostname': 'myhost', 'timezone': 'UTC'},
         )
         config = MockHostConfig()
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         captured_cmd = []
 
@@ -145,10 +145,10 @@ class TestAnsiblePlaybookAction:
         action = AnsiblePlaybookAction(
             name='test', playbook='playbooks/pve-setup.yml',
             inventory='inventory/remote-dev.yml',
-            host_key='inner_ip', wait_for_ssh_before=False,
+            host_key='node_ip', wait_for_ssh_before=False,
         )
         config = MockHostConfig()
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         captured_cmd = []
 
@@ -172,11 +172,11 @@ class TestAnsiblePlaybookAction:
 
         action = AnsiblePlaybookAction(
             name='test', playbook='playbooks/test.yml',
-            host_key='inner_ip', wait_for_ssh_before=False,
+            host_key='node_ip', wait_for_ssh_before=False,
             use_site_config=True, env='dev',
         )
         config = MockHostConfig()
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         captured_cmd = []
 
@@ -262,9 +262,9 @@ class TestEnsurePVEAction:
         """Pre-installed marker file should skip installation."""
         from actions.ansible import EnsurePVEAction
 
-        action = EnsurePVEAction(name='test', host_key='inner_ip')
+        action = EnsurePVEAction(name='test', host_key='node_ip')
         config = MockHostConfig()
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         with patch('actions.ansible.wait_for_ssh', return_value=True), \
              patch('actions.ansible.run_ssh',
@@ -278,9 +278,9 @@ class TestEnsurePVEAction:
         """Active pveproxy should skip installation."""
         from actions.ansible import EnsurePVEAction
 
-        action = EnsurePVEAction(name='test', host_key='inner_ip')
+        action = EnsurePVEAction(name='test', host_key='node_ip')
         config = MockHostConfig()
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         with patch('actions.ansible.wait_for_ssh', return_value=True), \
              patch('actions.ansible.run_ssh') as mock_ssh:
@@ -308,9 +308,9 @@ class TestEnsurePVEAction:
         """SSH unavailable should return failure."""
         from actions.ansible import EnsurePVEAction
 
-        action = EnsurePVEAction(name='test', host_key='inner_ip', ssh_timeout=1)
+        action = EnsurePVEAction(name='test', host_key='node_ip', ssh_timeout=1)
         config = MockHostConfig()
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         with patch('actions.ansible.wait_for_ssh', return_value=False):
             result = action.run(config, context)
@@ -322,9 +322,9 @@ class TestEnsurePVEAction:
         """PVE not installed should trigger installation."""
         from actions.ansible import EnsurePVEAction
 
-        action = EnsurePVEAction(name='test', host_key='inner_ip')
+        action = EnsurePVEAction(name='test', host_key='node_ip')
         config = MockHostConfig()
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         with patch('actions.ansible.wait_for_ssh', return_value=True), \
              patch('actions.ansible.run_ssh') as mock_ssh, \
@@ -343,9 +343,9 @@ class TestEnsurePVEAction:
         """Failed PVE installation should return error."""
         from actions.ansible import EnsurePVEAction
 
-        action = EnsurePVEAction(name='test', host_key='inner_ip')
+        action = EnsurePVEAction(name='test', host_key='node_ip')
         config = MockHostConfig()
-        context = {'inner_ip': '192.0.2.1'}
+        context = {'node_ip': '192.0.2.1'}
 
         with patch('actions.ansible.wait_for_ssh', return_value=True), \
              patch('actions.ansible.run_ssh') as mock_ssh, \

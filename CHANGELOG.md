@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Changed
+- Rename `inner_ip` context key to `node_ip` across all actions, CLI (`--node-ip`), and tests — aligns with manifest vocabulary
 - Rename `nested-pve` references to `child-pve` across defaults, comments, and test fixtures (ansible#49)
   - Default `pve_hostname` in `EnsurePVEAction`: `nested-pve` → `child-pve`
   - Default `name_pattern` in `DiscoverVMsAction`: `nested-pve*` → `child-pve*`
