@@ -2,11 +2,21 @@
 
 ## Unreleased
 
+### Changed
+- Rename `nested-pve` references to `child-pve` across defaults, comments, and test fixtures (ansible#49)
+  - Default `pve_hostname` in `EnsurePVEAction`: `nested-pve` → `child-pve`
+  - Default `name_pattern` in `DiscoverVMsAction`: `nested-pve*` → `child-pve*`
+
+### Removed
+- Remove deprecated `--remote` and `--vm-ip` CLI flags — use `-H <host>` instead (#235)
+- Remove `--scenario` deprecation warning — `scenario run` verb is the primary interface (#235)
+- Remove `RETIRED_SCENARIOS` dict and migration hints — no backward compatibility required (#235)
+
 ## v0.50 - 2026-02-22
 
-### Changed
-- Default `run_ssh()` to current user via `getpass.getuser()` instead of hardcoded `root` (#251)
-- Pass `config.ssh_user` explicitly in preflight packer image check (#251)
+### Theme: Provisioning Token (homestak-dev#231)
+
+HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 
 ### Added
 - Wire `dns_servers` from site-config through ConfigResolver to tofu tfvars (iac-driver#229)
@@ -14,6 +24,26 @@
 - Include `dns-nameservers` in bridge config when `dns_servers` configured — fixes DNS loss on PVE nodes after bridge reconfig (iac-driver#229)
 - Automate API token creation in `pve-setup` — creates pveum token, injects into secrets.yaml, verifies against PVE API (iac-driver#223)
 - Auto-generate `auth.signing_key` during `pve-setup` when empty (#238)
+- Add `./run.sh manifest validate` verb for FK validation against site-config (#207)
+- Add push-mode config phase for leaf VMs in operator — resolves spec locally, runs ansible from controller targeting VM over SSH (#206)
+- Auto-set `HOMESTAK_SOURCE` env var after server start so BootstrapAction and RecursiveScenarioAction use serve-repos instead of GitHub master (#189)
+
+### Changed
+- Default `run_ssh()` to current user via `getpass.getuser()` instead of hardcoded `root` (#251)
+- Pass `config.ssh_user` explicitly in preflight packer image check (#251)
+- Replace `[inner]` log prefix with delegate action name (e.g., `[delegate-root-pve]`) (#240)
+- Suppress delegated JSON output from INFO logs — track brace depth for nested JSON (#240)
+- Fix empty action name in delegate "Starting" message
+- Strip ANSI escape codes from delegated error messages
+- Downgrade auto-detected host and IP logs from INFO/WARNING to DEBUG/INFO
+- Default to all SSH keys when spec omits `ssh_keys` — makes specs portable across deployments (#239)
+- Remove obsolete `ssh_keys.` prefix handling in spec resolver (#239)
+- Simplify `_image_to_asset_name()` — image names now map 1:1 to asset filenames (packer#48)
+- Update default `packer_image` from `debian-12-custom.qcow2` to `debian-12.qcow2` (packer#48)
+- Rewrite Makefile for venv-based dev tooling (PEP 668 compatibility) (#197)
+  - `make install-dev` creates `.venv/`, installs linters + runtime deps
+  - `make test` and `make lint` run via venv binaries
+  - Pre-commit hooks (pylint, mypy) trigger on git commit
 
 ### Fixed
 - Add preflight validation for empty `gateway` and `dns_servers` in site.yaml — fail early instead of cryptic DNS errors; warn (non-blocking) for empty `domain`
@@ -25,40 +55,9 @@
 - Handle YAML null in `host-config.sh` output for empty `network.interfaces` (homestak-dev#266)
 - Skip API preflight check for `pve-setup` scenario — PVE isn't installed yet on fresh hosts (homestak-dev#266)
 - Handle local PVE install reboot — split into kernel/packages phases with idempotent re-entry via dpkg state detection (iac-driver#222)
-
-### Changed
-- Replace `[inner]` log prefix with delegate action name (e.g., `[delegate-root-pve]`) (#240)
-- Suppress delegated JSON output from INFO logs — track brace depth for nested JSON (#240)
-- Fix empty action name in delegate "Starting" message
-- Strip ANSI escape codes from delegated error messages
-- Downgrade auto-detected host and IP logs from INFO/WARNING to DEBUG/INFO
-- Default to all SSH keys when spec omits `ssh_keys` — makes specs portable across deployments (#239)
-- Remove obsolete `ssh_keys.` prefix handling in spec resolver (#239)
-- Simplify `_image_to_asset_name()` — image names now map 1:1 to asset filenames (packer#48)
-- Update default `packer_image` from `debian-12-custom.qcow2` to `debian-12.qcow2` (packer#48)
-
-### Theme: Provisioning Token (homestak-dev#231)
-
-HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
-
-### Added
-- Add `./run.sh manifest validate` verb for FK validation against site-config (#207)
-- Add push-mode config phase for leaf VMs in operator — resolves spec locally, runs ansible from controller targeting VM over SSH (#206)
-- Auto-set `HOMESTAK_SOURCE` env var after server start so BootstrapAction and RecursiveScenarioAction use serve-repos instead of GitHub master (#189)
-
-### Removed
-- Remove dead `SyncDriverCodeAction` — serve-repos (`_working` branch) makes rsync-based code sync redundant (#212)
-
-### Refactored
-- Fix all mypy errors (40) and pylint warnings (97) — `make lint` now passes clean (#214)
-- Extract `_handle_scenario_verb()`, `_resolve_host()`, `_setup_context()`, `_handle_results()` from 475-line `main()` in cli.py (#214)
-- Split `test_actions.py` (27 tests) into per-module files: `test_actions_ssh.py`, `test_actions_file.py`, `test_actions_proxmox.py` (#214)
-- Add unit tests for TofuApplyAction, TofuDestroyAction, AnsiblePlaybookAction, EnsurePVEAction (31 new tests, 579→610 total) (#215)
-
-### Fixed
 - Fix root SSH failure in PVE lifecycle `post_scenario` phase — use `automation_user` instead of root, add sudo for `pve-setup --local` (#216)
 - Reduce git dumb HTTP 404 noise — downgrade expected `/objects/` 404s to DEBUG log level (#205)
-- Fix pull-mode spec_server in nested PVE — use `HOMESTAK_SOURCE` env var so VMs reach the local server, not the outer host from site.yaml
+- Fix pull-mode spec_server in tiered PVE — use `HOMESTAK_SOURCE` env var so VMs reach the local server, not the outer host from site.yaml
 - Fix push-mode config to run ansible from controller instead of inside VM (#206)
 - Fix push-mode cloud-init race — skip spec injection for push-mode nodes so cloud-init doesn't bootstrap in parallel with operator config
 - Fix pre-existing pylint/mypy warnings across cli.py, actions, config.py, executor.py (#209)
@@ -67,21 +66,20 @@ HMAC-SHA256 provisioning tokens replace posture-based auth for spec resolution.
 - Restrict secrets.yaml to 600 permissions after SCP copy to bootstrapped hosts (#199)
   - CopySecretsAction now runs `chmod 600` + `chown root:root` after `sudo mv`
 - Improve "secrets.yaml not found" error to suggest `make decrypt` when `.enc` exists (#202)
-
-### Changed
-- Rewrite Makefile for venv-based dev tooling (PEP 668 compatibility) (#197)
-  - `make install-dev` creates `.venv/`, installs linters + runtime deps
-  - `make test` and `make lint` run via venv binaries
-  - Pre-commit hooks (pylint, mypy) trigger on git commit
-
-### Removed
-- Remove dead tfvars input path (`_load_from_tfvars`, `_parse_tfvars`) from config.py (#209)
-- Remove fuser apt wait block from BootstrapAction — now handled by install.sh system-wide apt config (bootstrap#52, #198)
-
-### Fixed
 - Fix HOMESTAK_SOURCE propagation at depth 2+: use `--self-addr` from parent instead of localhost for server address; auto-detect external IP as fallback; override with `HOMESTAK_SELF_ADDR` env var (#200)
 - Fix BootstrapAction TLS for serve-repos: add `-k` to curl and `HOMESTAK_INSECURE=1` for self-signed server certs (#189)
 - Fix RepoManager to serve site-config from FHS path (`/usr/local/etc/homestak/`) via `extra_paths` (#189)
+
+### Removed
+- Remove dead `SyncDriverCodeAction` — serve-repos (`_working` branch) makes rsync-based code sync redundant (#212)
+- Remove dead tfvars input path (`_load_from_tfvars`, `_parse_tfvars`) from config.py (#209)
+- Remove fuser apt wait block from BootstrapAction — now handled by install.sh system-wide apt config (bootstrap#52, #198)
+
+### Refactored
+- Fix all mypy errors (40) and pylint warnings (97) — `make lint` now passes clean (#214)
+- Extract `_handle_scenario_verb()`, `_resolve_host()`, `_setup_context()`, `_handle_results()` from 475-line `main()` in cli.py (#214)
+- Split `test_actions.py` (27 tests) into per-module files: `test_actions_ssh.py`, `test_actions_file.py`, `test_actions_proxmox.py` (#214)
+- Add unit tests for TofuApplyAction, TofuDestroyAction, AnsiblePlaybookAction, EnsurePVEAction (31 new tests, 579→610 total) (#215)
 - Fix HTTP HEAD responses sending body which corrupted git clone persistent connections (#200)
 - Fix `git commit-tree` failing on bootstrapped VMs with no git identity — set env vars for ephemeral commits in bare repo prep (#200)
 - Fix SyncDriverCodeAction to also sync `run.sh` so inner PVE gets the `manifest` CLI verb (#189)

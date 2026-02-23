@@ -137,7 +137,7 @@ class TestManifestNode:
         from manifest import ManifestNode
 
         data = {
-            'name': 'nested-pve',
+            'name': 'child-pve',
             'type': 'pve',
             'spec': 'pve',
             'preset': 'vm-large',
@@ -149,7 +149,7 @@ class TestManifestNode:
         }
         node = ManifestNode.from_dict(data)
 
-        assert node.name == 'nested-pve'
+        assert node.name == 'child-pve'
         assert node.type == 'pve'
         assert node.spec == 'pve'
         assert node.preset == 'vm-large'
@@ -169,11 +169,11 @@ class TestManifestNode:
             'preset': 'vm-small',
             'image': 'debian-12',
             'vmid': 99021,
-            'parent': 'nested-pve',
+            'parent': 'child-pve',
         }
         node = ManifestNode.from_dict(data)
 
-        assert node.parent == 'nested-pve'
+        assert node.parent == 'child-pve'
 
     def test_to_dict_roundtrip(self):
         """Should survive dict roundtrip."""
@@ -185,14 +185,14 @@ class TestManifestNode:
             'preset': 'vm-small',
             'image': 'debian-12',
             'vmid': 99021,
-            'parent': 'nested-pve',
+            'parent': 'child-pve',
         }
         node = ManifestNode.from_dict(original)
         result = node.to_dict()
 
         assert result['name'] == 'test'
         assert result['type'] == 'vm'
-        assert result['parent'] == 'nested-pve'
+        assert result['parent'] == 'child-pve'
         assert result['vmid'] == 99021
 
     def test_to_dict_omits_none_fields(self):

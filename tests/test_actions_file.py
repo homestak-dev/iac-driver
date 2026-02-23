@@ -221,7 +221,7 @@ class TestDownloadGitHubReleaseAction:
         with patch('actions.file.run_ssh') as mock_ssh:
             # API returns parts in arbitrary order
             mock_ssh.return_value = (0, 'large-file.qcow2.partab\nlarge-file.qcow2.partaa\n', '')
-            parts = action._get_split_parts('repo/name', 'v1.0', '192.0.2.1')
+            parts = action._get_split_parts('repo/name', 'v1.0', '192.0.2.1', 'root')
 
         # Should be sorted alphabetically
         assert parts == ['large-file.qcow2.partab', 'large-file.qcow2.partaa']

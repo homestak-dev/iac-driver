@@ -368,7 +368,7 @@ class DiscoverVMsAction:
     """
     name: str
     pve_host_attr: str = 'ssh_host'
-    name_pattern: str = 'nested-pve*'
+    name_pattern: str = 'child-pve*'
     vmid_range: Optional[tuple[int, int]] = (99900, 99999)
 
     def run(self, config: HostConfig, context: dict) -> ActionResult:

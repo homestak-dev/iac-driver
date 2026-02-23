@@ -37,22 +37,6 @@ NOUN_COMMANDS = {
     "token": "Provisioning token utilities (inspect)",
 }
 
-# Scenarios retired in v0.47 (scenario consolidation)
-# Maps old scenario names to migration hints
-RETIRED_SCENARIOS = {
-    "vm-constructor": "Use: ./run.sh manifest apply -M n1-push -H <host>",
-    "vm-destructor": "Use: ./run.sh manifest destroy -M n1-push -H <host>",
-    "vm-roundtrip": "Use: ./run.sh manifest test -M n1-push -H <host>",
-    "nested-pve-constructor": "Use: ./run.sh manifest apply -M n2-tiered -H <host>",
-    "nested-pve-destructor": "Use: ./run.sh manifest destroy -M n2-tiered -H <host>",
-    "nested-pve-roundtrip": "Use: ./run.sh manifest test -M n2-tiered -H <host>",
-    "recursive-pve-constructor": "Use: ./run.sh manifest apply -M <manifest> -H <host>",
-    "recursive-pve-destructor": "Use: ./run.sh manifest destroy -M <manifest> -H <host>",
-    "recursive-pve-roundtrip": "Use: ./run.sh manifest test -M <manifest> -H <host>",
-    "spec-vm-push-roundtrip": "Renamed to: push-vm-roundtrip",
-    "spec-vm-pull-roundtrip": "Renamed to: pull-vm-roundtrip",
-}
-
 
 def _is_ip_address(value: str) -> bool:
     """Check if value looks like an IPv4 address."""
@@ -335,12 +319,6 @@ def _resolve_host(args, scenario, available_hosts):
         print(f"Available hosts: {', '.join(available_hosts) if available_hosts else 'none configured'}")
         return (None, 1)
 
-    # Deprecation warnings for --remote and --vm-ip
-    if args.remote:
-        logger.warning("--remote is deprecated. Use: -H %s", args.remote)
-    if args.vm_ip:
-        logger.warning("--vm-ip is deprecated. Use: -H %s", args.vm_ip)
-
     # Load config (use local config with auto-derived values for --local)
     if is_raw_ip:
         assert host is not None  # guaranteed by _is_ip_address check
@@ -393,12 +371,6 @@ def _setup_context(args, orchestrator) -> int | None:
     # Pre-populate context for pve-setup and user-setup scenarios
     if args.local:
         orchestrator.context['local_mode'] = True
-    if args.remote:
-        orchestrator.context['remote_ip'] = args.remote
-
-    # Pre-populate context for bootstrap-install scenario
-    if args.vm_ip:
-        orchestrator.context['vm_ip'] = args.vm_ip
     if args.homestak_user:
         orchestrator.context['homestak_user'] = args.homestak_user
 
@@ -479,21 +451,6 @@ def main():
         print_usage()
         return 0
 
-    # Check for retired scenarios and print migration hint
-    for i, arg in enumerate(sys.argv[1:], 1):
-        if arg in ('--scenario', '-S') and i < len(sys.argv) - 1:
-            scenario_name = sys.argv[i + 1]
-            if scenario_name in RETIRED_SCENARIOS:
-                hint = RETIRED_SCENARIOS[scenario_name]
-                print(f"Error: Scenario '{scenario_name}' was retired in v0.47.")
-                print(f"  {hint}")
-                print("\nSee: ./run.sh manifest apply --help")
-                return 1
-
-    # Deprecation notice for legacy --scenario flag (skip if invoked via verb)
-    if not from_verb and any(arg in ('--scenario', '-S') for arg in sys.argv[1:]):
-        logger.warning("--scenario is deprecated. Use: ./run.sh scenario run <name> [options]")
-
     # Scenario-based CLI continues below
     available_hosts = list_hosts()
     available_scenarios = list_scenarios()
@@ -509,7 +466,7 @@ def main():
     parser.add_argument(
         '--scenario', '-S',
         choices=available_scenarios,
-        help='Scenario to run (required unless using --list-scenarios)'
+        help=argparse.SUPPRESS  # Hidden: use 'scenario run' verb instead
     )
     parser.add_argument(
         '--host', '-H',
@@ -550,14 +507,6 @@ def main():
         '--local',
         action='store_true',
         help='Run scenario locally (for pve-setup, user-setup)'
-    )
-    parser.add_argument(
-        '--remote',
-        help='[Deprecated: use -H <ip>] Target host IP for remote execution'
-    )
-    parser.add_argument(
-        '--vm-ip',
-        help='[Deprecated: use -H <ip>] Target VM IP (for bootstrap-install scenario)'
     )
     parser.add_argument(
         '--homestak-user',
@@ -655,8 +604,8 @@ def main():
     # Handle --preflight mode (standalone check, no scenario)
     if args.preflight:
         hostname = socket.gethostname()
-        # Check if nested-pve scenario would be run (for nested virt check)
-        check_nested = args.scenario and 'nested-pve' in args.scenario
+        # Check if tiered PVE scenario would be run (for nested virt check)
+        check_nested = args.scenario and 'child-pve' in args.scenario
 
         logger.info(f"Running preflight checks for {hostname}")
         success, results = run_preflight_checks(
