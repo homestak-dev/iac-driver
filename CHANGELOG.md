@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- Add report generation to `manifest test` — writes JSON + Markdown reports to `reports/` with create/verify/destroy phase tracking (#226)
+
 ### Changed
 - Rename `inner_ip` context key to `node_ip` across all actions, CLI (`--node-ip`), and tests — aligns with manifest vocabulary
 - Rename `nested-pve` references to `child-pve` across defaults, comments, and test fixtures (ansible#49)
