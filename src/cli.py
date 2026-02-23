@@ -335,12 +335,6 @@ def _resolve_host(args, scenario, available_hosts):
         print(f"Available hosts: {', '.join(available_hosts) if available_hosts else 'none configured'}")
         return (None, 1)
 
-    # Deprecation warnings for --remote and --vm-ip
-    if args.remote:
-        logger.warning("--remote is deprecated. Use: -H %s", args.remote)
-    if args.vm_ip:
-        logger.warning("--vm-ip is deprecated. Use: -H %s", args.vm_ip)
-
     # Load config (use local config with auto-derived values for --local)
     if is_raw_ip:
         assert host is not None  # guaranteed by _is_ip_address check
@@ -393,12 +387,6 @@ def _setup_context(args, orchestrator) -> int | None:
     # Pre-populate context for pve-setup and user-setup scenarios
     if args.local:
         orchestrator.context['local_mode'] = True
-    if args.remote:
-        orchestrator.context['remote_ip'] = args.remote
-
-    # Pre-populate context for bootstrap-install scenario
-    if args.vm_ip:
-        orchestrator.context['vm_ip'] = args.vm_ip
     if args.homestak_user:
         orchestrator.context['homestak_user'] = args.homestak_user
 
@@ -490,10 +478,6 @@ def main():
                 print("\nSee: ./run.sh manifest apply --help")
                 return 1
 
-    # Deprecation notice for legacy --scenario flag (skip if invoked via verb)
-    if not from_verb and any(arg in ('--scenario', '-S') for arg in sys.argv[1:]):
-        logger.warning("--scenario is deprecated. Use: ./run.sh scenario run <name> [options]")
-
     # Scenario-based CLI continues below
     available_hosts = list_hosts()
     available_scenarios = list_scenarios()
@@ -509,7 +493,7 @@ def main():
     parser.add_argument(
         '--scenario', '-S',
         choices=available_scenarios,
-        help='Scenario to run (required unless using --list-scenarios)'
+        help=argparse.SUPPRESS  # Hidden: use 'scenario run' verb instead
     )
     parser.add_argument(
         '--host', '-H',
@@ -550,14 +534,6 @@ def main():
         '--local',
         action='store_true',
         help='Run scenario locally (for pve-setup, user-setup)'
-    )
-    parser.add_argument(
-        '--remote',
-        help='[Deprecated: use -H <ip>] Target host IP for remote execution'
-    )
-    parser.add_argument(
-        '--vm-ip',
-        help='[Deprecated: use -H <ip>] Target VM IP (for bootstrap-install scenario)'
     )
     parser.add_argument(
         '--homestak-user',

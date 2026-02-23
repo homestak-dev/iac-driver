@@ -29,7 +29,7 @@ class TestRequiresRoot:
     def test_pve_setup_local_requires_root(self):
         """pve-setup --local should fail when not root."""
         result = subprocess.run(
-            [str(RUN_SH), '--scenario', 'pve-setup', '--local'],
+            [str(RUN_SH), 'scenario', 'run', 'pve-setup', '--local'],
             capture_output=True,
             text=True
         )
@@ -43,7 +43,7 @@ class TestRequiresRoot:
     def test_user_setup_local_requires_root(self):
         """user-setup --local should fail when not root."""
         result = subprocess.run(
-            [str(RUN_SH), '--scenario', 'user-setup', '--local'],
+            [str(RUN_SH), 'scenario', 'run', 'user-setup', '--local'],
             capture_output=True,
             text=True
         )
@@ -184,17 +184,6 @@ class TestScenarioVerb:
         )
         combined = result.stdout + result.stderr
         assert 'deprecated' not in combined.lower()
-
-    def test_legacy_flag_shows_deprecation(self):
-        """Legacy --scenario should show deprecation warning."""
-        result = subprocess.run(
-            [str(RUN_SH), '--scenario', 'pve-setup', '--list-phases',
-             '--host', 'father', '--skip-preflight'],
-            capture_output=True,
-            text=True
-        )
-        combined = result.stdout + result.stderr
-        assert 'deprecated' in combined.lower()
 
 
 class TestTopLevelUsage:

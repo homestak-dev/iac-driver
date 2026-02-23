@@ -42,13 +42,13 @@ class _CreateUserPhase:
                 playbook='playbooks/user.yml',
             )
         else:
-            # Use remote_ip from context, or fall back to config.ssh_host
-            remote_ip = context.get('remote_ip') or config.ssh_host
+            # Use config.ssh_host for remote execution
+            remote_ip = config.ssh_host
             if not remote_ip:
                 from common import ActionResult
                 return ActionResult(
                     success=False,
-                    message="No target host: use --local, --remote <IP>, or configure ssh_host",
+                    message="No target host: use --local or -H <host>",
                     duration=0
                 )
             # Ensure remote_ip is in context for AnsiblePlaybookAction

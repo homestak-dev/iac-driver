@@ -168,11 +168,11 @@ class _EnsurePVEPhase:
 
     def _run_remote(self, config: HostConfig, context: dict, start: float):
         """Install PVE on remote host (reboot handled by ansible)."""
-        remote_ip = context.get('remote_ip') or config.ssh_host
+        remote_ip = config.ssh_host
         if not remote_ip:
             return ActionResult(
                 success=False,
-                message="No target host: use --local, --remote <IP>, or configure ssh_host",
+                message="No target host: use --local or -H <host>",
                 duration=time.time() - start
             )
         context['remote_ip'] = remote_ip
@@ -204,12 +204,12 @@ class _PVESetupPhase:
                 playbook='playbooks/pve-setup.yml',
             )
         else:
-            # Use remote_ip from context, or fall back to config.ssh_host
+            # Use remote_ip from context (set by ensure_pve phase), or config.ssh_host
             remote_ip = context.get('remote_ip') or config.ssh_host
             if not remote_ip:
                 return ActionResult(
                     success=False,
-                    message="No target host: use --local, --remote <IP>, or configure ssh_host",
+                    message="No target host: use --local or -H <host>",
                     duration=0
                 )
             # Ensure remote_ip is in context for AnsiblePlaybookAction

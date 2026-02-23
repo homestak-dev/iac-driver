@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Removed
+- Remove deprecated `--remote` and `--vm-ip` CLI flags — use `-H <host>` instead (#235)
+- Remove `--scenario` deprecation warning — `scenario run` verb is the primary interface (#235)
+
 ## v0.50 - 2026-02-22
 
 ### Changed
