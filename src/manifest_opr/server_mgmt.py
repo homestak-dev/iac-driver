@@ -14,7 +14,7 @@ from common import run_ssh
 
 logger = logging.getLogger(__name__)
 
-SERVER_PORT = 44443
+DEFAULT_SERVER_PORT = 44443
 
 
 class ServerManager:
@@ -28,13 +28,16 @@ class ServerManager:
         ssh_host: SSH host for the target PVE node
         ssh_user: SSH user for the target PVE node
         self_addr: Explicit routable address (from --self-addr)
+        port: Server port (default: 44443, or extracted from spec_server URL)
     """
 
     def __init__(self, ssh_host: str, ssh_user: str,
-                 self_addr: Optional[str] = None) -> None:
+                 self_addr: Optional[str] = None,
+                 port: int = DEFAULT_SERVER_PORT) -> None:
         self.ssh_host = ssh_host
         self.ssh_user = ssh_user
         self.self_addr = self_addr
+        self.port = port
         self._refs: int = 0
         self._started: bool = False
 
@@ -52,7 +55,7 @@ class ServerManager:
         rc, stdout, _ = run_ssh(
             self.ssh_host,
             'cd /usr/local/lib/homestak/iac-driver'
-            f' && ./run.sh server status --json --port {SERVER_PORT}',
+            f' && ./run.sh server status --json --port {self.port}',
             user=self.ssh_user, timeout=15,
         )
 
@@ -61,7 +64,7 @@ class ServerManager:
                 status = json.loads(stdout.strip())
                 if status.get('running') and status.get('healthy'):
                     logger.info("Server already running on %s:%d (reusing)",
-                                self.ssh_host, SERVER_PORT)
+                                self.ssh_host, self.port)
                     self._started = False
                     self._set_source_env(self.ssh_host)
                     return
@@ -69,11 +72,11 @@ class ServerManager:
                 pass
 
         # Start the server (with repo serving for pull mode bootstrap)
-        logger.info("Starting server on %s:%d", self.ssh_host, SERVER_PORT)
+        logger.info("Starting server on %s:%d", self.ssh_host, self.port)
         rc, stdout, stderr = run_ssh(
             self.ssh_host,
             'cd /usr/local/lib/homestak/iac-driver'
-            f" && ./run.sh server start --port {SERVER_PORT} --repos --repo-token ''",
+            f" && ./run.sh server start --port {self.port} --repos --repo-token ''",
             user=self.ssh_user, timeout=30,
         )
 
@@ -82,7 +85,7 @@ class ServerManager:
                            rc, stderr.strip() or stdout.strip())
         else:
             logger.info("Server started on %s:%d (log: /var/log/homestak/server.log)",
-                        self.ssh_host, SERVER_PORT)
+                        self.ssh_host, self.port)
 
         self._started = True
         self._set_source_env(self.ssh_host)
@@ -102,20 +105,41 @@ class ServerManager:
         if not self._started:
             return
 
-        logger.info("Stopping server on %s:%d", self.ssh_host, SERVER_PORT)
+        logger.info("Stopping server on %s:%d", self.ssh_host, self.port)
         rc, _, stderr = run_ssh(
             self.ssh_host,
             'cd /usr/local/lib/homestak/iac-driver'
-            f' && ./run.sh server stop --port {SERVER_PORT}',
+            f' && ./run.sh server stop --port {self.port}',
             user=self.ssh_user, timeout=15,
         )
 
         if rc != 0:
             logger.warning("Server stop returned rc=%d: %s", rc, stderr.strip())
         else:
-            logger.info("Server stopped on %s:%d", self.ssh_host, SERVER_PORT)
+            logger.info("Server stopped on %s:%d", self.ssh_host, self.port)
 
         self._started = False
+
+    @staticmethod
+    def resolve_port(spec_server: str) -> int:
+        """Extract port from a spec_server URL, or return default.
+
+        Args:
+            spec_server: URL like "https://controller:44443"
+
+        Returns:
+            Extracted port or DEFAULT_SERVER_PORT
+        """
+        if not spec_server:
+            return DEFAULT_SERVER_PORT
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(spec_server)
+            if parsed.port:
+                return int(parsed.port)
+        except Exception:  # pylint: disable=broad-except
+            pass
+        return DEFAULT_SERVER_PORT
 
     @staticmethod
     def detect_external_ip() -> Optional[str]:
@@ -216,11 +240,11 @@ class ServerManager:
                         "HOMESTAK_SELF_ADDR to set a routable address)",
                         host,
                     )
-        os.environ['HOMESTAK_SOURCE'] = f'https://{addr}:{SERVER_PORT}'
+        os.environ['HOMESTAK_SOURCE'] = f'https://{addr}:{self.port}'
         os.environ.setdefault('HOMESTAK_REF', '_working')
         logger.info(
             "Set HOMESTAK_SOURCE=https://%s:%d (ref=%s)",
-            addr, SERVER_PORT, os.environ.get('HOMESTAK_REF'),
+            addr, self.port, os.environ.get('HOMESTAK_REF'),
         )
 
     @staticmethod

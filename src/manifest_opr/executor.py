@@ -1,11 +1,8 @@
 """Node executor for manifest-based orchestration.
 
-Walks the execution graph and executes per-node lifecycle operations
-using existing tofu and proxmox actions.
-
-Root nodes (depth 0) are executed locally. Children of PVE nodes are
-delegated to the PVE node via SSH, where a new operator instance
-handles them as its own root nodes.
+Walks the execution graph and runs per-node lifecycle operations.
+Root nodes (depth 0) execute locally; children of PVE nodes are
+delegated via SSH to the PVE host.
 """
 
 import logging
@@ -55,15 +52,22 @@ class NodeExecutor:
     dry_run: bool = False
     json_output: bool = False
     self_addr: Optional[str] = None
+    skip_server: bool = False
     _server: ServerManager = field(default=None, init=False, repr=False)  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         """Initialize the server manager after dataclass init."""
+        spec_server = getattr(self.config, 'spec_server', '') or ''
         self._server = ServerManager(
             ssh_host=self.config.ssh_host,
             ssh_user=self.config.ssh_user,
             self_addr=self.self_addr,
+            port=ServerManager.resolve_port(spec_server),
         )
+        if self.skip_server:
+            # No-op server lifecycle — user manages server externally
+            self._server.ensure = lambda: None  # type: ignore[assignment]
+            self._server.stop = lambda: None  # type: ignore[assignment]
 
     def create(self, context: dict) -> tuple[bool, ExecutionState]:
         """Execute create lifecycle: provision root nodes, delegate subtrees."""
