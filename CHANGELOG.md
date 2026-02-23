@@ -4,7 +4,7 @@
 
 ### Added
 - Add report generation to `manifest test` — writes JSON + Markdown reports to `reports/` with create/verify/destroy phase tracking (#226)
-- Add `--skip-server` flag to manifest verbs — enables external server management for parallel test runs (#203)
+- Add `scripts/parallel-test.sh` — runs multiple manifest tests concurrently with a shared server (#203)
 - `ServerManager` reads port from `config.spec_server` URL instead of hardcoded default (#203)
 
 ### Changed

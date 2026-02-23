@@ -507,20 +507,6 @@ class TestServerPortResolution:
         executor = NodeExecutor(manifest=manifest, graph=graph, config=config)
         assert executor._server.port == 44443
 
-    def test_skip_server_makes_ensure_noop(self):
-        """skip_server=True makes ensure/stop no-ops."""
-        manifest = _make_manifest([
-            {'name': 'test', 'type': 'vm', 'vmid': 99001, 'image': 'debian-12', 'preset': 'vm-small'},
-        ])
-        graph = ManifestGraph(manifest)
-        config = _make_config()
-
-        executor = NodeExecutor(
-            manifest=manifest, graph=graph, config=config, skip_server=True)
-
-        # ensure/stop should be no-ops (return None, no side effects)
-        assert executor._server.ensure() is None
-        assert executor._server.stop() is None
 
 
 class TestServerSourceEnv:

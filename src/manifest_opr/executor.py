@@ -52,7 +52,6 @@ class NodeExecutor:
     dry_run: bool = False
     json_output: bool = False
     self_addr: Optional[str] = None
-    skip_server: bool = False
     _server: ServerManager = field(default=None, init=False, repr=False)  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
@@ -64,10 +63,6 @@ class NodeExecutor:
             self_addr=self.self_addr,
             port=ServerManager.resolve_port(spec_server),
         )
-        if self.skip_server:
-            # No-op server lifecycle — user manages server externally
-            self._server.ensure = lambda: None  # type: ignore[assignment]
-            self._server.stop = lambda: None  # type: ignore[assignment]
 
     def create(self, context: dict) -> tuple[bool, ExecutionState]:
         """Execute create lifecycle: provision root nodes, delegate subtrees."""

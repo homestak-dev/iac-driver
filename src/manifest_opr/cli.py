@@ -76,12 +76,6 @@ def _common_parser(verb: str) -> argparse.ArgumentParser:
         help='Routable address of this host for HOMESTAK_SOURCE '
              '(override: HOMESTAK_SELF_ADDR env var)',
     )
-    parser.add_argument(
-        '--skip-server',
-        action='store_true',
-        help='Skip automatic server lifecycle management '
-             '(use when server is managed externally for parallel runs)',
-    )
     return parser
 
 
@@ -263,7 +257,7 @@ def apply_main(argv: list) -> int:
         dry_run=args.dry_run,
         json_output=args.json_output,
         self_addr=getattr(args, 'self_addr', None),
-        skip_server=args.skip_server,
+
     )
 
     start = time.time()
@@ -315,7 +309,7 @@ def destroy_main(argv: list) -> int:
         dry_run=args.dry_run,
         json_output=args.json_output,
         self_addr=getattr(args, 'self_addr', None),
-        skip_server=args.skip_server,
+
     )
 
     start = time.time()
@@ -354,7 +348,7 @@ def test_main(argv: list) -> int:
         dry_run=args.dry_run,
         json_output=args.json_output,
         self_addr=getattr(args, 'self_addr', None),
-        skip_server=args.skip_server,
+
     )
 
     # Dry-run: delegate to executor.test() without report generation

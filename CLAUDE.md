@@ -279,9 +279,9 @@ nodes:
 ### Noun-Action Commands
 
 ```bash
-./run.sh manifest apply -M n2-tiered -H srv1 [--dry-run] [--json-output] [--verbose] [--skip-server]
-./run.sh manifest destroy -M n2-tiered -H srv1 [--dry-run] [--yes] [--skip-server]
-./run.sh manifest test -M n2-tiered -H srv1 [--dry-run] [--json-output] [--skip-server]
+./run.sh manifest apply -M n2-tiered -H srv1 [--dry-run] [--json-output] [--verbose]
+./run.sh manifest destroy -M n2-tiered -H srv1 [--dry-run] [--yes]
+./run.sh manifest test -M n2-tiered -H srv1 [--dry-run] [--json-output]
 ./run.sh manifest validate -M n2-tiered -H srv1 [--json-output]
 ./run.sh config fetch [--insecure]
 ./run.sh config apply [--spec /path.yaml] [--dry-run]
@@ -432,7 +432,7 @@ Run `./run.sh` with no arguments for top-level usage, or `./run.sh scenario --he
 ./run.sh --preflight --host srv1
 ```
 
-Use `--json-output` for structured JSON to stdout (logs to stderr). Use `--dry-run` to preview without executing. Use `--verbose` for detailed logging. Use `--skip-server` to disable automatic server lifecycle management (for parallel test runs with an externally managed server).
+Use `--json-output` for structured JSON to stdout (logs to stderr). Use `--dry-run` to preview without executing. Use `--verbose` for detailed logging. Use `scripts/parallel-test.sh` to run multiple manifest tests concurrently with a shared server.
 
 ### Available Scenarios
 
