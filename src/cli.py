@@ -37,22 +37,6 @@ NOUN_COMMANDS = {
     "token": "Provisioning token utilities (inspect)",
 }
 
-# Scenarios retired in v0.47 (scenario consolidation)
-# Maps old scenario names to migration hints
-RETIRED_SCENARIOS = {
-    "vm-constructor": "Use: ./run.sh manifest apply -M n1-push -H <host>",
-    "vm-destructor": "Use: ./run.sh manifest destroy -M n1-push -H <host>",
-    "vm-roundtrip": "Use: ./run.sh manifest test -M n1-push -H <host>",
-    "nested-pve-constructor": "Use: ./run.sh manifest apply -M n2-tiered -H <host>",
-    "nested-pve-destructor": "Use: ./run.sh manifest destroy -M n2-tiered -H <host>",
-    "nested-pve-roundtrip": "Use: ./run.sh manifest test -M n2-tiered -H <host>",
-    "recursive-pve-constructor": "Use: ./run.sh manifest apply -M <manifest> -H <host>",
-    "recursive-pve-destructor": "Use: ./run.sh manifest destroy -M <manifest> -H <host>",
-    "recursive-pve-roundtrip": "Use: ./run.sh manifest test -M <manifest> -H <host>",
-    "spec-vm-push-roundtrip": "Renamed to: push-vm-roundtrip",
-    "spec-vm-pull-roundtrip": "Renamed to: pull-vm-roundtrip",
-}
-
 
 def _is_ip_address(value: str) -> bool:
     """Check if value looks like an IPv4 address."""
@@ -466,17 +450,6 @@ def main():
     if len(sys.argv) == 1:
         print_usage()
         return 0
-
-    # Check for retired scenarios and print migration hint
-    for i, arg in enumerate(sys.argv[1:], 1):
-        if arg in ('--scenario', '-S') and i < len(sys.argv) - 1:
-            scenario_name = sys.argv[i + 1]
-            if scenario_name in RETIRED_SCENARIOS:
-                hint = RETIRED_SCENARIOS[scenario_name]
-                print(f"Error: Scenario '{scenario_name}' was retired in v0.47.")
-                print(f"  {hint}")
-                print("\nSee: ./run.sh manifest apply --help")
-                return 1
 
     # Scenario-based CLI continues below
     available_hosts = list_hosts()

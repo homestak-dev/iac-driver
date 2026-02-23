@@ -69,13 +69,8 @@ class TestListScenarios:
         # Check active scenarios are listed
         assert 'pve-setup' in output
         assert 'user-setup' in output
-        # Retired/removed scenarios should NOT appear
+        # Only active scenarios should appear
         assert 'packer-build' not in output
-        lines = output.split('\n')
-        scenario_names = [line.strip().split()[0] for line in lines if line.strip() and not line.startswith('Available') and not line.startswith('Usage')]
-        assert 'vm-roundtrip' not in scenario_names
-        assert 'child-pve-constructor' not in scenario_names
-        assert 'recursive-pve-constructor' not in scenario_names
 
     def test_list_scenarios_shows_runtime_estimates(self):
         """--list-scenarios should show runtime estimates."""
@@ -90,43 +85,6 @@ class TestListScenarios:
         assert '~3m' in output  # pve-setup, push-vm-roundtrip
         assert '~30s' in output  # user-setup, packer-sync
 
-
-class TestRetiredScenarios:
-    """Test CLI migration hints for retired scenarios."""
-
-    def test_retired_scenario_shows_hint(self):
-        """Retired scenario should show migration hint."""
-        result = subprocess.run(
-            [str(RUN_SH), '--scenario', 'vm-roundtrip', '--host', 'father'],
-            capture_output=True,
-            text=True
-        )
-        assert result.returncode == 1
-        combined = result.stdout + result.stderr
-        assert "retired" in combined.lower()
-        assert "create" in combined or "test" in combined  # Migration hint
-
-    def test_retired_nested_pve_shows_hint(self):
-        """Retired nested-pve scenario should show migration hint."""
-        result = subprocess.run(
-            [str(RUN_SH), '--scenario', 'nested-pve-roundtrip', '--host', 'father'],
-            capture_output=True,
-            text=True
-        )
-        assert result.returncode == 1
-        combined = result.stdout + result.stderr
-        assert "retired" in combined.lower()
-
-    def test_retired_recursive_pve_shows_hint(self):
-        """Retired recursive-pve scenario should show migration hint."""
-        result = subprocess.run(
-            [str(RUN_SH), '--scenario', 'recursive-pve-constructor', '--host', 'father'],
-            capture_output=True,
-            text=True
-        )
-        assert result.returncode == 1
-        combined = result.stdout + result.stderr
-        assert "retired" in combined.lower()
 
 
 class TestScenarioVerb:
@@ -163,16 +121,6 @@ class TestScenarioVerb:
         )
         assert result.returncode == 0
         assert 'pve-setup' in result.stdout
-
-    def test_scenario_verb_retired_shows_hint(self):
-        """scenario verb with retired scenario shows migration hint."""
-        result = subprocess.run(
-            [str(RUN_SH), 'scenario', 'vm-roundtrip', '-H', 'father'],
-            capture_output=True,
-            text=True
-        )
-        assert result.returncode == 1
-        assert 'retired' in (result.stdout + result.stderr).lower()
 
     def test_no_deprecation_warning_with_verb(self):
         """scenario verb should NOT show deprecation warning."""
