@@ -36,7 +36,7 @@ class RecursiveScenarioAction:
         scenario_name: Scenario to execute (e.g., 'vm-roundtrip')
         host_attr: Context key containing target host IP (default: 'inner_ip')
         timeout: Overall timeout in seconds (default: 600)
-        scenario_args: Additional CLI arguments to pass (e.g., ['--host', 'nested-pve'])
+        scenario_args: Additional CLI arguments to pass (e.g., ['--host', 'child-pve'])
         context_keys: Keys to extract from JSON result into context_updates
         use_pty: Whether to use PTY allocation for real-time streaming (default: True)
         ssh_user: SSH username (default: 'root')

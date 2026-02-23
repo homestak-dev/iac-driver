@@ -74,7 +74,7 @@ class TestListScenarios:
         lines = output.split('\n')
         scenario_names = [line.strip().split()[0] for line in lines if line.strip() and not line.startswith('Available') and not line.startswith('Usage')]
         assert 'vm-roundtrip' not in scenario_names
-        assert 'nested-pve-constructor' not in scenario_names
+        assert 'child-pve-constructor' not in scenario_names
         assert 'recursive-pve-constructor' not in scenario_names
 
     def test_list_scenarios_shows_runtime_estimates(self):

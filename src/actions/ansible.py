@@ -200,7 +200,7 @@ class EnsurePVEAction:
     """
     name: str
     host_key: str = 'inner_ip'  # context key for target host
-    pve_hostname: str = 'nested-pve'  # hostname for PVE installation
+    pve_hostname: str = 'child-pve'  # hostname for PVE installation
     ssh_timeout: int = 120
     timeout: int = 1200  # 20 min for PVE install + reboot
 

@@ -58,7 +58,7 @@ class TestRecursiveScenarioActionInit:
             scenario_name='pve-setup',
             host_attr='leaf_ip',
             timeout=300,
-            scenario_args=['--host', 'nested-pve'],
+            scenario_args=['--host', 'child-pve'],
             context_keys=['vm_ip', 'vm_id'],
             use_pty=False,
             ssh_user='homestak'
@@ -66,7 +66,7 @@ class TestRecursiveScenarioActionInit:
 
         assert action.host_attr == 'leaf_ip'
         assert action.timeout == 300
-        assert action.scenario_args == ['--host', 'nested-pve']
+        assert action.scenario_args == ['--host', 'child-pve']
         assert action.context_keys == ['vm_ip', 'vm_id']
         assert action.use_pty is False
         assert action.ssh_user == 'homestak'
@@ -179,13 +179,13 @@ class TestBuildRemoteCommand:
         action = RecursiveScenarioAction(
             name='test',
             scenario_name='pve-setup',
-            scenario_args=['--host', 'nested-pve', '--verbose']
+            scenario_args=['--host', 'child-pve', '--verbose']
         )
 
         cmd = action._build_remote_command()
 
         assert '--host' in cmd
-        assert 'nested-pve' in cmd
+        assert 'child-pve' in cmd
         assert '--verbose' in cmd
 
 

@@ -631,8 +631,8 @@ def main():
     # Handle --preflight mode (standalone check, no scenario)
     if args.preflight:
         hostname = socket.gethostname()
-        # Check if nested-pve scenario would be run (for nested virt check)
-        check_nested = args.scenario and 'nested-pve' in args.scenario
+        # Check if tiered PVE scenario would be run (for nested virt check)
+        check_nested = args.scenario and 'child-pve' in args.scenario
 
         logger.info(f"Running preflight checks for {hostname}")
         success, results = run_preflight_checks(

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+- Rename `nested-pve` references to `child-pve` across defaults, comments, and test fixtures (ansible#49)
+  - Default `pve_hostname` in `EnsurePVEAction`: `nested-pve` → `child-pve`
+  - Default `name_pattern` in `DiscoverVMsAction`: `nested-pve*` → `child-pve*`
+
 ### Removed
 - Remove deprecated `--remote` and `--vm-ip` CLI flags — use `-H <host>` instead (#235)
 - Remove `--scenario` deprecation warning — `scenario run` verb is the primary interface (#235)

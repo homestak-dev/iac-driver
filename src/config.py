@@ -46,7 +46,7 @@ class HostConfig:
     api_endpoint: str = ''
     node_name: str = ''
     ssh_host: str = ''
-    inner_vm_id: int = 99800  # Match site-config/envs/nested-pve.yaml vmid_base
+    inner_vm_id: int = 99800  # Match site-config vmid_base for child PVE nodes
     test_vm_id: int = 99900   # Match site-config/envs/test.yaml vmid_base
     ssh_user: str = field(default_factory=lambda: os.getenv('USER', ''))
     automation_user: str = 'homestak'  # For SSH to VMs (created via cloud-init)

@@ -628,7 +628,7 @@ def validate_readiness(config, scenario_class, timeout: float = 10.0,
     # Site config validation (gateway, dns_servers must be set for VM provisioning)
     errors.extend(validate_site_config(config))
 
-    # Nested virtualization check (for nested-pve-* scenarios)
+    # Nested virtualization check (for tiered PVE scenarios)
     if requires_nested_virt:
         errors.extend(validate_nested_virt())
 
