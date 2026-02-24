@@ -252,6 +252,7 @@ class NodeExecutor:
             vm_preset=mn.preset,
             image=mn.image,
             spec=tofu_spec,
+            manifest_name=self.manifest.name,
         )
         result = apply_action.run(self.config, context)
         if not result.success:
@@ -893,6 +894,7 @@ class NodeExecutor:
             vm_preset=mn.preset,
             image=mn.image,
             spec=mn.spec,
+            manifest_name=self.manifest.name,
         )
         return destroy_action.run(self.config, context)
 

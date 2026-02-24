@@ -169,8 +169,7 @@ for i in "${!PIDS[@]}"; do
     pid="${PIDS[$i]}"
     manifest="${MANIFEST_NAMES[$i]}"
     start_time=$SECONDS
-    wait "$pid" 2>/dev/null
-    rc=$?
+    wait "$pid" 2>/dev/null && rc=0 || rc=$?
     duration=$(( SECONDS - start_time ))
     if [[ $rc -eq 0 ]]; then
         printf "  %-16s PASSED  (%ds)\n" "$manifest" "$duration"

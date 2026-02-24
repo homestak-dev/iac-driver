@@ -40,6 +40,7 @@ class TofuApplyAction:
     vm_preset: Optional[str] = None     # FK to presets/{vm_preset}.yaml
     image: Optional[str] = None      # Image name (required for vm_preset mode)
     spec: Optional[str] = None       # FK to specs/{spec}.yaml (for provisioning token)
+    manifest_name: Optional[str] = None  # Manifest name for state isolation
     timeout_init: int = 120
     timeout_apply: int = 300
 
@@ -81,8 +82,12 @@ class TofuApplyAction:
                 duration=time.time() - start
             )
 
-        # State isolation: use vm_name for state directory
-        state_dir = get_base_dir() / '.states' / f'{self.vm_name}-{config.name}'
+        # State isolation: namespace by manifest to avoid lock contention
+        state_subdir = f'{self.vm_name}-{config.name}'
+        if self.manifest_name:
+            state_dir = get_base_dir() / '.states' / self.manifest_name / state_subdir
+        else:
+            state_dir = get_base_dir() / '.states' / state_subdir
         data_dir = state_dir / 'data'
         data_dir.mkdir(parents=True, exist_ok=True)
         state_file = state_dir / 'terraform.tfstate'
@@ -141,6 +146,7 @@ class TofuDestroyAction:
     vm_preset: Optional[str] = None     # FK to presets/{vm_preset}.yaml
     image: Optional[str] = None      # Image name (for vm_preset mode)
     spec: Optional[str] = None       # FK to specs/{spec}.yaml (for provisioning token)
+    manifest_name: Optional[str] = None  # Manifest name for state isolation
     timeout: int = 300
 
     def run(self, config: HostConfig, _context: dict) -> ActionResult:
@@ -181,8 +187,12 @@ class TofuDestroyAction:
                 duration=time.time() - start
             )
 
-        # State isolation
-        state_dir = get_base_dir() / '.states' / f'{self.vm_name}-{config.name}'
+        # State isolation: namespace by manifest to avoid lock contention
+        state_subdir = f'{self.vm_name}-{config.name}'
+        if self.manifest_name:
+            state_dir = get_base_dir() / '.states' / self.manifest_name / state_subdir
+        else:
+            state_dir = get_base_dir() / '.states' / state_subdir
         data_dir = state_dir / 'data'
         state_file = state_dir / 'terraform.tfstate'
         env = {**os.environ, 'TF_DATA_DIR': str(data_dir)}
