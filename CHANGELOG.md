@@ -6,6 +6,8 @@
 - Add report generation to `manifest test` — writes JSON + Markdown reports to `reports/` with create/verify/destroy phase tracking (#226)
 - Add `scripts/parallel-test.sh` — runs multiple manifest tests concurrently with a shared server (#203)
 - `ServerManager` reads port from `config.spec_server` URL instead of hardcoded default (#203)
+- Tofu state paths namespaced by manifest name (`.states/{manifest}/{node}-{host}/`) to avoid lock contention in parallel runs (#203)
+- Report filenames include scenario slug for uniqueness in parallel runs (#203)
 
 ### Changed
 - Rename `inner_ip` context key to `node_ip` across all actions, CLI (`--node-ip`), and tests — aligns with manifest vocabulary
@@ -14,6 +16,7 @@
   - Default `name_pattern` in `DiscoverVMsAction`: `nested-pve*` → `child-pve*`
 
 ### Removed
+- Remove `--skip-server` flag — replaced by `parallel-test.sh` external server management (#203)
 - Remove deprecated `--remote` and `--vm-ip` CLI flags — use `-H <host>` instead (#235)
 - Remove `--scenario` deprecation warning — `scenario run` verb is the primary interface (#235)
 - Remove `RETIRED_SCENARIOS` dict and migration hints — no backward compatibility required (#235)
