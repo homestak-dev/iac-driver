@@ -202,9 +202,10 @@ Actions in `src/actions/tofu.py` use ConfigResolver to generate tfvars and run t
 | `TofuApplyAction` | Run tofu apply with ConfigResolver on local host |
 | `TofuDestroyAction` | Run tofu destroy with ConfigResolver on local host |
 
-**State Isolation:** Each env+node gets isolated state via explicit `-state` flag:
+**State Isolation:** Each manifest+node+host gets isolated state via explicit `-state` flag:
 ```
-iac-driver/.states/{env}-{node}/terraform.tfstate
+iac-driver/.states/{manifest}/{node}-{host}/terraform.tfstate   # manifest operator
+iac-driver/.states/{node}-{host}/terraform.tfstate              # standalone scenarios
 ```
 
 The `-state` flag is required because `TF_DATA_DIR` only affects plugin/module caching, not state file location.
@@ -452,7 +453,7 @@ Use `--json-output` for structured JSON to stdout (logs to stderr). Use `--dry-r
 
 ### Test Reports
 
-Both `manifest test` and scenario roundtrip tests generate reports in `reports/` with format: `YYYYMMDD-HHMMSS.{passed|failed}.{md|json}`. Manifest test reports track create/verify/destroy phases individually.
+Both `manifest test` and scenario roundtrip tests generate reports in `reports/` with format: `YYYYMMDD-HHMMSS.{scenario}.{passed|failed}.{md|json}`. Manifest test reports track create/verify/destroy phases individually. Use `scripts/parallel-test.sh` to run multiple manifest tests concurrently with a shared server.
 
 ### Preflight Validation
 
