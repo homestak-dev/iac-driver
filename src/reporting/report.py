@@ -145,9 +145,16 @@ class TestReport:
             f.write('\n'.join(lines))
 
     def _report_filename(self, ext: str) -> Path:
-        """Generate report filename."""
+        """Generate report filename.
+
+        Includes scenario name to avoid collisions when tests run in parallel.
+        """
         timestamp = self.started_at.strftime('%Y%m%d-%H%M%S') if self.started_at else 'unknown'
         status = 'passed' if self.success else 'failed'
+        # Include scenario name for uniqueness in parallel runs
+        scenario_slug = self.scenario.replace('/', '-') if self.scenario else ''
+        if scenario_slug:
+            return self.report_dir / f"{timestamp}.{scenario_slug}.{status}.{ext}"
         return self.report_dir / f"{timestamp}.{status}.{ext}"
 
     def to_dict(self, context: Optional[dict] = None) -> dict:
