@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.51 - 2026-02-28
+
 ### Added
 - Add report generation to `manifest test` — writes JSON + Markdown reports to `reports/` with create/verify/destroy phase tracking (#226)
 - Add `scripts/parallel-test.sh` — runs multiple manifest tests concurrently with a shared server (#203)
