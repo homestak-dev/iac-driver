@@ -672,6 +672,13 @@ chmod 600 ~/.ssh/id_rsa
 [ -n "$PUBKEY" ] && echo "$PUBKEY" > ~/.ssh/id_rsa.pub
 [ -f ~/.ssh/id_rsa.pub ] && chmod 644 ~/.ssh/id_rsa.pub
 
+# Ensure pubkey is in authorized_keys (provider SSH-to-self)
+if [ -n "$PUBKEY" ]; then
+    touch ~/.ssh/authorized_keys
+    chmod 600 ~/.ssh/authorized_keys
+    grep -qF "$PUBKEY" ~/.ssh/authorized_keys 2>/dev/null || echo "$PUBKEY" >> ~/.ssh/authorized_keys
+fi
+
 echo "SSH key copied to ~/.ssh/"
 '''
 
