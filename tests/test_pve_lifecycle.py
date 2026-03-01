@@ -153,10 +153,10 @@ class TestCopySecretsAction:
             result = action.run(config, {'vm_ip': '198.51.100.10'})
             assert result.success is True
 
-            # Verify the install command includes chmod and chown
+            # Verify the install command includes chmod (no chown — user-owned)
             install_cmd = mock_ssh.call_args[0][1]
             assert 'chmod 600' in install_cmd, f"Expected chmod 600 in: {install_cmd}"
-            assert 'chown root:root' in install_cmd, f"Expected chown root:root in: {install_cmd}"
+            assert 'sudo' not in install_cmd, f"Expected no sudo in: {install_cmd}"
         finally:
             secrets.unlink(missing_ok=True)
             secrets.parent.rmdir()

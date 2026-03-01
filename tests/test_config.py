@@ -65,21 +65,21 @@ class TestGetSiteConfigDir:
                 result = get_site_config_dir()
                 assert result == site_config
 
-    def test_fhs_path_fallback(self, tmp_path):
-        """Should find FHS path /usr/local/etc/homestak."""
+    def test_home_etc_path_fallback(self, tmp_path):
+        """Should find ~/etc path when sibling not found."""
         iac_driver = tmp_path / 'iac-driver'
         iac_driver.mkdir()
 
-        # No sibling, simulate FHS path
+        # No sibling, simulate ~/etc path
         with patch.dict(os.environ, {}, clear=True):
             os.environ.pop('HOMESTAK_SITE_CONFIG', None)
 
             with patch('config.get_base_dir', return_value=iac_driver), \
                  patch('pathlib.Path.exists') as mock_exists:
-                # Sibling doesn't exist, FHS does
+                # Sibling doesn't exist, ~/etc does
                 def exists_side_effect(self=None):
                     path_str = str(self) if self else ''
-                    if 'usr/local/etc/homestak' in path_str:
+                    if path_str.endswith('/etc') and '/home/' in path_str:
                         return True
                     if 'site-config' in path_str:
                         return False
@@ -107,10 +107,10 @@ class TestGetSiteConfigDir:
 
                 def mock_exists(self):
                     path_str = str(self)
-                    # Return False for FHS and legacy paths
-                    if '/usr/local/etc/homestak' in path_str:
+                    # Return False for home/etc and FHS paths
+                    if path_str.endswith('/etc') and '/home/' in path_str:
                         return False
-                    if '/opt/homestak/site-config' in path_str:
+                    if '/usr/local/etc/homestak' in path_str:
                         return False
                     # Use real exists for other paths (tmp_path structure)
                     return original_exists(self)
