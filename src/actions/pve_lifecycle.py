@@ -53,7 +53,7 @@ class EnsureImageAction:
         start = time.time()
 
         pve_host = config.ssh_host
-        ssh_user = config.ssh_user
+        ssh_user = config.automation_user
         image_name = config.packer_image.replace('.qcow2', '.img')
         image_path = f'/var/lib/vz/template/iso/{image_name}'
 
