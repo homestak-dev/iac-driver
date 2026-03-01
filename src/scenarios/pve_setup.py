@@ -130,7 +130,7 @@ class _EnsurePVEPhase:
             # Reboot to load Proxmox kernel
             logger.info("Rebooting to load Proxmox kernel...")
             subprocess.run(
-                ['systemctl', 'reboot'],
+                ['sudo', 'systemctl', 'reboot'],
                 check=False, timeout=30
             )
             # This process will be killed by the reboot.
@@ -431,12 +431,12 @@ class _CreateApiTokenPhase:
         # Fixes IPv6-related SSL issues on fresh PVE installs
         logger.debug("Regenerating PVE SSL certificates...")
         subprocess.run(
-            'sysctl -w net.ipv6.conf.all.disable_ipv6=1 && '
-            'sysctl -w net.ipv6.conf.default.disable_ipv6=1 && '
-            'pvecm updatecerts --force 2>/dev/null; '
-            'sysctl -w net.ipv6.conf.all.disable_ipv6=0 && '
-            'sysctl -w net.ipv6.conf.default.disable_ipv6=0 && '
-            'systemctl restart pveproxy && sleep 2',
+            'sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 && '
+            'sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1 && '
+            'sudo pvecm updatecerts --force 2>/dev/null; '
+            'sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0 && '
+            'sudo sysctl -w net.ipv6.conf.default.disable_ipv6=0 && '
+            'sudo systemctl restart pveproxy && sleep 2',
             shell=True, capture_output=True, timeout=60, check=False
         )
 
@@ -444,11 +444,11 @@ class _CreateApiTokenPhase:
         # retrieve the value of an existing token)
         logger.info("Creating API token locally...")
         subprocess.run(
-            ['pveum', 'user', 'token', 'remove', 'root@pam', 'tofu'],
+            ['sudo', 'pveum', 'user', 'token', 'remove', 'root@pam', 'tofu'],
             capture_output=True, timeout=30, check=False
         )
         result = subprocess.run(
-            ['pveum', 'user', 'token', 'add', 'root@pam', 'tofu',
+            ['sudo', 'pveum', 'user', 'token', 'add', 'root@pam', 'tofu',
              '--privsep', '0', '--output-format', 'json'],
             capture_output=True, text=True, timeout=30, check=False
         )
