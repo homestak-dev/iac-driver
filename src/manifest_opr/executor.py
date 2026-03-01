@@ -427,10 +427,10 @@ class NodeExecutor:
             host_attr=host_key,
         )))
 
-        # 6. Run pve-setup post-scenario (sudo required for --local mode)
+        # 6. Run pve-setup post-scenario (ansible handles privilege escalation)
         phases.append(('post_scenario', RecursiveScenarioAction(
             name=f'post-{mn.name}',
-            raw_command='sudo ~/bin/homestak scenario pve-setup --json-output --local --skip-preflight',
+            raw_command='~/bin/homestak scenario pve-setup --json-output --local --skip-preflight',
             host_attr=host_key,
             timeout=1200,
             ssh_user=self.config.automation_user,
