@@ -289,13 +289,12 @@ class _GenerateNodeConfigPhase:
                 duration=time.time() - start
             )
 
-        # Determine site-config path on remote (FHS or legacy)
-        # Try FHS first, fall back to legacy
+        # Determine site-config path on remote (user-owned or FHS)
         detect_cmd = '''
-if [ -d /usr/local/etc/homestak ]; then
+if [ -d ~/etc ]; then
+    echo "$HOME/etc"
+elif [ -d /usr/local/etc/homestak ]; then
     echo "/usr/local/etc/homestak"
-elif [ -d /opt/homestak/site-config ]; then
-    echo "/opt/homestak/site-config"
 else
     echo "NOT_FOUND"
 fi
@@ -753,7 +752,7 @@ class _CreateApiTokenPhase:
         # Special chars in sed replacement: \, &, |
         safe_token = full_token.replace('\\', '\\\\').replace('&', '\\&').replace('|', '\\|')
 
-        secrets_file = '/usr/local/etc/homestak/secrets.yaml'
+        secrets_file = '$HOME/etc/secrets.yaml'
         inject_cmd = f'''
 if [ -f {secrets_file} ]; then
     if grep -q "^\\s*{hostname}:" {secrets_file}; then

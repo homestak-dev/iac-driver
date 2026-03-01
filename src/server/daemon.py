@@ -15,9 +15,9 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# FHS paths
+# Server runtime paths (PID stays in /var/run for system visibility, log in ~/log)
 PID_DIR = Path("/var/run/homestak")
-LOG_DIR = Path("/var/log/homestak")
+LOG_DIR = Path.home() / "log"
 DEFAULT_LOG_FILE = LOG_DIR / "server.log"
 
 

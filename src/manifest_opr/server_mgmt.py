@@ -54,7 +54,7 @@ class ServerManager:
         # Check current status
         rc, stdout, _ = run_ssh(
             self.ssh_host,
-            'cd /usr/local/lib/homestak/iac-driver'
+            'cd ~/lib/iac-driver'
             f' && ./run.sh server status --json --port {self.port}',
             user=self.ssh_user, timeout=15,
         )
@@ -75,7 +75,7 @@ class ServerManager:
         logger.info("Starting server on %s:%d", self.ssh_host, self.port)
         rc, stdout, stderr = run_ssh(
             self.ssh_host,
-            'cd /usr/local/lib/homestak/iac-driver'
+            'cd ~/lib/iac-driver'
             f" && ./run.sh server start --port {self.port} --repos --repo-token ''",
             user=self.ssh_user, timeout=30,
         )
@@ -84,7 +84,7 @@ class ServerManager:
             logger.warning("Server start returned rc=%d: %s",
                            rc, stderr.strip() or stdout.strip())
         else:
-            logger.info("Server started on %s:%d (log: /var/log/homestak/server.log)",
+            logger.info("Server started on %s:%d (log: ~/log/server.log)",
                         self.ssh_host, self.port)
 
         self._started = True
@@ -108,7 +108,7 @@ class ServerManager:
         logger.info("Stopping server on %s:%d", self.ssh_host, self.port)
         rc, _, stderr = run_ssh(
             self.ssh_host,
-            'cd /usr/local/lib/homestak/iac-driver'
+            'cd ~/lib/iac-driver'
             f' && ./run.sh server stop --port {self.port}',
             user=self.ssh_user, timeout=15,
         )

@@ -522,7 +522,7 @@ class NodeExecutor:
         wait_spec = WaitForFileAction(
             name=f'wait-spec-{mn.name}',
             host_key=f'{mn.name}_ip',
-            file_path='/usr/local/etc/homestak/state/spec.yaml',
+            file_path='~/etc/state/spec.yaml',
             timeout=timeout,
             interval=10,
         )
@@ -538,7 +538,7 @@ class NodeExecutor:
         wait_config = WaitForFileAction(
             name=f'wait-config-{mn.name}',
             host_key=f'{mn.name}_ip',
-            file_path='/usr/local/etc/homestak/state/config-complete.json',
+            file_path='~/etc/state/config-complete.json',
             timeout=timeout,
             interval=10,
         )
@@ -682,9 +682,9 @@ class NodeExecutor:
             'mode': 'push',
         })
         marker_cmd = (
-            'sudo mkdir -p /usr/local/etc/homestak/state'
+            'mkdir -p ~/etc/state'
             f" && echo '{marker_json}'"
-            ' | sudo tee /usr/local/etc/homestak/state/config-complete.json > /dev/null'
+            ' > ~/etc/state/config-complete.json'
         )
         rc, _, err = run_ssh(ip, marker_cmd, user=user, timeout=30)
         if rc != 0:
@@ -695,7 +695,7 @@ class NodeExecutor:
         wait_config = WaitForFileAction(
             name=f'wait-config-{mn.name}',
             host_key=f'{mn.name}_ip',
-            file_path='/usr/local/etc/homestak/state/config-complete.json',
+            file_path='~/etc/state/config-complete.json',
             timeout=60,
             interval=5,
         )
@@ -805,8 +805,8 @@ class NodeExecutor:
         # Pass --self-addr so the inner executor knows its routable address
         # for HOMESTAK_SOURCE (avoids localhost propagation, #200)
         raw_cmd = (
-            f'cd /usr/local/lib/homestak/iac-driver && '
-            f'sudo ./run.sh manifest apply '
+            f'cd ~/lib/iac-driver && '
+            f'./run.sh manifest apply '
             f'--manifest-json {shlex.quote(subtree_json)} '
             f'-H {shlex.quote(inner_hostname)} '
             f'--self-addr {shlex.quote(ip)} '
@@ -847,8 +847,8 @@ class NodeExecutor:
         inner_hostname = mn.name
 
         raw_cmd = (
-            f'cd /usr/local/lib/homestak/iac-driver && '
-            f'sudo ./run.sh manifest destroy '
+            f'cd ~/lib/iac-driver && '
+            f'./run.sh manifest destroy '
             f'--manifest-json {shlex.quote(subtree_json)} '
             f'-H {shlex.quote(inner_hostname)} '
             f'--self-addr {shlex.quote(ip)} '

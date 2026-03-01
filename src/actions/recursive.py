@@ -27,8 +27,8 @@ class RecursiveScenarioAction:
     in real-time, and parses the JSON result at completion.
 
     The target host must have:
-    - homestak CLI installed at /usr/local/bin/homestak
-    - Valid site-config at /usr/local/etc/homestak/
+    - homestak CLI installed at ~/bin/homestak
+    - Valid site-config at ~/etc/
     - Decrypted secrets
 
     Attributes:
