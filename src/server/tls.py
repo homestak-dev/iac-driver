@@ -16,7 +16,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # Certificate defaults
-DEFAULT_CERT_DIR = Path("/var/lib/homestak/server")
+DEFAULT_CERT_DIR = Path.home() / ".homestak" / "tls"
 DEFAULT_CERT_DAYS = 365
 DEFAULT_KEY_SIZE = 4096
 
