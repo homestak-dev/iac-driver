@@ -2,7 +2,7 @@
 """Tests for config.py - host configuration and discovery.
 
 Tests verify:
-1. Site-config directory discovery (env var, sibling, FHS, legacy)
+1. Site-config directory discovery (env var, sibling, ~/etc)
 2. Host listing (YAML nodes)
 3. Host config loading with secrets resolution
 4. HostConfig dataclass behavior
@@ -102,7 +102,7 @@ class TestGetSiteConfigDir:
             # Mock get_base_dir to return our isolated directory
             # This ensures the sibling check fails
             with patch('config.get_base_dir', return_value=isolated):
-                # Also need to mock Path.exists for FHS and legacy paths
+                # Also need to mock Path.exists for ~/etc path
                 original_exists = Path.exists
 
                 def mock_exists(self):

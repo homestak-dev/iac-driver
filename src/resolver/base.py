@@ -1,7 +1,7 @@
 """Base resolver with shared FK resolution utilities.
 
 This module provides common functionality for resolving site-config entities:
-- Path discovery (FHS-compliant only)
+- Path discovery
 - YAML loading with caching
 - Secrets and posture loading
 - SSH key FK resolution

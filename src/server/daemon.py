@@ -118,7 +118,7 @@ def daemonize(
         server_factory: Callable that returns a started Server instance.
             Called in the daemon process after double-fork.
         port: Port the server will listen on (for PID file and health check).
-        log_file: Path for daemon stdout/stderr. Defaults to FHS path.
+        log_file: Path for daemon stdout/stderr. Defaults to ~/log/.
 
     Returns:
         Exit code: 0 = daemon started, 1 = error.
