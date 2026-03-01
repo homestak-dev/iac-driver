@@ -189,8 +189,10 @@ def _run_preflight(args, config, manifest) -> int | None:
             if is_local:
                 exists = Path(img_path).exists()
             else:
+                import getpass
                 from common import run_ssh
-                rc, _, _ = run_ssh(ssh_host, f'test -f {img_path}', user=config.ssh_user, timeout=10)
+                ssh_user = getpass.getuser()
+                rc, _, _ = run_ssh(ssh_host, f'test -f {img_path}', user=ssh_user, timeout=10)
                 exists = rc == 0
             if not exists:
                 errors.append(
