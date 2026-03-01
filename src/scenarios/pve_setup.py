@@ -289,12 +289,10 @@ class _GenerateNodeConfigPhase:
                 duration=time.time() - start
             )
 
-        # Determine site-config path on remote (user-owned or FHS)
+        # Determine site-config path on remote
         detect_cmd = '''
 if [ -d ~/etc ]; then
     echo "$HOME/etc"
-elif [ -d /usr/local/etc/homestak ]; then
-    echo "/usr/local/etc/homestak"
 else
     echo "NOT_FOUND"
 fi

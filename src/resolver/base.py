@@ -66,7 +66,6 @@ def discover_etc_path() -> Path:
     2. HOMESTAK_SITE_CONFIG environment variable (alias)
     3. ../site-config/ sibling (dev workspace)
     4. ~/etc/ (user-owned homestak)
-    5. /usr/local/etc/homestak/ (FHS legacy)
 
     Returns:
         Path to site-config directory
@@ -97,11 +96,6 @@ def discover_etc_path() -> Path:
     home_etc = Path.home() / "etc"
     if home_etc.is_dir():
         return home_etc
-
-    # Check FHS legacy path
-    fhs_path = Path("/usr/local/etc/homestak")
-    if fhs_path.is_dir():
-        return fhs_path
 
     raise ResolverError(
         "E500",

@@ -246,7 +246,6 @@ def get_site_config_dir() -> Path:
     1. $HOMESTAK_SITE_CONFIG environment variable
     2. ../site-config/ sibling directory (dev workspace)
     3. ~/etc/ (user-owned homestak)
-    4. /usr/local/etc/homestak/ (FHS legacy)
     """
     # 1. Environment variable (highest priority)
     if env_path := os.environ.get('HOMESTAK_SITE_CONFIG'):
@@ -264,11 +263,6 @@ def get_site_config_dir() -> Path:
     home_etc = Path.home() / 'etc'
     if home_etc.exists():
         return home_etc
-
-    # 4. FHS legacy path
-    fhs_path = Path('/usr/local/etc/homestak')
-    if fhs_path.exists():
-        return fhs_path
 
     raise ConfigError(
         "site-config not found. "

@@ -207,7 +207,7 @@ def validate_host_availability(ssh_host: str, node_name: str,
 # -----------------------------------------------------------------------------
 
 def get_homestak_paths() -> tuple[Path, Path]:
-    """Get homestak installation paths (user-owned or FHS legacy).
+    """Get homestak installation paths.
 
     Returns:
         (lib_path, etc_path) tuple - paths for code repos and config
@@ -215,16 +215,6 @@ def get_homestak_paths() -> tuple[Path, Path]:
     # User-owned paths (~homestak/)
     home_lib = Path.home() / 'lib'
     home_etc = Path.home() / 'etc'
-
-    if home_lib.exists():
-        return home_lib, home_etc
-
-    # FHS legacy paths
-    fhs_lib = Path('/usr/local/lib/homestak')
-    fhs_etc = Path('/usr/local/etc/homestak')
-
-    if fhs_lib.exists():
-        return fhs_lib, fhs_etc
 
     return home_lib, home_etc
 
