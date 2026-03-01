@@ -59,7 +59,7 @@ class NodeExecutor:
         spec_server = getattr(self.config, 'spec_server', '') or ''
         self._server = ServerManager(
             ssh_host=self.config.ssh_host,
-            ssh_user=self.config.ssh_user,
+            ssh_user=self.config.automation_user,
             self_addr=self.self_addr,
             port=ServerManager.resolve_port(spec_server),
         )
