@@ -10,7 +10,7 @@ import logging
 import os
 from typing import Optional
 
-from common import run_ssh
+from common import run_command, run_ssh
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,21 @@ class ServerManager:
         self.port = port
         self._refs: int = 0
         self._started: bool = False
+        self._is_local = ssh_host in ('localhost', '127.0.0.1', '::1')
+
+    def _run_on_host(self, cmd: str, timeout: int = 15) -> tuple[int, str, str]:
+        """Run a command on the target host, locally or via SSH."""
+        if self._is_local:
+            from pathlib import Path
+            iac_dir = Path.home() / 'lib' / 'iac-driver'
+            result: tuple[int, str, str] = run_command(
+                ['bash', '-c', cmd],
+                cwd=iac_dir, timeout=timeout,
+            )
+            return result
+        result = run_ssh(self.ssh_host, f'cd ~/lib/iac-driver && {cmd}',
+                         user=self.ssh_user, timeout=timeout)
+        return result
 
     def ensure(self) -> None:
         """Ensure the spec server is running on the target host.
@@ -52,11 +67,9 @@ class ServerManager:
             return
 
         # Check current status
-        rc, stdout, _ = run_ssh(
-            self.ssh_host,
-            'cd ~/lib/iac-driver'
-            f' && ./run.sh server status --json --port {self.port}',
-            user=self.ssh_user, timeout=15,
+        rc, stdout, _ = self._run_on_host(
+            f'./run.sh server status --json --port {self.port}',
+            timeout=15,
         )
 
         if rc == 0:
@@ -73,11 +86,9 @@ class ServerManager:
 
         # Start the server (with repo serving for pull mode bootstrap)
         logger.info("Starting server on %s:%d", self.ssh_host, self.port)
-        rc, stdout, stderr = run_ssh(
-            self.ssh_host,
-            'cd ~/lib/iac-driver'
-            f" && ./run.sh server start --port {self.port} --repos --repo-token ''",
-            user=self.ssh_user, timeout=30,
+        rc, stdout, stderr = self._run_on_host(
+            f"./run.sh server start --port {self.port} --repos --repo-token ''",
+            timeout=30,
         )
 
         if rc != 0:
@@ -106,11 +117,9 @@ class ServerManager:
             return
 
         logger.info("Stopping server on %s:%d", self.ssh_host, self.port)
-        rc, _, stderr = run_ssh(
-            self.ssh_host,
-            'cd ~/lib/iac-driver'
-            f' && ./run.sh server stop --port {self.port}',
-            user=self.ssh_user, timeout=15,
+        rc, _, stderr = self._run_on_host(
+            f'./run.sh server stop --port {self.port}',
+            timeout=15,
         )
 
         if rc != 0:

@@ -223,6 +223,7 @@ class ConfigResolver:
             "api_endpoint": api_endpoint,
             "api_token": api_token,
             "ssh_user": node_config.get("ssh_user", defaults.get("ssh_user", "root")),
+            "ssh_private_key_file": self._find_ssh_private_key(),
             "automation_user": defaults.get("automation_user", "homestak"),
             "ssh_host": ssh_host,
             "datastore": node_config["datastore"],
@@ -234,6 +235,16 @@ class ConfigResolver:
             "dns_servers": defaults.get("dns_servers", []),
             "vms": [resolved_vm],
         }
+
+    @staticmethod
+    def _find_ssh_private_key() -> str:
+        """Find SSH private key, preferring ed25519 over RSA."""
+        home = Path.home()
+        for name in ('id_ed25519', 'id_rsa'):
+            key_path = home / '.ssh' / name
+            if key_path.exists():
+                return str(key_path)
+        return str(home / '.ssh' / 'id_rsa')  # fallback
 
     def _resolve_vm(self, vm_instance: dict, default_vmid: Optional[int], defaults: dict) -> dict:
         """Resolve VM instance with vm_preset inheritance.
