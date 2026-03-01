@@ -84,7 +84,7 @@ class StartServerAction:
 
         pve_host = config.ssh_host
         ssh_user = config.ssh_user
-        iac_dir = '/usr/local/lib/homestak/iac-driver'
+        iac_dir = '~/lib/iac-driver'
 
         # Check if iac-driver exists on remote host
         check_cmd = f'test -f {iac_dir}/run.sh && echo FOUND || echo NOT_FOUND'
@@ -274,7 +274,7 @@ class StopServerAction:
 
         pve_host = config.ssh_host
         ssh_user = config.ssh_user
-        iac_dir = '/usr/local/lib/homestak/iac-driver'
+        iac_dir = '~/lib/iac-driver'
 
         stop_cmd = f'cd {iac_dir} && ./run.sh server stop --port {self.server_port}'
         logger.info(f"[{self.name}] Stopping server on {pve_host}:{self.server_port}...")
@@ -502,7 +502,7 @@ class SpecVMPullRoundtrip:
             ('wait_spec', WaitForFileAction(
                 name='wait-spec-file',
                 host_key='vm_ip',
-                file_path='/usr/local/etc/homestak/state/spec.yaml',
+                file_path='~/etc/state/spec.yaml',
                 timeout=150,
                 interval=10,
             ), 'Wait for spec fetch (pull)'),
@@ -510,7 +510,7 @@ class SpecVMPullRoundtrip:
             ('wait_config', WaitForFileAction(
                 name='wait-config-complete',
                 host_key='vm_ip',
-                file_path='/usr/local/etc/homestak/state/config-complete.json',
+                file_path='~/etc/state/config-complete.json',
                 timeout=180,
                 interval=10,
             ), 'Wait for config complete (pull)'),

@@ -37,18 +37,18 @@ class TestDiscoverEtcPath:
             os.environ.pop("HOMESTAK_ETC", None)
             assert discover_etc_path() == tmp_path
 
-    def test_fhs_path(self, tmp_path):
-        """FHS path /usr/local/etc/homestak is checked."""
-        fhs_path = Path("/usr/local/etc/homestak")
+    def test_home_etc_path(self, tmp_path):
+        """~/etc path is checked as fallback."""
+        home_etc = Path.home() / "etc"
         with patch.dict(os.environ, {}, clear=True):
             os.environ.pop("HOMESTAK_ETC", None)
             os.environ.pop("HOMESTAK_SITE_CONFIG", None)
             with patch.object(Path, "is_dir") as mock_is_dir:
-                # Mock the FHS path to exist
+                # Mock ~/etc to exist
                 def is_dir_side_effect(self=None):
                     if self is None:
                         return False
-                    return str(self) == str(fhs_path)
+                    return str(self) == str(home_etc)
                 mock_is_dir.side_effect = is_dir_side_effect
                 # This test would need more complex mocking to work properly
                 # Skipping actual assertion due to mocking complexity

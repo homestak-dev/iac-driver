@@ -35,8 +35,7 @@ Credentials are managed in the [site-config](https://github.com/homestak-dev/sit
 **Discovery:** iac-driver finds site-config via:
 1. `$HOMESTAK_SITE_CONFIG` environment variable
 2. `../site-config/` sibling directory (dev workspace)
-3. `/usr/local/etc/homestak/` (FHS-compliant bootstrap)
-4. `/opt/homestak/site-config/` (legacy bootstrap)
+3. `~/etc/` (user-owned bootstrap)
 
 **Fallback:** If `secrets.yaml` is missing (no `.enc` file to decrypt), iac-driver automatically runs `make init-secrets` in site-config, which copies from the `.example` template. This enables first-run bootstrap on fresh installations without manual secrets setup.
 

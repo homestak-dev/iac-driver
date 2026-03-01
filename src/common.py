@@ -1,6 +1,7 @@
 """Common utilities and types for infrastructure automation."""
 
 import logging
+import os
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -8,6 +9,16 @@ from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+def get_homestak_lib() -> Path:
+    """Return the homestak lib directory (code repos)."""
+    return Path(os.environ.get('HOMESTAK_LIB', Path.home() / 'lib'))
+
+
+def get_homestak_etc() -> Path:
+    """Return the homestak etc directory (site-config)."""
+    return Path(os.environ.get('HOMESTAK_ETC', Path.home() / 'etc'))
 
 
 @dataclass

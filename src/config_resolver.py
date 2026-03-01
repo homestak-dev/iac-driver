@@ -45,7 +45,7 @@ class ConfigResolver:
 
         Args:
             site_config_path: Path to site-config directory. If None, uses
-                              auto-discovery (env var, sibling, /opt/homestak).
+                              auto-discovery (env var, sibling, ~/etc).
         """
         if yaml is None:
             raise ConfigError("PyYAML not installed. Run: apt install python3-yaml")

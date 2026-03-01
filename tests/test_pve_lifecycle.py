@@ -133,7 +133,7 @@ class TestCopySecretsAction:
     @patch('actions.pve_lifecycle.run_ssh')
     @patch('config.get_site_config_dir')
     def test_sets_restrictive_permissions(self, mock_dir, mock_ssh, mock_sub):
-        """Secrets must be chmod 600 and chown root:root after copy."""
+        """Secrets must be chmod 600 after scp to ~/etc/."""
         from actions.pve_lifecycle import CopySecretsAction
 
         # Setup: secrets.yaml exists at mocked path, scp succeeds, ssh succeeds
@@ -153,10 +153,10 @@ class TestCopySecretsAction:
             result = action.run(config, {'vm_ip': '198.51.100.10'})
             assert result.success is True
 
-            # Verify the install command includes chmod and chown
+            # Verify the install command includes chmod (no chown — user-owned)
             install_cmd = mock_ssh.call_args[0][1]
             assert 'chmod 600' in install_cmd, f"Expected chmod 600 in: {install_cmd}"
-            assert 'chown root:root' in install_cmd, f"Expected chown root:root in: {install_cmd}"
+            assert 'sudo' not in install_cmd, f"Expected no sudo in: {install_cmd}"
         finally:
             secrets.unlink(missing_ok=True)
             secrets.parent.rmdir()

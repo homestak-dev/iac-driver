@@ -207,20 +207,16 @@ def validate_host_availability(ssh_host: str, node_name: str,
 # -----------------------------------------------------------------------------
 
 def get_homestak_paths() -> tuple[Path, Path]:
-    """Get homestak installation paths (FHS or legacy).
+    """Get homestak installation paths.
 
     Returns:
         (lib_path, etc_path) tuple - paths for code repos and config
     """
-    # FHS-compliant paths (v0.24+)
-    fhs_lib = Path('/usr/local/lib/homestak')
-    fhs_etc = Path('/usr/local/etc/homestak')
+    # User-owned paths (~homestak/)
+    home_lib = Path.home() / 'lib'
+    home_etc = Path.home() / 'etc'
 
-    if fhs_lib.exists():
-        return fhs_lib, fhs_etc
-
-    # Legacy paths
-    return Path('/opt/homestak'), Path('/opt/homestak/site-config')
+    return home_lib, home_etc
 
 
 def validate_bootstrap_installed() -> list[str]:

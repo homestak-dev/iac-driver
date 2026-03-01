@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed
+- **BREAKING**: Migrate from FHS paths to user-owned `~homestak/` model (bootstrap#75)
+  - Add `get_homestak_lib()` and `get_homestak_etc()` helpers to `common.py`
+  - Path discovery: `~/etc/` and `~/lib/` checked before FHS fallback
+  - Remove `sudo` from file operations on user-owned paths (secrets, site config, SSH keys)
+  - Delegation commands use `~/lib/iac-driver` and `./run.sh` (no sudo)
+  - Server log moves from `/var/log/homestak/` to `~/log/`
+  - State/spec paths use `~/etc/state/` instead of `/usr/local/etc/homestak/state/`
+
 ## v0.51 - 2026-02-28
 
 ### Added

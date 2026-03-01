@@ -35,7 +35,7 @@ Repositories:
 
 Examples:
   ./setup-tools.sh                    # Use default base directory
-  ./setup-tools.sh /opt/homestak      # Specify custom base directory
+  ./setup-tools.sh ~/lib               # Specify custom base directory
 EOF
     exit 0
 }

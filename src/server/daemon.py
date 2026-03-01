@@ -15,9 +15,9 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# FHS paths
+# Server runtime paths (PID stays in /var/run for system visibility, log in ~/log)
 PID_DIR = Path("/var/run/homestak")
-LOG_DIR = Path("/var/log/homestak")
+LOG_DIR = Path.home() / "log"
 DEFAULT_LOG_FILE = LOG_DIR / "server.log"
 
 
@@ -118,7 +118,7 @@ def daemonize(
         server_factory: Callable that returns a started Server instance.
             Called in the daemon process after double-fork.
         port: Port the server will listen on (for PID file and health check).
-        log_file: Path for daemon stdout/stderr. Defaults to FHS path.
+        log_file: Path for daemon stdout/stderr. Defaults to ~/log/.
 
     Returns:
         Exit code: 0 = daemon started, 1 = error.

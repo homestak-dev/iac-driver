@@ -39,7 +39,7 @@ class RepoManager:
         Args:
             repos_dir: Directory containing source repos
             exclude_repos: List of repo names to exclude
-            extra_paths: Map of repo names to alternate paths (e.g., site-config at FHS etc/)
+            extra_paths: Map of repo names to alternate paths (e.g., site-config at ~/etc/)
         """
         self.repos_dir = repos_dir
         self.exclude_repos = set(exclude_repos or [])

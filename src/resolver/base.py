@@ -1,7 +1,7 @@
 """Base resolver with shared FK resolution utilities.
 
 This module provides common functionality for resolving site-config entities:
-- Path discovery (FHS-compliant only)
+- Path discovery
 - YAML loading with caching
 - Secrets and posture loading
 - SSH key FK resolution
@@ -61,13 +61,11 @@ class SecretsNotFoundError(ResolverError):
 def discover_etc_path() -> Path:
     """Discover the site-config path.
 
-    Resolution order (FHS-compliant only):
+    Resolution order:
     1. HOMESTAK_ETC environment variable
     2. HOMESTAK_SITE_CONFIG environment variable (alias)
     3. ../site-config/ sibling (dev workspace)
-    4. /usr/local/etc/homestak/ (FHS bootstrap)
-
-    Note: Legacy /opt/homestak/ path is no longer supported.
+    4. ~/etc/ (user-owned homestak)
 
     Returns:
         Path to site-config directory
@@ -94,10 +92,10 @@ def discover_etc_path() -> Path:
         if sibling.is_dir():
             return sibling
 
-    # Check FHS path (v0.24+ bootstrap)
-    fhs_path = Path("/usr/local/etc/homestak")
-    if fhs_path.is_dir():
-        return fhs_path
+    # Check user-owned path (~homestak/etc/)
+    home_etc = Path.home() / "etc"
+    if home_etc.is_dir():
+        return home_etc
 
     raise ResolverError(
         "E500",

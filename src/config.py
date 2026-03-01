@@ -245,8 +245,7 @@ def get_site_config_dir() -> Path:
     Resolution order:
     1. $HOMESTAK_SITE_CONFIG environment variable
     2. ../site-config/ sibling directory (dev workspace)
-    3. /usr/local/etc/homestak/ (FHS-compliant bootstrap)
-    4. /opt/homestak/site-config/ (legacy bootstrap)
+    3. ~/etc/ (user-owned homestak)
     """
     # 1. Environment variable (highest priority)
     if env_path := os.environ.get('HOMESTAK_SITE_CONFIG'):
@@ -260,15 +259,10 @@ def get_site_config_dir() -> Path:
     if sibling.exists():
         return sibling
 
-    # 3. FHS-compliant path (v0.24+ bootstrap)
-    fhs_path = Path('/usr/local/etc/homestak')
-    if fhs_path.exists():
-        return fhs_path
-
-    # 4. Legacy path (pre-v0.24 bootstrap)
-    legacy = Path('/opt/homestak/site-config')
-    if legacy.exists():
-        return legacy
+    # 3. User-owned path (~homestak/etc/)
+    home_etc = Path.home() / 'etc'
+    if home_etc.exists():
+        return home_etc
 
     raise ConfigError(
         "site-config not found. "
@@ -337,7 +331,7 @@ def load_host_config(host: str) -> HostConfig:
         f"  - No host config: {host_path} (physical machine)\n\n"
         f"Available hosts: {', '.join(available) if available else 'none configured'}\n\n"
         f"To provision a new host, create {host_path}:\n"
-        f"  ssh root@<ip> \"cd /usr/local/etc/homestak && make host-config\""
+        f"  ssh root@<ip> \"cd ~/etc && make host-config\""
     )
 
 
