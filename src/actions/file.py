@@ -75,7 +75,7 @@ class DownloadFileAction:
     rename_ext: Optional[str] = None  # e.g., '.img' to rename .qcow2 files
     timeout: int = 300
 
-    def run(self, _config: HostConfig, context: dict) -> ActionResult:
+    def run(self, config: HostConfig, context: dict) -> ActionResult:
         """Download file to remote host."""
         start = time.time()
 
@@ -87,9 +87,9 @@ class DownloadFileAction:
                 duration=time.time() - start
             )
 
-        # PVE lifecycle operations require root (matches other phases in
-        # _build_pve_lifecycle_phases: bootstrap, bridge, API token, etc.)
-        user = 'root'
+        user = config.automation_user
+        # Use sudo if not root — writes to PVE storage (/var/lib/vz/template/iso/)
+        sudo = '' if user == 'root' else 'sudo '
 
         # Determine filename
         filename = self.dest_filename or self.url.split('/')[-1]
@@ -97,7 +97,7 @@ class DownloadFileAction:
 
         # Create target directory
         logger.info(f"[{self.name}] Creating directory {self.dest_dir}...")
-        rc, _, err = run_ssh(host, f'mkdir -p {self.dest_dir}', user=user, timeout=30)
+        rc, _, err = run_ssh(host, f'{sudo}mkdir -p {self.dest_dir}', user=user, timeout=30)
         if rc != 0:
             return ActionResult(
                 success=False,
@@ -107,7 +107,7 @@ class DownloadFileAction:
 
         # Download file
         logger.info(f"[{self.name}] Downloading {self.url}...")
-        dl_cmd = f'curl -fSL -o {dest} {self.url}'
+        dl_cmd = f'{sudo}curl -fSL -o {dest} {self.url}'
         rc, _, err = run_ssh(host, dl_cmd, user=user, timeout=self.timeout)
         if rc != 0:
             return ActionResult(
@@ -124,13 +124,13 @@ class DownloadFileAction:
             if '.' in filename:
                 base = filename.rsplit('.', 1)[0]
                 new_filename = base + self.rename_ext
-                rename_cmd = f'mv {dest} {self.dest_dir}/{new_filename} 2>/dev/null || true'
+                rename_cmd = f'{sudo}mv {dest} {self.dest_dir}/{new_filename} 2>/dev/null || true'
                 run_ssh(host, rename_cmd, user=user, timeout=30)
                 final_filename = new_filename
 
         # Verify file exists
         verify_path = f"{self.dest_dir}/{final_filename}"
-        rc, _, err = run_ssh(host, f'ls -la {verify_path}', user=user, timeout=30)
+        rc, _, err = run_ssh(host, f'{sudo}ls -la {verify_path}', user=user, timeout=30)
         if rc != 0:
             return ActionResult(
                 success=False,
@@ -184,7 +184,7 @@ print('\\n'.join(parts))
         return []
 
     def _download_and_reassemble(self, repo: str, tag: str, parts: list[str],
-                                  host: str, user: str,
+                                  host: str, user: str, sudo: str,
                                   start: float) -> ActionResult:
         """Download split parts and reassemble into single file."""
         dest = f"{self.dest_dir}/{self.asset_name}"
@@ -194,11 +194,11 @@ print('\\n'.join(parts))
             url = f'https://github.com/{repo}/releases/download/{tag}/{part}'
             part_dest = f"{self.dest_dir}/{part}"
             logger.info(f"[{self.name}] Downloading part {i+1}/{len(parts)}: {part}...")
-            dl_cmd = f'curl -fSL -o {part_dest} {url}'
+            dl_cmd = f'{sudo}curl -fSL -o {part_dest} {url}'
             rc, _, err = run_ssh(host, dl_cmd, user=user, timeout=self.timeout)
             if rc != 0:
                 # Clean up any downloaded parts on failure
-                cleanup_cmd = f"rm -f {self.dest_dir}/{self.asset_name}.part*"
+                cleanup_cmd = f"{sudo}rm -f {self.dest_dir}/{self.asset_name}.part*"
                 run_ssh(host, cleanup_cmd, user=user, timeout=30)
                 return ActionResult(
                     success=False,
@@ -209,7 +209,7 @@ print('\\n'.join(parts))
         # Reassemble parts (cat in sorted order)
         logger.info(f"[{self.name}] Reassembling {len(parts)} parts into {self.asset_name}...")
         # Use shell glob which sorts alphabetically (partaa, partab, etc.)
-        reassemble_cmd = f"cat {self.dest_dir}/{self.asset_name}.part* > {dest}"
+        reassemble_cmd = f"{sudo}sh -c 'cat {self.dest_dir}/{self.asset_name}.part* > {dest}'"
         rc, _, err = run_ssh(host, reassemble_cmd, user=user, timeout=120)
         if rc != 0:
             return ActionResult(
@@ -219,7 +219,7 @@ print('\\n'.join(parts))
             )
 
         # Clean up parts
-        cleanup_cmd = f"rm -f {self.dest_dir}/{self.asset_name}.part*"
+        cleanup_cmd = f"{sudo}rm -f {self.dest_dir}/{self.asset_name}.part*"
         run_ssh(host, cleanup_cmd, user=user, timeout=30)
         logger.info(f"[{self.name}] Cleaned up {len(parts)} part files")
 
@@ -237,9 +237,9 @@ print('\\n'.join(parts))
                 duration=time.time() - start
             )
 
-        # PVE lifecycle operations require root (matches other phases in
-        # _build_pve_lifecycle_phases: bootstrap, bridge, API token, etc.)
-        user = 'root'
+        user = config.automation_user
+        # Use sudo if not root — writes to PVE storage (/var/lib/vz/template/iso/)
+        sudo = '' if user == 'root' else 'sudo '
 
         repo = config.packer_release_repo
         tag = config.packer_release
@@ -249,7 +249,7 @@ print('\\n'.join(parts))
 
         # Create target directory
         logger.info(f"[{self.name}] Creating directory {self.dest_dir}...")
-        rc, _, err = run_ssh(host, f'mkdir -p {self.dest_dir}', user=user, timeout=30)
+        rc, _, err = run_ssh(host, f'{sudo}mkdir -p {self.dest_dir}', user=user, timeout=30)
         if rc != 0:
             return ActionResult(
                 success=False,
@@ -259,7 +259,7 @@ print('\\n'.join(parts))
 
         # Try direct download first
         logger.info(f"[{self.name}] Downloading {self.asset_name} from {repo} release {tag}...")
-        dl_cmd = f'curl -fSL -o {dest} {url}'
+        dl_cmd = f'{sudo}curl -fSL -o {dest} {url}'
         rc, _, err = run_ssh(host, dl_cmd, user=user, timeout=self.timeout)
 
         if rc != 0:
@@ -269,7 +269,7 @@ print('\\n'.join(parts))
 
             if parts:
                 logger.info(f"[{self.name}] Found {len(parts)} split parts, downloading...")
-                result = self._download_and_reassemble(repo, tag, parts, host, user, start)
+                result = self._download_and_reassemble(repo, tag, parts, host, user, sudo, start)
                 if not result.success:
                     return result
                 # Continue to rename/verify below
@@ -286,13 +286,13 @@ print('\\n'.join(parts))
         if self.rename_ext and '.' in self.asset_name:
             base = self.asset_name.rsplit('.', 1)[0]
             new_filename = base + self.rename_ext
-            rename_cmd = f'mv {dest} {self.dest_dir}/{new_filename} 2>/dev/null || true'
+            rename_cmd = f'{sudo}mv {dest} {self.dest_dir}/{new_filename} 2>/dev/null || true'
             run_ssh(host, rename_cmd, user=user, timeout=30)
             final_filename = new_filename
 
         # Verify file exists
         verify_path = f"{self.dest_dir}/{final_filename}"
-        rc, _, err = run_ssh(host, f'ls -la {verify_path}', user=user, timeout=30)
+        rc, _, err = run_ssh(host, f'{sudo}ls -la {verify_path}', user=user, timeout=30)
         if rc != 0:
             return ActionResult(
                 success=False,
