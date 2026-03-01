@@ -402,14 +402,14 @@ class CopySecretsAction:
         with open(scoped_file, 'w', encoding='utf-8') as f:
             yaml.dump(secrets, f, default_flow_style=False)
 
-        # Use automation_user for VM connections
+        # scp directly to ~/etc/ (user-owned, no temp file dance needed)
         user = config.automation_user
         cmd = [
             'scp',
             '-o', 'StrictHostKeyChecking=no',
             '-o', 'UserKnownHostsFile=/dev/null',
             str(scoped_file),
-            f'{user}@{host}:/tmp/secrets.yaml'
+            f'{user}@{host}:etc/secrets.yaml'
         ]
 
         try:
@@ -428,17 +428,15 @@ class CopySecretsAction:
                     duration=time.time() - start
                 )
 
-            # Move from temp location to final location,
-            # then restrict permissions (secrets contain API tokens, SSH keys, signing key)
-            install_cmd = (
-                'mv /tmp/secrets.yaml ~/etc/secrets.yaml'
-                ' && chmod 600 ~/etc/secrets.yaml'
+            # Restrict permissions (secrets contain API tokens, SSH keys, signing key)
+            rc, out, err = run_ssh(
+                host, 'chmod 600 ~/etc/secrets.yaml',
+                user=config.automation_user, timeout=30
             )
-            rc, out, err = run_ssh(host, install_cmd, user=config.automation_user, timeout=30)
             if rc != 0:
                 return ActionResult(
                     success=False,
-                    message=f"Failed to install secrets: {err or out}",
+                    message=f"Failed to set secrets permissions: {err or out}",
                     duration=time.time() - start
                 )
 
@@ -494,13 +492,14 @@ class CopySiteConfigAction:
 
         logger.info(f"[{self.name}] Copying site config to {host}...")
 
+        # scp directly to ~/etc/ (user-owned, no temp file dance needed)
         user = config.automation_user
         cmd = [
             'scp',
             '-o', 'StrictHostKeyChecking=no',
             '-o', 'UserKnownHostsFile=/dev/null',
             str(site_path),
-            f'{user}@{host}:/tmp/site.yaml'
+            f'{user}@{host}:etc/site.yaml'
         ]
 
         try:
@@ -516,15 +515,6 @@ class CopySiteConfigAction:
                 return ActionResult(
                     success=False,
                     message=f"Failed to copy site config: {result.stderr}",
-                    duration=time.time() - start
-                )
-
-            install_cmd = 'mv /tmp/site.yaml ~/etc/site.yaml'
-            rc, out, err = run_ssh(host, install_cmd, user=config.automation_user, timeout=30)
-            if rc != 0:
-                return ActionResult(
-                    success=False,
-                    message=f"Failed to install site config: {err or out}",
                     duration=time.time() - start
                 )
 
