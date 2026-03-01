@@ -107,10 +107,8 @@ class TestGetSiteConfigDir:
 
                 def mock_exists(self):
                     path_str = str(self)
-                    # Return False for home/etc and FHS paths
+                    # Return False for ~/etc path
                     if path_str.endswith('/etc') and '/home/' in path_str:
-                        return False
-                    if '/usr/local/etc/homestak' in path_str:
                         return False
                     # Use real exists for other paths (tmp_path structure)
                     return original_exists(self)
