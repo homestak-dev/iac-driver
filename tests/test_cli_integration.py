@@ -23,34 +23,28 @@ RUN_SH = Path(__file__).parent.parent / 'run.sh'
 requires_infrastructure = pytest.mark.requires_infrastructure
 
 
-class TestRequiresRoot:
-    """Test CLI requires_root check."""
+class TestNoRootRequired:
+    """Test CLI does not require root for scenarios using as_root/become."""
 
-    def test_pve_setup_local_requires_root(self):
-        """pve-setup --local should fail when not root."""
+    def test_pve_setup_local_no_root_error(self):
+        """pve-setup --local should not fail with 'requires root' error."""
         result = subprocess.run(
-            [str(RUN_SH), 'scenario', 'run', 'pve-setup', '--local'],
+            [str(RUN_SH), 'scenario', 'run', 'pve-setup', '--local', '--dry-run'],
             capture_output=True,
             text=True
         )
-        # Should fail with exit code 1 when not root
-        if result.returncode == 1:
-            assert "requires root privileges" in result.stderr or "requires root privileges" in result.stdout
-        else:
-            # If running as root, it would attempt the scenario
-            pytest.skip("Running as root - cannot test non-root failure")
+        combined = result.stdout + result.stderr
+        assert "requires root privileges" not in combined
 
-    def test_user_setup_local_requires_root(self):
-        """user-setup --local should fail when not root."""
+    def test_user_setup_local_no_root_error(self):
+        """user-setup --local should not fail with 'requires root' error."""
         result = subprocess.run(
-            [str(RUN_SH), 'scenario', 'run', 'user-setup', '--local'],
+            [str(RUN_SH), 'scenario', 'run', 'user-setup', '--local', '--dry-run'],
             capture_output=True,
             text=True
         )
-        if result.returncode == 1:
-            assert "requires root privileges" in result.stderr or "requires root privileges" in result.stdout
-        else:
-            pytest.skip("Running as root - cannot test non-root failure")
+        combined = result.stdout + result.stderr
+        assert "requires root privileges" not in combined
 
 
 

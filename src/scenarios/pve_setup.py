@@ -27,7 +27,7 @@ class PVESetup:
 
     name = 'pve-setup'
     description = 'Install PVE (if needed) and configure host'
-    requires_root = True
+    requires_root = False
     requires_host_config = False
     requires_api = False  # pve-setup installs PVE — no API available yet
     expected_runtime = 180  # ~3 min (skip if PVE already installed)

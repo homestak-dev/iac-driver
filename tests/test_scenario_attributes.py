@@ -20,20 +20,20 @@ from scenarios import get_scenario, list_scenarios
 class TestScenarioAttributes:
     """Test scenario attribute definitions."""
 
-    def test_pve_setup_requires_root(self):
-        """PVESetup should require root for local mode."""
+    def test_pve_setup_does_not_require_root(self):
+        """PVESetup uses as_root internally, no root check needed."""
         scenario = get_scenario('pve-setup')
-        assert getattr(scenario, 'requires_root', False) is True
+        assert getattr(scenario, 'requires_root', False) is False
 
     def test_pve_setup_does_not_require_host_config(self):
         """PVESetup should not require host config (can auto-detect)."""
         scenario = get_scenario('pve-setup')
         assert getattr(scenario, 'requires_host_config', True) is False
 
-    def test_user_setup_requires_root(self):
-        """UserSetup should require root for local mode."""
+    def test_user_setup_does_not_require_root(self):
+        """UserSetup uses ansible become, no root check needed."""
         scenario = get_scenario('user-setup')
-        assert getattr(scenario, 'requires_root', False) is True
+        assert getattr(scenario, 'requires_root', False) is False
 
     def test_user_setup_does_not_require_host_config(self):
         """UserSetup should not require host config (can auto-detect)."""
@@ -99,8 +99,8 @@ class TestGetAttrDefaults:
     def test_getattr_returns_explicit_value(self):
         """When attribute is defined, getattr should return it."""
         scenario = get_scenario('pve-setup')
-        # requires_root is explicitly True
-        assert getattr(scenario, 'requires_root', False) is True
+        # requires_root is explicitly False
+        assert getattr(scenario, 'requires_root', False) is False
         # requires_host_config is explicitly False
         assert getattr(scenario, 'requires_host_config', True) is False
 

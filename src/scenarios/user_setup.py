@@ -15,7 +15,7 @@ class UserSetup:
 
     name = 'user-setup'
     description = 'Create homestak user'
-    requires_root = True
+    requires_root = False
     requires_host_config = False
     expected_runtime = 30
 
