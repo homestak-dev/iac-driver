@@ -200,15 +200,15 @@ sudo pveum user token add root@pam tofu --privsep 0 --output-format json
         # Step 4: Inject token into secrets.yaml on the target host
         # First try to update existing line, if not found add a new one
         # Use the token_name we retrieved from hostname
-        secrets_file = '/usr/local/etc/homestak/secrets.yaml'
+        secrets_file = '$HOME/etc/secrets.yaml'
         inject_cmd = f'''
 # Check if token key exists in secrets.yaml
 if grep -q "^\\s*{token_name}:" {secrets_file}; then
     # Update existing line
-    sudo sed -i 's|^\\(\\s*\\){token_name}:.*$|\\1{token_name}: {full_token}|' {secrets_file}
+    sed -i 's|^\\(\\s*\\){token_name}:.*$|\\1{token_name}: {full_token}|' {secrets_file}
 else
     # Add new line after api_tokens:
-    sudo sed -i '/^api_tokens:/a\\  {token_name}: {full_token}' {secrets_file}
+    sed -i '/^api_tokens:/a\\  {token_name}: {full_token}' {secrets_file}
 fi
 '''
         rc, out, err = run_ssh(host, inject_cmd, user=config.automation_user, timeout=30)
@@ -236,10 +236,10 @@ fi
         """
         # Read existing token from secrets.yaml on the remote host
         check_cmd = f'''
-sudo python3 -c "
-import yaml, urllib.request, ssl, json, sys
+python3 -c "
+import yaml, urllib.request, ssl, json, sys, os
 try:
-    with open('/usr/local/etc/homestak/secrets.yaml') as f:
+    with open(os.path.expanduser('~/etc/secrets.yaml')) as f:
         secrets = yaml.safe_load(f)
     token = secrets.get('api_tokens', {{}}).get('{token_name}', '')
     if not token or '!' not in token:
@@ -428,12 +428,11 @@ class CopySecretsAction:
                     duration=time.time() - start
                 )
 
-            # Move from temp location to final location with sudo,
+            # Move from temp location to final location,
             # then restrict permissions (secrets contain API tokens, SSH keys, signing key)
             install_cmd = (
-                'sudo mv /tmp/secrets.yaml /usr/local/etc/homestak/secrets.yaml'
-                ' && sudo chmod 600 /usr/local/etc/homestak/secrets.yaml'
-                ' && sudo chown root:root /usr/local/etc/homestak/secrets.yaml'
+                'mv /tmp/secrets.yaml ~/etc/secrets.yaml'
+                ' && chmod 600 ~/etc/secrets.yaml'
             )
             rc, out, err = run_ssh(host, install_cmd, user=config.automation_user, timeout=30)
             if rc != 0:
@@ -520,10 +519,7 @@ class CopySiteConfigAction:
                     duration=time.time() - start
                 )
 
-            install_cmd = (
-                'sudo mv /tmp/site.yaml /usr/local/etc/homestak/site.yaml'
-                ' && sudo chown root:root /usr/local/etc/homestak/site.yaml'
-            )
+            install_cmd = 'mv /tmp/site.yaml ~/etc/site.yaml'
             rc, out, err = run_ssh(host, install_cmd, user=config.automation_user, timeout=30)
             if rc != 0:
                 return ActionResult(
@@ -589,15 +585,15 @@ class InjectSSHKeyAction:
 
         # Inject key into secrets.yaml using sed
         # First check if key already exists
-        check_cmd = f"sudo grep -q '^\\s*{self.key_name}:' /usr/local/etc/homestak/secrets.yaml"
+        check_cmd = f"grep -q '^\\s*{self.key_name}:' ~/etc/secrets.yaml"
         rc, _, _ = run_ssh(host, check_cmd, user=config.automation_user, timeout=30)
 
         if rc == 0:
             # Key exists, update it
-            inject_cmd = f"sudo sed -i 's|^\\(\\s*\\){self.key_name}:.*$|\\1{self.key_name}: {escaped_key}|' /usr/local/etc/homestak/secrets.yaml"
+            inject_cmd = f"sed -i 's|^\\(\\s*\\){self.key_name}:.*$|\\1{self.key_name}: {escaped_key}|' ~/etc/secrets.yaml"
         else:
             # Key doesn't exist, add it after ssh_keys:
-            inject_cmd = f"sudo sed -i '/^ssh_keys:/a\\  {self.key_name}: {escaped_key}' /usr/local/etc/homestak/secrets.yaml"
+            inject_cmd = f"sed -i '/^ssh_keys:/a\\  {self.key_name}: {escaped_key}' ~/etc/secrets.yaml"
 
         rc, out, err = run_ssh(host, inject_cmd, user=config.automation_user, timeout=self.timeout)
         if rc != 0:
@@ -608,7 +604,7 @@ class InjectSSHKeyAction:
             )
 
         # Verify the key was injected
-        verify_cmd = f"sudo grep -q '{self.key_name}:' /usr/local/etc/homestak/secrets.yaml"
+        verify_cmd = f"grep -q '{self.key_name}:' ~/etc/secrets.yaml"
         rc, _, _ = run_ssh(host, verify_cmd, user=config.automation_user, timeout=30)
         if rc != 0:
             return ActionResult(
@@ -678,25 +674,15 @@ set -e
 PRIVKEY=$(echo '{privkey_b64}' | base64 -d)
 PUBKEY=$(echo '{pubkey_b64}' | base64 -d)
 
-# Copy to root
-sudo mkdir -p /root/.ssh
-sudo chmod 700 /root/.ssh
-echo "$PRIVKEY" | sudo tee /root/.ssh/id_rsa > /dev/null
-sudo chmod 600 /root/.ssh/id_rsa
-[ -n "$PUBKEY" ] && echo "$PUBKEY" | sudo tee /root/.ssh/id_rsa.pub > /dev/null
-[ -f /root/.ssh/id_rsa.pub ] && sudo chmod 644 /root/.ssh/id_rsa.pub
+# Copy to homestak user's ~/.ssh/
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+echo "$PRIVKEY" > ~/.ssh/id_rsa
+chmod 600 ~/.ssh/id_rsa
+[ -n "$PUBKEY" ] && echo "$PUBKEY" > ~/.ssh/id_rsa.pub
+[ -f ~/.ssh/id_rsa.pub ] && chmod 644 ~/.ssh/id_rsa.pub
 
-# Copy to homestak
-sudo mkdir -p /home/homestak/.ssh
-sudo chmod 700 /home/homestak/.ssh
-sudo chown homestak:homestak /home/homestak/.ssh
-echo "$PRIVKEY" | sudo tee /home/homestak/.ssh/id_rsa > /dev/null
-sudo chmod 600 /home/homestak/.ssh/id_rsa
-sudo chown homestak:homestak /home/homestak/.ssh/id_rsa
-[ -n "$PUBKEY" ] && echo "$PUBKEY" | sudo tee /home/homestak/.ssh/id_rsa.pub > /dev/null
-[ -f /home/homestak/.ssh/id_rsa.pub ] && sudo chmod 644 /home/homestak/.ssh/id_rsa.pub && sudo chown homestak:homestak /home/homestak/.ssh/id_rsa.pub
-
-echo "SSH key copied to root and homestak"
+echo "SSH key copied to ~/.ssh/"
 '''
 
         rc, out, err = run_ssh(host, copy_script, user=config.automation_user, timeout=self.timeout)
@@ -743,13 +729,14 @@ class InjectSelfSSHKeyAction:
 
         # Inject via Python script encoded in base64 to avoid shell quoting issues
         python_script = '''
-import sys
+import sys, os
 key_name = sys.argv[1]
-secrets_file = "/usr/local/etc/homestak/secrets.yaml"
+secrets_file = os.path.expanduser("~/etc/secrets.yaml")
 
 # Find public key
 pubkey = None
-for keyfile in ["/root/.ssh/id_ed25519.pub", "/root/.ssh/id_rsa.pub"]:
+home = os.path.expanduser("~")
+for keyfile in [f"{home}/.ssh/id_ed25519.pub", f"{home}/.ssh/id_rsa.pub"]:
     try:
         with open(keyfile) as f:
             pubkey = f.read().strip()
@@ -785,7 +772,7 @@ with open(secrets_file, "r") as f:
 print(f"Injected {key_name}")
 '''
         encoded = base64.b64encode(python_script.encode()).decode()
-        inject_script = f"echo '{encoded}' | base64 -d | sudo python3 - {self.key_name}"
+        inject_script = f"echo '{encoded}' | base64 -d | python3 - {self.key_name}"
 
         rc, out, err = run_ssh(host, inject_script, user=config.automation_user, timeout=self.timeout)
         if rc != 0:
@@ -942,7 +929,7 @@ class GenerateNodeConfigAction:
         logger.info(f"[{self.name}] Generating node config on {host}...")
 
         # Use FORCE=1 in case node config was copied from outer host
-        cmd = 'cd /usr/local/etc/homestak && sudo make node-config FORCE=1'
+        cmd = 'cd ~/etc && make node-config FORCE=1'
         rc, out, err = run_ssh(host, cmd, user=config.automation_user, timeout=self.timeout)
 
         if rc != 0:
