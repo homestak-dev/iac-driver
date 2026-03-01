@@ -182,15 +182,16 @@ def _run_preflight(args, config, manifest) -> int | None:
 
     # Check packer images exist for root-level nodes
     ssh_host = getattr(config, 'ssh_host', None) or getattr(config, 'ip', None)
+    is_local = ssh_host in (None, 'localhost', '127.0.0.1', '::1')
     for node in manifest.nodes:
         if getattr(node, 'parent', None) is None and getattr(node, 'image', None):
             img_path = f'/var/lib/vz/template/iso/{node.image}.img'
-            if ssh_host:
+            if is_local:
+                exists = Path(img_path).exists()
+            else:
                 from common import run_ssh
                 rc, _, _ = run_ssh(ssh_host, f'test -f {img_path}', user=config.ssh_user, timeout=10)
                 exists = rc == 0
-            else:
-                exists = Path(img_path).exists()
             if not exists:
                 errors.append(
                     f"Packer image not found: {img_path}\n"
