@@ -143,7 +143,12 @@ def daemonize(
             pass
 
     # Ensure directories exist
-    PID_DIR.mkdir(parents=True, exist_ok=True)
+    # PID_DIR is under /var/run (root-owned) — create with sudo, chown to current user
+    if not PID_DIR.exists():
+        import subprocess
+        subprocess.run(['sudo', 'mkdir', '-p', str(PID_DIR)], check=True)
+        subprocess.run(['sudo', 'chown', f'{os.getuid()}:{os.getgid()}', str(PID_DIR)],
+                        check=True)
     LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     # Create pipe for parent-child coordination
