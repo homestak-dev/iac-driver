@@ -42,11 +42,9 @@ class SpecClientError(Exception):
 def discover_state_path() -> Path:
     """Discover the state directory path.
 
-    Resolution order (FHS-compliant only):
+    Resolution order:
     1. HOMESTAK_ETC environment variable + /state
-    2. /usr/local/etc/homestak/state (FHS bootstrap)
-
-    Note: Legacy /opt/homestak/ path is no longer supported.
+    2. ~/etc/state (user-owned homestak)
 
     Returns:
         Path to state directory
@@ -55,9 +53,8 @@ def discover_state_path() -> Path:
     if env_path := os.environ.get("HOMESTAK_ETC"):
         return Path(env_path) / "state"
 
-    # FHS path (preferred for bootstrap installations)
-    fhs_path = Path("/usr/local/etc/homestak/state")
-    return fhs_path
+    # User-owned path
+    return Path.home() / "etc" / "state"
 
 
 class SpecClient:

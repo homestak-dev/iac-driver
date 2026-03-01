@@ -26,11 +26,11 @@ from common import run_command
 
 logger = logging.getLogger(__name__)
 
-# Platform-ready marker path
-MARKER_PATH = Path('/usr/local/etc/homestak/state/config-complete.json')
+# Platform-ready marker path (resolved at runtime via _discover_state_path)
+MARKER_PATH = Path.home() / 'etc' / 'state' / 'config-complete.json'
 
 # Default spec path (written by `homestak spec get`)
-DEFAULT_SPEC_PATH = Path('/usr/local/etc/homestak/state/spec.yaml')
+DEFAULT_SPEC_PATH = Path.home() / 'etc' / 'state' / 'spec.yaml'
 
 
 class ConfigError(Exception):
@@ -54,12 +54,12 @@ def _discover_state_path() -> Path:
 
     Resolution order:
     1. $HOMESTAK_ETC/state/
-    2. /usr/local/etc/homestak/state/ (FHS)
+    2. ~/etc/state/ (user-owned)
     """
     if env_path := os.environ.get('HOMESTAK_ETC'):
         return Path(env_path) / 'state'
 
-    return Path('/usr/local/etc/homestak/state')
+    return Path.home() / 'etc' / 'state'
 
 
 def _discover_ansible_dir() -> Path:
@@ -67,16 +67,16 @@ def _discover_ansible_dir() -> Path:
 
     Resolution order:
     1. $HOMESTAK_LIB/ansible/ (env override)
-    2. /usr/local/lib/homestak/ansible/ (FHS)
+    2. ~/lib/ansible/ (user-owned)
 
     Dev environments should set HOMESTAK_LIB explicitly.
     """
     if env_path := os.environ.get('HOMESTAK_LIB'):
         return Path(env_path) / 'ansible'
 
-    fhs = Path('/usr/local/lib/homestak/ansible')
-    if fhs.exists():
-        return fhs
+    home_ansible = Path.home() / 'lib' / 'ansible'
+    if home_ansible.exists():
+        return home_ansible
 
     raise ConfigError(
         "Ansible directory not found. "

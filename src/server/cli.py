@@ -138,8 +138,12 @@ def _create_server(args) -> Server:
         # Detect site-config at FHS path (separate from code repos)
         extra_paths = {}
         if not (repos_dir / 'site-config' / '.git').is_dir():
+            home_etc = Path.home() / 'etc'
             fhs_etc = Path('/usr/local/etc/homestak')
-            if (fhs_etc / '.git').is_dir():
+            if (home_etc / '.git').is_dir():
+                extra_paths['site-config'] = home_etc
+                logger.info("Using site-config at %s", home_etc)
+            elif (fhs_etc / '.git').is_dir():
                 extra_paths['site-config'] = fhs_etc
                 logger.info("Using FHS site-config at %s", fhs_etc)
             else:
