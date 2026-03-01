@@ -238,9 +238,13 @@ class ConfigResolver:
 
     @staticmethod
     def _find_ssh_private_key() -> str:
-        """Find SSH private key, preferring ed25519 over RSA."""
+        """Find SSH private key, preferring RSA over ed25519.
+
+        RSA is preferred because the bpg/proxmox provider's Go SSH
+        library cannot parse OpenSSH-format ed25519 keys.
+        """
         home = Path.home()
-        for name in ('id_ed25519', 'id_rsa'):
+        for name in ('id_rsa', 'id_ed25519'):
             key_path = home / '.ssh' / name
             if key_path.exists():
                 return str(key_path)
