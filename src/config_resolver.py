@@ -238,17 +238,13 @@ class ConfigResolver:
 
     @staticmethod
     def _find_ssh_private_key() -> str:
-        """Find SSH private key, preferring RSA over ed25519.
+        """Find RSA SSH private key for the bpg/proxmox provider.
 
-        RSA is preferred because the bpg/proxmox provider's Go SSH
-        library cannot parse OpenSSH-format ed25519 keys.
+        Only RSA is supported — the provider's Go SSH library cannot
+        parse OpenSSH-format ed25519 keys.
         """
-        home = Path.home()
-        for name in ('id_rsa', 'id_ed25519'):
-            key_path = home / '.ssh' / name
-            if key_path.exists():
-                return str(key_path)
-        return str(home / '.ssh' / 'id_rsa')  # fallback
+        key_path = Path.home() / '.ssh' / 'id_rsa'
+        return str(key_path)
 
     def _resolve_vm(self, vm_instance: dict, default_vmid: Optional[int], defaults: dict) -> dict:
         """Resolve VM instance with vm_preset inheritance.
